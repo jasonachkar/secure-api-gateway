@@ -1,0 +1,106 @@
+services:
+  # API Gateway
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: secure-api-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - HOST=0.0.0.0
+      - LOG_LEVEL=info
+      - LOG_PRETTY=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - JWT_ALGORITHM=HS256
+      - JWT_SECRET=dev-secret-key-for-testing-only-min-256-bits-long-xxxxx
+      - JWT_ACCESS_TOKEN_EXPIRES_IN=15m
+      - JWT_REFRESH_TOKEN_EXPIRES_IN=7d
+      - RATE_LIMIT_GLOBAL_MAX=100
+      - RATE_LIMIT_GLOBAL_WINDOW=60000
+      - RATE_LIMIT_AUTH_MAX=5
+      - RATE_LIMIT_AUTH_WINDOW=60000
+      - RATE_LIMIT_USER_MAX=200
+      - RATE_LIMIT_USER_WINDOW=60000
+      - CORS_ORIGIN=http://localhost:3000,http://localhost:5173
+      - COOKIE_SECRET=dev-cookie-secret-min-32-chars-long-change-me-xxxxx
+      - BCRYPT_ROUNDS=10
+      - MAX_LOGIN_ATTEMPTS=5
+      - LOCKOUT_DURATION=900000
+      - UPSTREAM_REPORTS_URL=http://mock-service:4000
+      - UPSTREAM_TIMEOUT=5000
+      - UPSTREAM_RETRY_ATTEMPTS=2
+      - ALLOWED_UPSTREAM_HOSTS=mock-service,api.example.com
+      - ENABLE_SWAGGER=true
+      - BODY_LIMIT=1048576
+      - REQUEST_TIMEOUT=30000
+    volumes:
+      - ./logs:/app/logs
+      - ./keys:/app/keys:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      mock-service:
+        condition: service_started
+    networks:
+      - gateway-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  # Redis for rate limiting and token storage
+  redis:
+    image: redis:7-alpine
+    container_name: gateway-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - gateway-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+
+  # Mock upstream service
+  mock-service:
+    build:
+      context: ./mock-service
+      dockerfile: Dockerfile
+    container_name: mock-upstream-service
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+      - HOST=0.0.0.0
+    networks:
+      - gateway-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:4000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  gateway-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+    driver: local

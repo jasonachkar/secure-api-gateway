@@ -1,0 +1,507 @@
+openapi: 3.0.3
+info:
+  title: Secure API Gateway
+  description: |
+    Production-grade API Gateway with JWT authentication, RBAC, rate limiting, and OWASP API security mitigations.
+
+    ## Features
+    - JWT authentication with token rotation
+    - Role-Based Access Control (RBAC)
+    - Redis-backed rate limiting
+    - Request validation
+    - Audit logging
+    - SSRF protection
+    - Security headers
+
+    ## Authentication
+    Most endpoints require JWT authentication. Obtain a token via `/auth/login` and include it in the `Authorization` header:
+
+    ```
+    Authorization: Bearer <your-access-token>
+    ```
+
+    Refresh tokens are stored as httpOnly cookies and rotated on each use.
+
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: https://api.example.com
+    description: Production server
+
+tags:
+  - name: Authentication
+    description: User authentication and token management
+  - name: Reports
+    description: Report resource management
+  - name: Proxy
+    description: Upstream service proxy endpoints
+  - name: Admin
+    description: Admin-only endpoints
+  - name: Health
+    description: Health check endpoints
+
+paths:
+  /healthz:
+    get:
+      summary: Health check
+      description: Basic health check endpoint. Returns OK if service is running.
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  timestamp:
+                    type: number
+                    example: 1736937000000
+
+  /readyz:
+    get:
+      summary: Readiness check
+      description: Readiness check including dependencies (Redis). Returns OK if service is ready to accept traffic.
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  redis:
+                    type: string
+                    example: ok
+                  timestamp:
+                    type: number
+                    example: 1736937000000
+
+  /auth/login:
+    post:
+      summary: User login
+      description: |
+        Authenticate with username and password. Returns an access token (Bearer) and sets a refresh token cookie.
+
+        **Rate Limit**: 5 requests per minute per IP
+
+        **Demo Users**:
+        - Username: `admin`, Password: `Admin123!` (admin role)
+        - Username: `user`, Password: `User123!` (user role)
+        - Username: `service`, Password: `Service123!` (service role)
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 50
+                  pattern: '^[a-zA-Z0-9_-]+$'
+                  example: admin
+                password:
+                  type: string
+                  minLength: 8
+                  maxLength: 128
+                  example: Admin123!
+      responses:
+        '200':
+          description: Login successful
+          headers:
+            Set-Cookie:
+              description: Refresh token (httpOnly, secure, sameSite=strict)
+              schema:
+                type: string
+                example: refreshToken=<token>; HttpOnly; Secure; SameSite=Strict; Path=/auth/refresh
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:
+                    type: string
+                    description: JWT access token (15min expiry)
+                    example: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+                  expiresIn:
+                    type: number
+                    description: Token expiration in seconds
+                    example: 900
+                  tokenType:
+                    type: string
+                    enum: [Bearer]
+                    example: Bearer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /auth/refresh:
+    post:
+      summary: Refresh access token
+      description: |
+        Refresh the access token using the refresh token cookie. Returns a new access token and rotates the refresh token.
+
+        **Token Rotation**: The old refresh token is revoked and a new one is issued.
+
+        **Rate Limit**: 5 requests per minute per IP
+      tags:
+        - Authentication
+      parameters:
+        - in: cookie
+          name: refreshToken
+          required: true
+          schema:
+            type: string
+          description: Refresh token from login
+      responses:
+        '200':
+          description: Token refreshed successfully
+          headers:
+            Set-Cookie:
+              description: New refresh token (rotated)
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:
+                    type: string
+                    example: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+                  expiresIn:
+                    type: number
+                    example: 900
+                  tokenType:
+                    type: string
+                    enum: [Bearer]
+                    example: Bearer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      summary: Logout user
+      description: Revoke the refresh token and clear the cookie.
+      tags:
+        - Authentication
+      parameters:
+        - in: cookie
+          name: refreshToken
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Logged out successfully
+
+  /reports/{id}:
+    get:
+      summary: Get report by ID
+      description: |
+        Retrieve a report by ID. Implements BOLA prevention by checking resource ownership.
+
+        **Authorization**: Requires `read:reports` permission. Regular users can only access their own reports; admins can access all reports.
+      tags:
+        - Reports
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9-]+$'
+          description: Report ID
+          example: '123'
+      responses:
+        '200':
+          description: Report found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    example: '123'
+                  title:
+                    type: string
+                    example: Q4 Financial Report
+                  content:
+                    type: string
+                    example: Revenue increased by 25%...
+                  createdAt:
+                    type: number
+                    example: 1736937000000
+                  createdBy:
+                    type: string
+                    example: user-1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /upstream/echo:
+    get:
+      summary: Echo service (proxied)
+      description: |
+        Echo endpoint that proxies to upstream service. Demonstrates SSRF protection.
+
+        **SSRF Protection**: Only allowed upstream hosts can be accessed. Private IP ranges are blocked.
+      tags:
+        - Proxy
+      parameters:
+        - in: query
+          name: message
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 1000
+          description: Message to echo
+          example: Hello from client
+      responses:
+        '200':
+          description: Echo response from upstream
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Hello from client
+                  timestamp:
+                    type: number
+                    example: 1736937000000
+
+  /admin/audit-logs:
+    get:
+      summary: Query audit logs
+      description: |
+        Query security audit logs. Admin-only endpoint.
+
+        **Authorization**: Requires `admin` role.
+
+        **Events Logged**:
+        - LOGIN_SUCCESS, LOGIN_FAILURE
+        - TOKEN_REFRESH, TOKEN_REVOKED
+        - PERMISSION_DENIED
+        - RATE_LIMIT_EXCEEDED
+        - ACCOUNT_LOCKED
+        - SSRF_BLOCKED
+      tags:
+        - Admin
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: userId
+          schema:
+            type: string
+          description: Filter by user ID
+        - in: query
+          name: eventType
+          schema:
+            type: string
+            enum:
+              - LOGIN_SUCCESS
+              - LOGIN_FAILURE
+              - LOGOUT
+              - TOKEN_REFRESH
+              - PERMISSION_DENIED
+              - RATE_LIMIT_EXCEEDED
+          description: Filter by event type
+        - in: query
+          name: startTime
+          schema:
+            type: integer
+          description: Filter events after timestamp (ms)
+        - in: query
+          name: endTime
+          schema:
+            type: integer
+          description: Filter events before timestamp (ms)
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+          description: Maximum number of results
+      responses:
+        '200':
+          description: Audit logs retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        timestamp:
+                          type: number
+                        eventType:
+                          type: string
+                        userId:
+                          type: string
+                        username:
+                          type: string
+                        ip:
+                          type: string
+                        requestId:
+                          type: string
+                        success:
+                          type: boolean
+                        message:
+                          type: string
+                  count:
+                    type: number
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token obtained from /auth/login
+
+  responses:
+    Unauthorized:
+      description: Authentication required or token invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Authentication required
+            requestId: req-abc123
+
+    Forbidden:
+      description: Permission denied
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: FORBIDDEN
+              message: Permission denied
+            requestId: req-abc123
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: NOT_FOUND
+              message: Resource not found
+            requestId: req-abc123
+
+    RateLimitExceeded:
+      description: Too many requests
+      headers:
+        RateLimit-Limit:
+          schema:
+            type: integer
+          description: Request limit per window
+        RateLimit-Remaining:
+          schema:
+            type: integer
+          description: Remaining requests in window
+        RateLimit-Reset:
+          schema:
+            type: string
+            format: date-time
+          description: Time when limit resets
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds to wait before retrying
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: RATE_LIMIT_EXCEEDED
+              message: Too many requests, please try again later
+            requestId: req-abc123
+
+  schemas:
+    Error:
+      type: object
+      required:
+        - error
+        - requestId
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              example: Validation failed
+            details:
+              type: object
+              description: Additional error details (development only)
+        requestId:
+          type: string
+          description: Request correlation ID
+          example: req-abc123

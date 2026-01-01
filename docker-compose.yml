@@ -97,6 +97,25 @@ services:
       timeout: 5s
       retries: 3
 
+  # Security Dashboard
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: security-dashboard
+    ports:
+      - "5173:80"
+    depends_on:
+      - gateway
+    networks:
+      - gateway-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
 networks:
   gateway-network:
     driver: bridge

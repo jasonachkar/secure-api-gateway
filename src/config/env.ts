@@ -53,8 +53,8 @@ const envSchema = z.object({
   // Security
   CORS_ORIGIN: z
     .string()
-    .default('http://localhost:3000')
-    .transform((val) => val.split(',')),
+    .default('http://localhost:3000,http://localhost:5173')
+    .transform((val) => val.split(',').map(s => s.trim())),
   COOKIE_SECRET: z.string().min(32),
   BCRYPT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
 

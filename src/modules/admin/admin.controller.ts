@@ -31,30 +31,92 @@ export class AdminController {
    * SSE stream of real-time metrics
    */
   async streamRealtimeMetrics(request: FastifyRequest, reply: FastifyReply) {
-    // Set SSE headers
+    // Get origin from request - allow all origins
+    const origin = request.headers.origin || '*';
+    
+    // Set SSE headers BEFORE writing any data
     reply.raw.setHeader('Content-Type', 'text/event-stream');
     reply.raw.setHeader('Cache-Control', 'no-cache');
     reply.raw.setHeader('Connection', 'keep-alive');
     reply.raw.setHeader('X-Accel-Buffering', 'no'); // Disable Nginx buffering
+    
+    // CORS headers for SSE - allow all origins
+    reply.raw.setHeader('Access-Control-Allow-Origin', origin);
+    reply.raw.setHeader('Access-Control-Allow-Credentials', 'true');
+    reply.raw.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    reply.raw.setHeader('Access-Control-Allow-Headers', 'Cache-Control, Content-Type, Authorization, Accept');
+    
+    // Send headers immediately
+    reply.raw.flushHeaders();
 
     // Send initial connection message
-    reply.raw.write('data: {"type":"connected"}\n\n');
+    try {
+      reply.raw.write('data: {"type":"connected"}\n\n');
+    } catch (error) {
+      // Client already disconnected
+      return;
+    }
+
+    let isClosed = false;
 
     // Stream metrics every 2 seconds
     const interval = setInterval(async () => {
+      if (isClosed) {
+        clearInterval(interval);
+        return;
+      }
+
       try {
         const metrics = await this.metricsService.getRealtimeMetrics();
-        reply.raw.write(`data: ${JSON.stringify(metrics)}\n\n`);
+        if (!isClosed && !reply.raw.destroyed) {
+          const data = `data: ${JSON.stringify(metrics)}\n\n`;
+          reply.raw.write(data);
+        }
       } catch (error) {
-        clearInterval(interval);
-        reply.raw.end();
+        // Log error but don't close connection
+        if (!isClosed && !reply.raw.destroyed) {
+          try {
+            reply.raw.write(`data: ${JSON.stringify({ error: 'Failed to get metrics', timestamp: Date.now() })}\n\n`);
+          } catch (writeError) {
+            // Connection already closed
+            isClosed = true;
+            clearInterval(interval);
+          }
+        }
       }
     }, 2000);
 
     // Clean up on client disconnect
     request.raw.on('close', () => {
+      isClosed = true;
       clearInterval(interval);
-      reply.raw.end();
+      if (!reply.raw.destroyed) {
+        reply.raw.end();
+      }
+    });
+
+    // Handle errors
+    request.raw.on('error', () => {
+      isClosed = true;
+      clearInterval(interval);
+    });
+
+    // Keep connection alive with heartbeat
+    const heartbeat = setInterval(() => {
+      if (!isClosed) {
+        try {
+          reply.raw.write(': heartbeat\n\n');
+        } catch (error) {
+          isClosed = true;
+          clearInterval(interval);
+          clearInterval(heartbeat);
+        }
+      }
+    }, 30000); // Every 30 seconds
+
+    // Clean up heartbeat on close
+    request.raw.on('close', () => {
+      clearInterval(heartbeat);
     });
   }
 

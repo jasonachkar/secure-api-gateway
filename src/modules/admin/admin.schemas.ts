@@ -40,13 +40,23 @@ export interface RealtimeMetrics {
   timestamp: number;
   requestsPerSecond: number;
   errorRate: number;
-  avgResponseTime: number;
-  recentEvents: Array<{
-    type: string;
-    message: string;
-    severity: 'info' | 'warning' | 'error';
-    timestamp: number;
-  }>;
+  errors4xx: number;
+  errors5xx: number;
+  totalRequests: number;
+  authStats: {
+    failedLogins: number;
+    successfulLogins: number;
+    accountLockouts: number;
+    activeSessions: number;
+  };
+  rateLimitStats: {
+    violations: number;
+  };
+  responseTimeStats: {
+    p50: number;
+    p95: number;
+    p99: number;
+  };
 }
 
 /**

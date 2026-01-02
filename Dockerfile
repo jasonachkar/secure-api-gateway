@@ -6,7 +6,8 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Copy package files first (for better layer caching)
-COPY package*.json ./
+# Explicitly copy both package.json and package-lock.json for npm ci
+COPY package.json package-lock.json ./
 COPY tsconfig.json ./
 
 # Install ALL dependencies (including devDependencies for building)
@@ -36,7 +37,8 @@ RUN addgroup -g 1001 -S nodejs && \
 WORKDIR /app
 
 # Copy package files and install production dependencies only
-COPY package*.json ./
+# Explicitly copy both package.json and package-lock.json for npm ci
+COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && \
     npm cache clean --force && \
     rm -rf /tmp/*

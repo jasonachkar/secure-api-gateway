@@ -50,7 +50,7 @@ coverage/
 .VolumeIcon.icns
 
 # Docker
-.dockerignore
+# .dockerignore - Keep this file tracked (needed for deployments)
 
 # Keys (NEVER commit private keys)
 *.pem

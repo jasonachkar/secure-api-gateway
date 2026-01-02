@@ -1,0 +1,117 @@
+# Dependencies
+node_modules/
+npm-debug.log
+yarn-error.log
+# Keep package-lock.json for npm ci (required for reproducible builds)
+# package-lock.json - REMOVED: needed for npm ci
+yarn.lock
+pnpm-lock.yaml
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# Logs
+logs/
+*.log
+pino-*.log
+audit-logs.json
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Testing
+coverage/
+.nyc_output/
+test/
+*.test.ts
+*.spec.ts
+jest.config.js
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+._*
+._.claude
+.claude
+
+# macOS metadata files
+._*
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+.fseventsd
+.TemporaryItems
+.VolumeIcon.icns
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+docs/
+README.md
+*.md
+!package.json
+
+# Mock service (built separately)
+mock-service/
+
+# Dashboard (built separately)
+dashboard/
+
+# Keys (mount at runtime, never commit)
+keys/*.pem
+keys/*.key
+*.pem
+*.key
+!*.example.key
+secrets/
+
+# Misc
+.editorconfig
+.prettierrc.json
+.eslintrc.json
+.eslintignore
+tsconfig.json
+tsconfig.*.json
+!tsconfig.json
+
+# Docker files (don't copy into image)
+docker-compose.yml
+.dockerignore
+Dockerfile
+*.dockerfile
+
+# Deployment configs
+fly.toml
+railway.json
+render.yaml
+vercel.json
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+
+# Redis dumps
+dump.rdb
+*.rdb

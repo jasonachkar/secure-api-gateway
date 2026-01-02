@@ -1,0 +1,26 @@
+# Dependencies
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Build outputs
+dist
+
+# Logs
+*.log
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+
+# macOS metadata files
+._*
+._.claude
+.claude
+
+# Git
+.git
+.gitignore

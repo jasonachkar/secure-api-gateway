@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: secure-api-gateway
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: node dist/main.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: HOST
+        value: 0.0.0.0
+      - key: LOG_LEVEL
+        value: info
+      - key: LOG_PRETTY
+        value: "false"
+      - key: ENABLE_SWAGGER
+        value: "false"
+      # Add other environment variables in Render dashboard
+      # REDIS_HOST, REDIS_PORT, JWT_SECRET, etc.
+
+databases:
+  - name: secure-api-redis
+    plan: free  # or starter, standard, etc.
+    type: redis
+

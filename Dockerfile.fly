@@ -1,5 +1,8 @@
+# Fly.io Optimized Dockerfile
+# This is the same as Dockerfile but with Fly.io-specific comments
+# Use this if you want Fly.io-specific optimizations, otherwise use Dockerfile
+
 # Multi-stage build for production-optimized image
-# Optimized for Fly.io deployment
 FROM node:20-alpine AS builder
 
 # Set working directory
@@ -24,11 +27,12 @@ RUN npm run build
 FROM node:20-alpine
 
 # Install security updates and dumb-init for proper signal handling
+# curl is included for health checks (optional but useful)
 RUN apk upgrade --no-cache && \
     apk add --no-cache dumb-init curl && \
     rm -rf /var/cache/apk/*
 
-# Create non-root user for security
+# Create non-root user for security (Fly.io best practice)
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 
@@ -48,19 +52,30 @@ COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
 RUN mkdir -p /app/logs /app/keys && \
     chown -R nodejs:nodejs /app/logs /app/keys
 
-# Switch to non-root user
+# Switch to non-root user (security best practice)
 USER nodejs
 
-# Expose port (Fly.io will map this)
+# Expose port (Fly.io will map this automatically)
 EXPOSE 3000
 
 # Health check for Fly.io monitoring
 # Fly.io uses this to determine if the app is healthy
+# Adjust interval/timeout based on your app's startup time
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
     CMD node -e "require('http').get('http://localhost:3000/healthz', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
-# Use dumb-init to handle signals properly (important for Fly.io graceful shutdowns)
+# Use dumb-init to handle signals properly
+# This is critical for Fly.io graceful shutdowns and zero-downtime deployments
 ENTRYPOINT ["dumb-init", "--"]
 
 # Start application
 CMD ["node", "dist/main.js"]
+
+# Fly.io Notes:
+# - This Dockerfile is optimized for Fly.io's platform
+# - Health checks help Fly.io monitor your app
+# - Non-root user improves security
+# - Multi-stage build keeps image size small
+# - dumb-init ensures proper signal handling for graceful shutdowns
+# - Alpine Linux keeps the image small (~50MB base + your app)
+

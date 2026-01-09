@@ -5,10 +5,32 @@
 
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { ComplianceService } from './compliance.service.js';
+import type { ComplianceMetrics } from './compliance.service.js';
 import { logger } from '../../lib/logger.js';
 
 export class ComplianceController {
   constructor(private complianceService: ComplianceService) {}
+
+  private normalizeMetrics(metrics?: ComplianceMetrics | null): ComplianceMetrics {
+    return {
+      nist: {
+        score: metrics?.nist?.score ?? 0,
+        controls: Array.isArray(metrics?.nist?.controls) ? (metrics?.nist?.controls ?? []) : [],
+      },
+      owasp: {
+        score: metrics?.owasp?.score ?? 0,
+        top10: Array.isArray(metrics?.owasp?.top10) ? (metrics?.owasp?.top10 ?? []) : [],
+      },
+      pci: {
+        score: metrics?.pci?.score ?? 0,
+        requirements: Array.isArray(metrics?.pci?.requirements) ? (metrics?.pci?.requirements ?? []) : [],
+      },
+      gdpr: {
+        score: metrics?.gdpr?.score ?? 0,
+        principles: Array.isArray(metrics?.gdpr?.principles) ? (metrics?.gdpr?.principles ?? []) : [],
+      },
+    };
+  }
 
   /**
    * GET /admin/compliance/posture
@@ -44,80 +66,30 @@ export class ComplianceController {
     try {
       logger.info('Retrieving compliance metrics...');
       const metrics = await this.complianceService.getComplianceMetrics();
-      logger.info({ metricsType: typeof metrics, hasMetrics: !!metrics }, 'Metrics received from service');
-      
-      // Ensure all required arrays are present and not empty
-      if (!metrics || typeof metrics !== 'object') {
+      const hasMetrics = !!metrics && typeof metrics === 'object';
+      logger.info({ metricsType: typeof metrics, hasMetrics }, 'Metrics received from service');
+
+      if (!hasMetrics) {
         logger.error({ metrics, metricsType: typeof metrics }, 'Compliance metrics returned null/undefined or invalid type');
-        return reply.status(500).send({
-          error: {
-            code: 'INTERNAL_ERROR',
-            message: 'Failed to retrieve compliance metrics: invalid data structure',
-          },
-        });
       }
-      
-      // Ensure all framework sections exist
-      if (!metrics.nist) {
-        logger.warn('Missing NIST data, initializing...');
-        metrics.nist = { score: 0, controls: [] };
-      }
-      if (!metrics.owasp) {
-        logger.warn('Missing OWASP data, initializing...');
-        metrics.owasp = { score: 0, top10: [] };
-      }
-      if (!metrics.pci) {
-        logger.warn('Missing PCI data, initializing...');
-        metrics.pci = { score: 0, requirements: [] };
-      }
-      if (!metrics.gdpr) {
-        logger.warn('Missing GDPR data, initializing...');
-        metrics.gdpr = { score: 0, principles: [] };
-      }
-      
-      // Ensure arrays are initialized (defensive check)
-      if (!Array.isArray(metrics.nist.controls)) {
-        metrics.nist.controls = [];
-      }
-      if (!Array.isArray(metrics.owasp.top10)) {
-        metrics.owasp.top10 = [];
-      }
-      if (!Array.isArray(metrics.pci.requirements)) {
-        metrics.pci.requirements = [];
-      }
-      if (!Array.isArray(metrics.gdpr.principles)) {
-        metrics.gdpr.principles = [];
-      }
-      
+
+      const normalizedMetrics = this.normalizeMetrics(metrics);
+
       logger.info({
-        nistControls: metrics.nist?.controls?.length ?? 0,
-        owaspRisks: metrics.owasp?.top10?.length ?? 0,
-        pciRequirements: metrics.pci?.requirements?.length ?? 0,
-        gdprPrinciples: metrics.gdpr?.principles?.length ?? 0,
-        metricsKeys: Object.keys(metrics),
+        nistControls: normalizedMetrics.nist?.controls?.length ?? 0,
+        owaspRisks: normalizedMetrics.owasp?.top10?.length ?? 0,
+        pciRequirements: normalizedMetrics.pci?.requirements?.length ?? 0,
+        gdprPrinciples: normalizedMetrics.gdpr?.principles?.length ?? 0,
+        metricsKeys: Object.keys(normalizedMetrics),
       }, 'Compliance metrics validated, sending response');
-      
-      // Double-check we have a valid metrics object before sending
-      if (!metrics || typeof metrics !== 'object') {
-        return reply.status(500).send({
-          error: {
-            code: 'INTERNAL_ERROR',
-            message: 'Invalid metrics structure after validation',
-          },
-        });
-      }
-      
-      const response = { metrics };
+
+      const response = { metrics: normalizedMetrics };
       logger.info({ responseKeys: Object.keys(response) }, 'Sending compliance metrics response');
       return reply.send(response);
     } catch (error: any) {
       logger.error({ error, stack: error.stack, message: error.message }, 'Failed to retrieve compliance metrics');
-      return reply.status(500).send({
-        error: {
-          code: 'INTERNAL_ERROR',
-          message: error.message || 'Failed to retrieve compliance metrics',
-        },
-      });
+      const fallbackMetrics = this.normalizeMetrics(null);
+      return reply.send({ metrics: fallbackMetrics });
     }
   }
 }

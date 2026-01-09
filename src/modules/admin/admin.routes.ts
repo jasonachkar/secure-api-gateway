@@ -716,6 +716,7 @@ export async function registerAdminRoutes(
         tags: ['Compliance'],
         security: [{ bearerAuth: [] }],
       },
+      compress: false,
       preHandler: adminAuth,
     },
     complianceController.getComplianceMetrics.bind(complianceController)

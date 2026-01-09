@@ -6,6 +6,7 @@
 import { FastifyInstance } from 'fastify';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
+import { AuditService } from '../audit/audit.service.js';
 import { loginSchema, type LoginRequest } from './auth.schemas.js';
 import { validate } from '../../middleware/validation.js';
 import { createRateLimiter } from '../../middleware/rateLimit.js';
@@ -15,12 +16,12 @@ import Redis from 'ioredis';
 /**
  * Register authentication routes
  */
-export async function registerAuthRoutes(app: FastifyInstance, redis: Redis) {
+export async function registerAuthRoutes(app: FastifyInstance, redis: Redis, auditService: AuditService) {
   // Initialize auth service
   const authService = new AuthService(redis);
   await authService.initialize();
 
-  const controller = new AuthController(authService);
+  const controller = new AuthController(authService, auditService);
 
   // Stricter rate limit for auth endpoints (prevent brute force)
   const authRateLimit = createRateLimiter(

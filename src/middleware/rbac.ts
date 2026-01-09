@@ -7,6 +7,37 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { ForbiddenError, UnauthorizedError } from '../lib/errors.js';
 import { AuthUser } from '../types/index.js';
 import { logger } from '../lib/logger.js';
+import { getClientIp, getRequestId } from '../lib/requestContext.js';
+import { AuditService } from '../modules/audit/audit.service.js';
+import { AuditEventType } from '../modules/audit/audit.types.js';
+
+/**
+ * Helper to log permission denied to audit service
+ */
+async function logPermissionDenied(
+  request: FastifyRequest,
+  user: AuthUser,
+  requiredPermission?: string,
+  resource?: string
+) {
+  const auditService = (request.server as any).audit as AuditService | undefined;
+  if (!auditService) return;
+
+  try {
+    await auditService.logPermissionDenied({
+      userId: user.userId,
+      username: user.username,
+      ip: getClientIp(request),
+      requestId: getRequestId(request),
+      resource: resource || request.url,
+      action: request.method,
+      requiredPermission,
+    });
+  } catch (error) {
+    // Don't fail the request if audit logging fails
+    logger.error({ error }, 'Failed to log permission denied to audit service');
+  }
+}
 
 /**
  * Check if user has required role
@@ -99,6 +130,8 @@ export function requireRole(requiredRole: string) {
         'Access denied: insufficient role'
       );
 
+      await logPermissionDenied(request, user, `role:${requiredRole}`);
+
       throw new ForbiddenError(`Required role: ${requiredRole}`);
     }
   };
@@ -170,6 +203,8 @@ export function requirePermission(requiredPermission: string) {
         'Access denied: insufficient permission'
       );
 
+      await logPermissionDenied(request, user, requiredPermission);
+
       throw new ForbiddenError(`Required permission: ${requiredPermission}`, requiredPermission);
     }
   };
@@ -205,6 +240,8 @@ export function requireAnyPermission(requiredPermissions: string[]) {
         'Access denied: insufficient permission'
       );
 
+      await logPermissionDenied(request, user, requiredPermissions[0]);
+
       throw new ForbiddenError(
         `Required one of permissions: ${requiredPermissions.join(', ')}`,
         requiredPermissions[0]
@@ -237,6 +274,8 @@ export function requireAllPermissions(requiredPermissions: string[]) {
         },
         'Access denied: insufficient permissions'
       );
+
+      await logPermissionDenied(request, user, requiredPermissions[0]);
 
       throw new ForbiddenError(
         `Required all permissions: ${requiredPermissions.join(', ')}`,

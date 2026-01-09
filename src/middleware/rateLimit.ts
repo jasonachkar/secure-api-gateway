@@ -77,24 +77,41 @@ const keyGenerators = {
  */
 function rateLimitErrorHandler(request: FastifyRequest, context: any): object {
   const retryAfter = Math.ceil(context.ttl / 1000); // Convert ms to seconds
+  const requestId = (request as any).requestId;
+  const ip = getClientIp(request);
+  const user = (request as any).user;
 
   // Log rate limit event for monitoring
   logger.warn(
     {
-      requestId: (request as any).requestId,
-      ip: getClientIp(request),
+      requestId,
+      ip,
       url: request.url,
       retryAfter,
     },
     'Rate limit exceeded'
   );
 
+  // Log to audit service if available
+  const auditService = (request.server as any).audit;
+  if (auditService) {
+    auditService.logRateLimitExceeded({
+      userId: user?.userId,
+      ip,
+      requestId,
+      resource: request.url,
+    }).catch((err: any) => {
+      // Don't fail the request if audit logging fails
+      logger.error({ error: err }, 'Failed to log rate limit to audit service');
+    });
+  }
+
   return {
     error: {
       code: 'RATE_LIMIT_EXCEEDED',
       message: 'Too many requests, please try again later',
     },
-    requestId: (request as any).requestId,
+    requestId,
   };
 }
 
@@ -197,16 +214,33 @@ export function createRateLimiter(
     // Check if limit exceeded
     if (entry.count > max) {
       const retryAfter = Math.ceil(ttl / 1000);
+      const requestId = (request as any).requestId;
+      const ip = getClientIp(request);
+      const user = (request as any).user;
 
       logger.warn(
         {
-          requestId: (request as any).requestId,
-          ip: getClientIp(request),
+          requestId,
+          ip,
           url: request.url,
           retryAfter,
         },
         'Rate limit exceeded (route-specific)'
       );
+
+      // Log to audit service if available
+      const auditService = (request.server as any).audit;
+      if (auditService) {
+        auditService.logRateLimitExceeded({
+          userId: user?.userId,
+          ip,
+          requestId,
+          resource: request.url,
+        }).catch((err: any) => {
+          // Don't fail the request if audit logging fails
+          logger.error({ error: err }, 'Failed to log rate limit to audit service');
+        });
+      }
 
       throw new RateLimitError(retryAfter, 'Too many requests, please try again later');
     }

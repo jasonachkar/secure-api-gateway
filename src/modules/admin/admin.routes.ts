@@ -59,8 +59,9 @@ export async function registerAdminRoutes(
   // Initialize services
   const metricsService = new MetricsService(redis);
   const adminService = new AdminService(redis, auditService);
-  const threatIntelService = new ThreatIntelService(redis);
   const incidentService = new IncidentResponseService(redis);
+  // Pass incident service to threat intel for auto-incident creation
+  const threatIntelService = new ThreatIntelService(redis, incidentService);
   const controller = new AdminController(adminService, metricsService);
   const threatController = new ThreatIntelController(threatIntelService);
   const incidentController = new IncidentResponseController(incidentService);
@@ -663,6 +664,23 @@ export async function registerAdminRoutes(
       preHandler: adminAuth,
     },
     incidentController.getStatistics.bind(incidentController)
+  );
+
+  /**
+   * POST /admin/incidents/seed-test-data
+   * Seed test incidents for development/demo (admin only)
+   */
+  app.post(
+    '/admin/incidents/seed-test-data',
+    {
+      schema: {
+        description: 'Create sample incidents for testing/demo purposes',
+        tags: ['Incident Response'],
+        security: [{ bearerAuth: [] }],
+      },
+      preHandler: adminAuth,
+    },
+    incidentController.seedTestIncidents.bind(incidentController)
   );
 
   // ======================

@@ -59,6 +59,9 @@ export function Dashboard() {
   const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
   const [currentMetrics, setCurrentMetrics] = useState<RealtimeMetrics | null>(null);
   const [posture, setPosture] = useState<SecurityPosture | null>(null);
+  const [infoBannerDismissed, setInfoBannerDismissed] = useState(() => {
+    return localStorage.getItem('dashboard-info-banner-dismissed') === 'true';
+  });
 
   const { data, isConnected, error } = useSSE<any>({
     url: `${API_URL}/admin/metrics/realtime`,
@@ -215,6 +218,70 @@ export function Dashboard() {
             boxShadow: theme.shadows.sm,
           }}>
             <strong>Connection Error:</strong> {error}
+          </div>
+        )}
+
+        {/* Info Banner */}
+        {!infoBannerDismissed && (
+          <div style={{
+            backgroundColor: theme.colors.primary[50],
+            border: `1px solid ${theme.colors.primary[200]}`,
+            borderRadius: theme.borderRadius.lg,
+            padding: theme.spacing.md,
+            marginBottom: theme.spacing.lg,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            gap: theme.spacing.md,
+            boxShadow: theme.shadows.sm,
+          }}>
+            <div style={{ flex: 1 }}>
+              <div style={{
+                ...theme.typography.body,
+                fontWeight: theme.typography.fontWeight.medium,
+                color: theme.colors.primary[900],
+                marginBottom: theme.spacing.xs,
+              }}>
+                👋 New to this dashboard?
+              </div>
+              <div style={{
+                ...theme.typography.body,
+                fontSize: theme.typography.fontSize.sm,
+                color: theme.colors.primary[700],
+              }}>
+                This is a live demonstration of a production-grade API Gateway security monitoring dashboard. 
+                Learn more about what each section shows in the{' '}
+                <Link 
+                  to="/about" 
+                  style={{ 
+                    color: theme.colors.primary[600], 
+                    fontWeight: theme.typography.fontWeight.medium,
+                    textDecoration: 'underline',
+                  }}
+                >
+                  About page
+                </Link>.
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                setInfoBannerDismissed(true);
+                localStorage.setItem('dashboard-info-banner-dismissed', 'true');
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: theme.colors.primary[600],
+                cursor: 'pointer',
+                fontSize: theme.typography.fontSize.lg,
+                padding: theme.spacing.xs,
+                lineHeight: 1,
+                flexShrink: 0,
+              }}
+              aria-label="Dismiss banner"
+            >
+              ×
+            </button>
           </div>
         )}
 

@@ -46,15 +46,107 @@ export function Compliance() {
 
   const fetchData = async () => {
     try {
-      const [postureData, metricsData] = await Promise.all([
-        adminApi.getSecurityPosture(),
-        adminApi.getComplianceMetrics(),
+      const [postureResponse, metricsResponse] = await Promise.all([
+        adminApi.getSecurityPosture().catch(err => {
+          console.error('Error fetching posture:', err);
+          return null;
+        }),
+        adminApi.getComplianceMetrics().catch(err => {
+          console.error('Error fetching metrics:', err);
+          return null;
+        }),
       ]);
-      setPosture(postureData);
-      setMetrics(metricsData);
+      
+      // Log the actual data received for debugging
+      console.log('Posture data received:', postureResponse);
+      console.log('Metrics data received:', metricsResponse);
+      
+      // Defensive checks - ensure data structure is valid
+      if (!postureResponse) {
+        throw new Error('Failed to fetch security posture data');
+      }
+      
+      if (!postureResponse.factors) {
+        console.warn('Posture data missing factors, initializing...');
+        postureResponse.factors = {
+          authentication: {
+            score: 0,
+            status: 'poor' as const,
+            details: { failedLoginRate: 0, accountLockouts: 0, mfaEnabled: false, sessionSecurity: 0 },
+          },
+          threatIntelligence: {
+            score: 0,
+            status: 'poor' as const,
+            details: { criticalThreats: 0, blockedIPs: 0, threatResponseTime: 0 },
+          },
+          rateLimiting: {
+            score: 0,
+            status: 'poor' as const,
+            details: { violations: 0, coverage: 0 },
+          },
+          auditLogging: {
+            score: 0,
+            status: 'poor' as const,
+            details: { logCoverage: 0, retentionDays: 0 },
+          },
+          incidentResponse: {
+            score: 0,
+            status: 'poor' as const,
+            details: { openIncidents: 0, avgResponseTime: 0, avgResolutionTime: 0 },
+          },
+        };
+      }
+      
+      if (!postureResponse.recommendations) {
+        postureResponse.recommendations = [];
+      }
+      
+      if (!metricsResponse) {
+        throw new Error('Failed to fetch compliance metrics data');
+      }
+      
+      // Ensure all required framework sections exist
+      if (!metricsResponse.nist) {
+        metricsResponse.nist = { score: 0, controls: [] };
+      }
+      if (!metricsResponse.owasp) {
+        metricsResponse.owasp = { score: 0, top10: [] };
+      }
+      if (!metricsResponse.pci) {
+        metricsResponse.pci = { score: 0, requirements: [] };
+      }
+      if (!metricsResponse.gdpr) {
+        metricsResponse.gdpr = { score: 0, principles: [] };
+      }
+      
+      // Ensure arrays are initialized (defensive check)
+      if (!metricsResponse.nist.controls) {
+        metricsResponse.nist.controls = [];
+      }
+      if (!metricsResponse.owasp.top10) {
+        metricsResponse.owasp.top10 = [];
+      }
+      if (!metricsResponse.pci.requirements) {
+        metricsResponse.pci.requirements = [];
+      }
+      if (!metricsResponse.gdpr.principles) {
+        metricsResponse.gdpr.principles = [];
+      }
+      
+      setPosture(postureResponse);
+      setMetrics(metricsResponse);
       setError('');
     } catch (err: any) {
+      console.error('Compliance data fetch error:', err);
+      console.error('Error details:', {
+        message: err.message,
+        stack: err.stack,
+        response: (err as any).response,
+      });
       setError(err.message || 'Failed to fetch compliance data');
+      // Set empty state to prevent rendering errors
+      setPosture(null);
+      setMetrics(null);
     } finally {
       setLoading(false);
     }
@@ -110,140 +202,15 @@ export function Compliance() {
 
         {!loading && !error && posture && metrics && (
           <>
-            {/* Security Posture Overview */}
-            <div style={{ marginBottom: '30px' }}>
-              <div style={{
-                backgroundColor: 'white',
-                padding: '30px',
-                borderRadius: '8px',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                textAlign: 'center',
-              }}>
-                <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '10px' }}>
-                  Overall Security Posture
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', marginBottom: '20px' }}>
-                  <div style={{
-                    width: '120px',
-                    height: '120px',
-                    borderRadius: '50%',
-                    backgroundColor: gradeColors[posture.grade].bg,
-                    color: gradeColors[posture.grade].text,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '48px',
-                    fontWeight: 'bold',
-                    border: `4px solid ${gradeColors[posture.grade].text}`,
-                  }}>
-                    {posture.grade}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '48px', fontWeight: 'bold', color: '#1e293b' }}>
-                      {posture.overallScore}
-                    </div>
-                    <div style={{ fontSize: '18px', color: '#64748b' }}>out of 100</div>
-                  </div>
-                </div>
-                {posture.lastUpdated && (
-                  <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                    Last updated: {format(new Date(posture.lastUpdated), 'MMM dd, yyyy HH:mm:ss')}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Security Factors */}
-            <section style={{ marginBottom: '30px' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '15px' }}>
-                Security Factors
-              </h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '15px' }}>
-                {Object.entries(posture.factors).map(([key, factor]) => {
-                  const colors = statusColors[factor.status];
-                  return (
-                    <div
-                      key={key}
-                      style={{
-                        backgroundColor: 'white',
-                        padding: '20px',
-                        borderRadius: '8px',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                        borderLeft: `4px solid ${colors.text}`,
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                        <h3 style={{ fontSize: '16px', fontWeight: '600', textTransform: 'capitalize' }}>
-                          {key.replace(/([A-Z])/g, ' $1').trim()}
-                        </h3>
-                        <span style={{
-                          padding: '4px 8px',
-                          backgroundColor: colors.bg,
-                          color: colors.text,
-                          fontSize: '12px',
-                          borderRadius: '4px',
-                          fontWeight: '600',
-                        }}>
-                          {factor.status.toUpperCase()}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#1e293b', marginBottom: '12px' }}>
-                        {factor.score}
-                      </div>
-                      <div style={{ fontSize: '12px', color: '#64748b' }}>
-                        {Object.entries(factor.details).map(([k, v]) => (
-                          <div key={k} style={{ marginBottom: '4px' }}>
-                            {k.replace(/([A-Z])/g, ' $1').trim()}: <strong>{String(v)}</strong>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-
-            {/* Recommendations */}
-            {posture.recommendations.length > 0 && (
-              <section style={{ marginBottom: '30px' }}>
-                <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '15px' }}>
-                  Recommendations
-                </h2>
-                <div style={{
-                  backgroundColor: 'white',
-                  padding: '20px',
-                  borderRadius: '8px',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                }}>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                    {posture.recommendations.map((rec, idx) => (
-                      <li
-                        key={idx}
-                        style={{
-                          padding: '12px',
-                          marginBottom: '8px',
-                          backgroundColor: '#f8fafc',
-                          borderRadius: '6px',
-                          borderLeft: '3px solid #3b82f6',
-                        }}
-                      >
-                        {rec}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </section>
-            )}
-
             {/* Compliance Frameworks Tabs */}
             <section>
               <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '2px solid #e2e8f0' }}>
                 {[
                   { id: 'posture' as const, label: 'Security Posture' },
-                  { id: 'nist' as const, label: `NIST (${metrics.nist.score}%)` },
-                  { id: 'owasp' as const, label: `OWASP (${metrics.owasp.score}%)` },
-                  { id: 'pci' as const, label: `PCI DSS (${metrics.pci.score}%)` },
-                  { id: 'gdpr' as const, label: `GDPR (${metrics.gdpr.score}%)` },
+                  { id: 'nist' as const, label: `NIST (${metrics.nist?.score ?? 0}%)` },
+                  { id: 'owasp' as const, label: `OWASP (${metrics.owasp?.score ?? 0}%)` },
+                  { id: 'pci' as const, label: `PCI DSS (${metrics.pci?.score ?? 0}%)` },
+                  { id: 'gdpr' as const, label: `GDPR (${metrics.gdpr?.score ?? 0}%)` },
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -265,6 +232,136 @@ export function Compliance() {
                 ))}
               </div>
 
+              {/* Security Posture Tab */}
+              {activeTab === 'posture' && (
+                <div>
+                  {/* Security Posture Overview */}
+                  <div style={{ marginBottom: '30px' }}>
+                    <div style={{
+                      backgroundColor: 'white',
+                      padding: '30px',
+                      borderRadius: '8px',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                      textAlign: 'center',
+                    }}>
+                      <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '10px' }}>
+                        Overall Security Posture
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', marginBottom: '20px' }}>
+                        <div style={{
+                          width: '120px',
+                          height: '120px',
+                          borderRadius: '50%',
+                          backgroundColor: gradeColors[posture.grade].bg,
+                          color: gradeColors[posture.grade].text,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '48px',
+                          fontWeight: 'bold',
+                          border: `4px solid ${gradeColors[posture.grade].text}`,
+                        }}>
+                          {posture.grade}
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '48px', fontWeight: 'bold', color: '#1e293b' }}>
+                            {posture.overallScore}
+                          </div>
+                          <div style={{ fontSize: '18px', color: '#64748b' }}>out of 100</div>
+                        </div>
+                      </div>
+                      {posture.lastUpdated && (
+                        <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                          Last updated: {format(new Date(posture.lastUpdated), 'MMM dd, yyyy HH:mm:ss')}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Security Factors */}
+                  <section style={{ marginBottom: '30px' }}>
+                    <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '15px' }}>
+                      Security Factors
+                    </h2>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '15px' }}>
+                      {Object.entries(posture.factors).map(([key, factor]) => {
+                        const colors = statusColors[factor.status];
+                        return (
+                          <div
+                            key={key}
+                            style={{
+                              backgroundColor: 'white',
+                              padding: '20px',
+                              borderRadius: '8px',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                              borderLeft: `4px solid ${colors.text}`,
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                              <h3 style={{ fontSize: '16px', fontWeight: '600', textTransform: 'capitalize' }}>
+                                {key.replace(/([A-Z])/g, ' $1').trim()}
+                              </h3>
+                              <span style={{
+                                padding: '4px 8px',
+                                backgroundColor: colors.bg,
+                                color: colors.text,
+                                fontSize: '12px',
+                                borderRadius: '4px',
+                                fontWeight: '600',
+                              }}>
+                                {factor.status.toUpperCase()}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#1e293b', marginBottom: '12px' }}>
+                              {factor.score}
+                            </div>
+                            <div style={{ fontSize: '12px', color: '#64748b' }}>
+                              {Object.entries(factor.details).map(([k, v]) => (
+                                <div key={k} style={{ marginBottom: '4px' }}>
+                                  {k.replace(/([A-Z])/g, ' $1').trim()}: <strong>{String(v)}</strong>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+
+                  {/* Recommendations */}
+                  {posture.recommendations.length > 0 && (
+                    <section style={{ marginBottom: '30px' }}>
+                      <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '15px' }}>
+                        Recommendations
+                      </h2>
+                      <div style={{
+                        backgroundColor: 'white',
+                        padding: '20px',
+                        borderRadius: '8px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                      }}>
+                        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                          {posture.recommendations.map((rec, idx) => (
+                            <li
+                              key={idx}
+                              style={{
+                                padding: '12px',
+                                marginBottom: '8px',
+                                backgroundColor: '#f8fafc',
+                                borderRadius: '6px',
+                                borderLeft: '3px solid #3b82f6',
+                              }}
+                            >
+                              {rec}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </section>
+                  )}
+                </div>
+              )}
+
               {/* NIST Tab */}
               {activeTab === 'nist' && (
                 <div style={{
@@ -276,11 +373,16 @@ export function Compliance() {
                   <div style={{ marginBottom: '20px' }}>
                     <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px' }}>NIST Cybersecurity Framework</h3>
                     <div style={{ fontSize: '14px', color: '#64748b' }}>
-                      Overall Score: <strong>{metrics.nist.score}%</strong>
+                      Overall Score: <strong>{metrics.nist?.score ?? 0}%</strong>
                     </div>
                   </div>
                   <div style={{ display: 'grid', gap: '12px' }}>
-                    {metrics.nist.controls.map((control) => {
+                    {(!metrics.nist?.controls || metrics.nist.controls.length === 0) ? (
+                      <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>
+                        No NIST controls data available
+                      </div>
+                    ) : (
+                      metrics.nist.controls.map((control) => {
                       const colors = complianceColors[control.status];
                       return (
                         <div
@@ -321,7 +423,7 @@ export function Compliance() {
                           )}
                         </div>
                       );
-                    })}
+                    }))}
                   </div>
                 </div>
               )}
@@ -337,11 +439,16 @@ export function Compliance() {
                   <div style={{ marginBottom: '20px' }}>
                     <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px' }}>OWASP Top 10</h3>
                     <div style={{ fontSize: '14px', color: '#64748b' }}>
-                      Overall Score: <strong>{metrics.owasp.score}%</strong>
+                      Overall Score: <strong>{metrics.owasp?.score ?? 0}%</strong>
                     </div>
                   </div>
                   <div style={{ display: 'grid', gap: '12px' }}>
-                    {metrics.owasp.top10.map((risk, idx) => {
+                    {(!metrics.owasp?.top10 || metrics.owasp.top10.length === 0) ? (
+                      <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>
+                        No OWASP Top 10 data available
+                      </div>
+                    ) : (
+                      metrics.owasp.top10.map((risk, idx) => {
                       const colors = complianceColors[risk.status];
                       return (
                         <div
@@ -373,7 +480,7 @@ export function Compliance() {
                           </div>
                         </div>
                       );
-                    })}
+                    }))}
                   </div>
                 </div>
               )}
@@ -389,11 +496,16 @@ export function Compliance() {
                   <div style={{ marginBottom: '20px' }}>
                     <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px' }}>PCI DSS Requirements</h3>
                     <div style={{ fontSize: '14px', color: '#64748b' }}>
-                      Overall Score: <strong>{metrics.pci.score}%</strong>
+                      Overall Score: <strong>{metrics.pci?.score ?? 0}%</strong>
                     </div>
                   </div>
                   <div style={{ display: 'grid', gap: '12px' }}>
-                    {metrics.pci.requirements.map((req) => {
+                    {(!metrics.pci?.requirements || metrics.pci.requirements.length === 0) ? (
+                      <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>
+                        No PCI DSS requirements data available
+                      </div>
+                    ) : (
+                      metrics.pci.requirements.map((req) => {
                       const colors = complianceColors[req.status];
                       return (
                         <div
@@ -424,7 +536,7 @@ export function Compliance() {
                           </div>
                         </div>
                       );
-                    })}
+                    }))}
                   </div>
                 </div>
               )}
@@ -440,11 +552,16 @@ export function Compliance() {
                   <div style={{ marginBottom: '20px' }}>
                     <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px' }}>GDPR Principles</h3>
                     <div style={{ fontSize: '14px', color: '#64748b' }}>
-                      Overall Score: <strong>{metrics.gdpr.score}%</strong>
+                      Overall Score: <strong>{metrics.gdpr?.score ?? 0}%</strong>
                     </div>
                   </div>
                   <div style={{ display: 'grid', gap: '12px' }}>
-                    {metrics.gdpr.principles.map((principle, idx) => {
+                    {(!metrics.gdpr?.principles || metrics.gdpr.principles.length === 0) ? (
+                      <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>
+                        No GDPR principles data available
+                      </div>
+                    ) : (
+                      metrics.gdpr.principles.map((principle, idx) => {
                       const colors = complianceColors[principle.status];
                       return (
                         <div
@@ -476,7 +593,7 @@ export function Compliance() {
                           </div>
                         </div>
                       );
-                    })}
+                    }))}
                   </div>
                 </div>
               )}

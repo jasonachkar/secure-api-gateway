@@ -5,8 +5,10 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
+import { Landing } from './pages/Landing';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
+import { About } from './pages/About';
 import { AuditLogs } from './pages/AuditLogs';
 import { Sessions } from './pages/Sessions';
 import { Users } from './pages/Users';
@@ -37,12 +39,16 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route
+          path="/"
+          element={isAuthenticated ? <Dashboard /> : <Landing />}
+        />
+        <Route
           path="/login"
           element={isAuthenticated ? <Navigate to="/" replace /> : <Login />}
         />
         <Route
-          path="/"
-          element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" replace />}
+          path="/about"
+          element={isAuthenticated ? <About /> : <Navigate to="/login" replace />}
         />
         <Route
           path="/audit-logs"

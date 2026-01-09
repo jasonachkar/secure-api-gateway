@@ -113,16 +113,50 @@ export class ComplianceService {
     const now = Date.now();
     const recommendations: string[] = [];
 
-    // Get metrics
-    const metrics = await this.metricsService.getSummary();
-    const threatStats = await this.threatIntelService.getStatistics();
+    // Get metrics with defensive checks
+    let metrics: any;
+    let threatStats: any;
+    
+    try {
+      metrics = await this.metricsService.getSummary();
+      threatStats = await this.threatIntelService.getStatistics();
+    } catch (error) {
+      logger.error({ error }, 'Failed to fetch metrics for security posture');
+      // Provide default empty structure
+      metrics = {
+        authStats: { failedLogins: 0, accountLockouts: 0 },
+        rateLimitStats: { violations: 0 },
+      };
+      threatStats = {
+        criticalThreats: 0,
+        highThreats: 0,
+        blockedIPs: 0,
+        totalThreats: 0,
+      };
+    }
+
+    // Ensure metrics structure exists
+    if (!metrics.authStats) {
+      metrics.authStats = { failedLogins: 0, accountLockouts: 0, successfulLogins: 0, activeSessions: 0 };
+    }
+    if (!metrics.rateLimitStats) {
+      metrics.rateLimitStats = { violations: 0, topViolators: [] };
+    }
+    if (!threatStats) {
+      threatStats = {
+        criticalThreats: 0,
+        highThreats: 0,
+        blockedIPs: 0,
+        totalThreats: 0,
+      };
+    }
 
     // Calculate authentication score
     const authScore = this.calculateAuthScore(metrics);
     if (authScore < 70) {
       recommendations.push('Consider implementing MFA for enhanced authentication security');
     }
-    if (metrics.authStats.failedLogins > 20) {
+    if (metrics.authStats?.failedLogins > 20) {
       recommendations.push('High number of failed login attempts detected - review authentication logs');
     }
 
@@ -131,13 +165,13 @@ export class ComplianceService {
     if (threatStats.criticalThreats > 0) {
       recommendations.push(`Address ${threatStats.criticalThreats} critical threat(s) immediately`);
     }
-    if (threatStats.blockedIPs < threatStats.totalThreats * 0.8) {
+    if (threatStats.totalThreats > 0 && threatStats.blockedIPs < threatStats.totalThreats * 0.8) {
       recommendations.push('Consider blocking more high-risk IP addresses');
     }
 
     // Calculate rate limiting score
     const rateLimitScore = this.calculateRateLimitScore(metrics);
-    if (metrics.rateLimitStats.violations > 10) {
+    if (metrics.rateLimitStats?.violations > 10) {
       recommendations.push('High rate limit violations - review and adjust rate limits');
     }
 
@@ -196,8 +230,8 @@ export class ComplianceService {
           score: authScore,
           status: this.getStatus(authScore),
           details: {
-            failedLoginRate: metrics.authStats.failedLogins,
-            accountLockouts: metrics.authStats.accountLockouts,
+            failedLoginRate: metrics.authStats?.failedLogins ?? 0,
+            accountLockouts: metrics.authStats?.accountLockouts ?? 0,
             mfaEnabled: false, // TODO: Check if MFA is enabled
             sessionSecurity: 85, // TODO: Calculate based on session management
           },
@@ -215,7 +249,7 @@ export class ComplianceService {
           score: rateLimitScore,
           status: this.getStatus(rateLimitScore),
           details: {
-            violations: metrics.rateLimitStats.violations,
+            violations: metrics.rateLimitStats?.violations ?? 0,
             coverage: 90, // TODO: Calculate actual coverage
           },
         },
@@ -242,199 +276,311 @@ export class ComplianceService {
    * Get compliance metrics for various frameworks
    */
   async getComplianceMetrics(): Promise<ComplianceMetrics> {
-    const metrics = await this.metricsService.getSummary();
-    const threatStats = await this.threatIntelService.getStatistics();
-    const posture = await this.calculateSecurityPosture();
+    let metrics: any;
+    let threatStats: any;
+    
+    try {
+      logger.debug('Fetching metrics for compliance calculation');
+      metrics = await this.metricsService.getSummary();
+      threatStats = await this.threatIntelService.getStatistics();
+      logger.debug({ 
+        hasMetrics: !!metrics, 
+        hasThreatStats: !!threatStats,
+        authStats: metrics?.authStats,
+        rateLimitStats: metrics?.rateLimitStats,
+      }, 'Metrics fetched for compliance');
+    } catch (error) {
+      logger.error({ error }, 'Failed to fetch metrics for compliance');
+      // Provide defaults
+      metrics = {
+        authStats: { failedLogins: 0, accountLockouts: 0 },
+        rateLimitStats: { violations: 0 },
+      };
+      threatStats = {
+        criticalThreats: 0,
+        highThreats: 0,
+        blockedIPs: 0,
+        totalThreats: 0,
+      };
+    }
 
-    return {
-      nist: {
-        score: this.calculateNISTScore(posture, metrics, threatStats),
-        controls: [
-          {
-            id: 'AC-2',
-            name: 'Account Management',
-            status: metrics.authStats.accountLockouts > 0 ? 'compliant' : 'partial',
-            evidence: ['Account lockout mechanism implemented', 'Failed login tracking enabled'],
+    // Ensure structure exists
+    if (!metrics.authStats) {
+      metrics.authStats = { failedLogins: 0, accountLockouts: 0 };
+    }
+    if (!metrics.rateLimitStats) {
+      metrics.rateLimitStats = { violations: 0 };
+    }
+    if (!threatStats) {
+      threatStats = {
+        criticalThreats: 0,
+        highThreats: 0,
+        blockedIPs: 0,
+        totalThreats: 0,
+      };
+    }
+
+    logger.debug('Calculating security posture for compliance metrics');
+    let posture: SecurityPosture;
+    try {
+      posture = await this.calculateSecurityPosture();
+    } catch (error) {
+      logger.error({ error }, 'Failed to calculate security posture for compliance metrics, using defaults');
+      // Provide a default posture structure
+      posture = {
+        overallScore: 0,
+        grade: 'F',
+        factors: {
+          authentication: {
+            score: 0,
+            status: 'poor',
+            details: { failedLoginRate: 0, accountLockouts: 0, mfaEnabled: false, sessionSecurity: 0 },
           },
-          {
-            id: 'AC-7',
-            name: 'Unsuccessful Logon Attempts',
-            status: 'compliant',
-            evidence: ['Rate limiting on login endpoints', 'Account lockout after failed attempts'],
+          threatIntelligence: {
+            score: 0,
+            status: 'poor',
+            details: { criticalThreats: 0, blockedIPs: 0, threatResponseTime: 0 },
           },
-          {
-            id: 'SI-4',
-            name: 'System Monitoring',
-            status: 'compliant',
-            evidence: ['Real-time metrics collection', 'Audit logging enabled'],
+          rateLimiting: {
+            score: 0,
+            status: 'poor',
+            details: { violations: 0, coverage: 0 },
           },
-          {
-            id: 'SC-5',
-            name: 'Denial of Service Protection',
-            status: 'compliant',
-            evidence: ['Rate limiting implemented', 'DDoS protection via rate limits'],
+          auditLogging: {
+            score: 0,
+            status: 'poor',
+            details: { logCoverage: 0, retentionDays: 0 },
           },
-        ],
-      },
-      owasp: {
-        score: this.calculateOWASPScore(posture, metrics),
-        top10: [
-          {
-            risk: 'A01:2021 – Broken Access Control',
-            status: 'mitigated',
-            description: 'RBAC implemented, JWT-based authentication, role-based permissions',
+          incidentResponse: {
+            score: 0,
+            status: 'poor',
+            details: { openIncidents: 0, avgResponseTime: 0, avgResolutionTime: 0 },
           },
-          {
-            risk: 'A02:2021 – Cryptographic Failures',
-            status: 'mitigated',
-            description: 'HTTPS enforced, secure token storage, password hashing with bcrypt',
-          },
-          {
-            risk: 'A03:2021 – Injection',
-            status: 'mitigated',
-            description: 'Input validation, parameterized queries, type-safe APIs',
-          },
-          {
-            risk: 'A04:2021 – Insecure Design',
-            status: 'partial',
-            description: 'Security by design principles applied, threat modeling considered',
-          },
-          {
-            risk: 'A05:2021 – Security Misconfiguration',
-            status: 'mitigated',
-            description: 'Secure defaults, environment-based configuration, minimal attack surface',
-          },
-          {
-            risk: 'A07:2021 – Identification and Authentication Failures',
-            status: 'mitigated',
-            description: 'Account lockout, rate limiting, secure session management',
-          },
-          {
-            risk: 'A08:2021 – Software and Data Integrity Failures',
-            status: 'mitigated',
-            description: 'Dependency scanning, secure update mechanisms',
-          },
-          {
-            risk: 'A09:2021 – Security Logging and Monitoring Failures',
-            status: 'mitigated',
-            description: 'Comprehensive audit logging, real-time monitoring, threat detection',
-          },
-          {
-            risk: 'A10:2021 – Server-Side Request Forgery',
-            status: 'mitigated',
-            description: 'Input validation, URL whitelisting, network segmentation',
-          },
-        ],
-      },
-      pci: {
-        score: this.calculatePCIScore(posture, metrics),
-        requirements: [
-          {
-            id: 'Req 1',
-            name: 'Install and maintain firewall configuration',
-            status: 'compliant',
-          },
-          {
-            id: 'Req 2',
-            name: 'Do not use vendor-supplied defaults',
-            status: 'compliant',
-          },
-          {
-            id: 'Req 3',
-            name: 'Protect stored cardholder data',
-            status: 'non-compliant', // Not applicable for API gateway
-          },
-          {
-            id: 'Req 4',
-            name: 'Encrypt transmission of cardholder data',
-            status: 'compliant',
-          },
-          {
-            id: 'Req 5',
-            name: 'Use and regularly update anti-virus',
-            status: 'partial',
-          },
-          {
-            id: 'Req 6',
-            name: 'Develop and maintain secure systems',
-            status: 'compliant',
-          },
-          {
-            id: 'Req 7',
-            name: 'Restrict access to cardholder data',
-            status: 'compliant',
-          },
-          {
-            id: 'Req 8',
-            name: 'Assign unique ID to each person',
-            status: 'compliant',
-          },
-          {
-            id: 'Req 9',
-            name: 'Restrict physical access',
-            status: 'partial',
-          },
-          {
-            id: 'Req 10',
-            name: 'Track and monitor network access',
-            status: 'compliant',
-          },
-        ],
-      },
-      gdpr: {
-        score: this.calculateGDPRScore(posture),
-        principles: [
-          {
-            principle: 'Lawfulness, fairness and transparency',
-            status: 'compliant',
-            description: 'Clear privacy policies, consent mechanisms, transparent data processing',
-          },
-          {
-            principle: 'Purpose limitation',
-            status: 'compliant',
-            description: 'Data collected only for specified purposes',
-          },
-          {
-            principle: 'Data minimisation',
-            status: 'compliant',
-            description: 'Only necessary data collected and processed',
-          },
-          {
-            principle: 'Accuracy',
-            status: 'compliant',
-            description: 'Data accuracy maintained, update mechanisms in place',
-          },
-          {
-            principle: 'Storage limitation',
-            status: 'compliant',
-            description: 'Data retention policies implemented, automatic deletion',
-          },
-          {
-            principle: 'Integrity and confidentiality',
-            status: 'compliant',
-            description: 'Encryption, access controls, secure storage',
-          },
-          {
-            principle: 'Accountability',
-            status: 'compliant',
-            description: 'Audit logging, compliance monitoring, documentation',
-          },
-        ],
-      },
-    };
+        },
+        recommendations: ['Unable to calculate compliance metrics - check system health'],
+        lastUpdated: Date.now(),
+      };
+    }
+
+    try {
+      logger.debug('Building compliance metrics response object');
+      const nistScore = this.calculateNISTScore(posture, metrics, threatStats);
+      const owaspScore = this.calculateOWASPScore(posture, metrics);
+      const pciScore = this.calculatePCIScore(posture, metrics);
+      const gdprScore = this.calculateGDPRScore(posture);
+
+      const complianceMetrics = {
+        nist: {
+          score: nistScore,
+          controls: [
+            {
+              id: 'AC-2',
+              name: 'Account Management',
+              status: ((metrics.authStats?.accountLockouts ?? 0) > 0 ? 'compliant' : 'partial') as 'compliant' | 'partial' | 'non-compliant',
+              evidence: ['Account lockout mechanism implemented', 'Failed login tracking enabled'],
+            },
+            {
+              id: 'AC-7',
+              name: 'Unsuccessful Logon Attempts',
+              status: 'compliant' as const,
+              evidence: ['Rate limiting on login endpoints', 'Account lockout after failed attempts'],
+            },
+            {
+              id: 'SI-4',
+              name: 'System Monitoring',
+              status: 'compliant' as const,
+              evidence: ['Real-time metrics collection', 'Audit logging enabled'],
+            },
+            {
+              id: 'SC-5',
+              name: 'Denial of Service Protection',
+              status: 'compliant' as const,
+              evidence: ['Rate limiting implemented', 'DDoS protection via rate limits'],
+            },
+          ],
+        },
+        owasp: {
+          score: owaspScore,
+          top10: [
+            {
+              risk: 'A01:2021 – Broken Access Control',
+              status: 'mitigated' as const,
+              description: 'RBAC implemented, JWT-based authentication, role-based permissions',
+            },
+            {
+              risk: 'A02:2021 – Cryptographic Failures',
+              status: 'mitigated' as const,
+              description: 'HTTPS enforced, secure token storage, password hashing with bcrypt',
+            },
+            {
+              risk: 'A03:2021 – Injection',
+              status: 'mitigated' as const,
+              description: 'Input validation, parameterized queries, type-safe APIs',
+            },
+            {
+              risk: 'A04:2021 – Insecure Design',
+              status: 'partial' as const,
+              description: 'Security by design principles applied, threat modeling considered',
+            },
+            {
+              risk: 'A05:2021 – Security Misconfiguration',
+              status: 'mitigated' as const,
+              description: 'Secure defaults, environment-based configuration, minimal attack surface',
+            },
+            {
+              risk: 'A07:2021 – Identification and Authentication Failures',
+              status: 'mitigated' as const,
+              description: 'Account lockout, rate limiting, secure session management',
+            },
+            {
+              risk: 'A08:2021 – Software and Data Integrity Failures',
+              status: 'mitigated' as const,
+              description: 'Dependency scanning, secure update mechanisms',
+            },
+            {
+              risk: 'A09:2021 – Security Logging and Monitoring Failures',
+              status: 'mitigated' as const,
+              description: 'Comprehensive audit logging, real-time monitoring, threat detection',
+            },
+            {
+              risk: 'A10:2021 – Server-Side Request Forgery',
+              status: 'mitigated' as const,
+              description: 'Input validation, URL whitelisting, network segmentation',
+            },
+          ],
+        },
+        pci: {
+          score: pciScore,
+          requirements: [
+            {
+              id: 'Req 1',
+              name: 'Install and maintain firewall configuration',
+              status: 'compliant' as const,
+            },
+            {
+              id: 'Req 2',
+              name: 'Do not use vendor-supplied defaults',
+              status: 'compliant' as const,
+            },
+            {
+              id: 'Req 3',
+              name: 'Protect stored cardholder data',
+              status: 'non-compliant' as const, // Not applicable for API gateway
+            },
+            {
+              id: 'Req 4',
+              name: 'Encrypt transmission of cardholder data',
+              status: 'compliant' as const,
+            },
+            {
+              id: 'Req 5',
+              name: 'Use and regularly update anti-virus',
+              status: 'partial' as const,
+            },
+            {
+              id: 'Req 6',
+              name: 'Develop and maintain secure systems',
+              status: 'compliant' as const,
+            },
+            {
+              id: 'Req 7',
+              name: 'Restrict access to cardholder data',
+              status: 'compliant' as const,
+            },
+            {
+              id: 'Req 8',
+              name: 'Assign unique ID to each person',
+              status: 'compliant' as const,
+            },
+            {
+              id: 'Req 9',
+              name: 'Restrict physical access',
+              status: 'partial' as const,
+            },
+            {
+              id: 'Req 10',
+              name: 'Track and monitor network access',
+              status: 'compliant' as const,
+            },
+          ],
+        },
+        gdpr: {
+          score: gdprScore,
+          principles: [
+            {
+              principle: 'Lawfulness, fairness and transparency',
+              status: 'compliant' as const,
+              description: 'Clear privacy policies, consent mechanisms, transparent data processing',
+            },
+            {
+              principle: 'Purpose limitation',
+              status: 'compliant' as const,
+              description: 'Data collected only for specified purposes',
+            },
+            {
+              principle: 'Data minimisation',
+              status: 'compliant' as const,
+              description: 'Only necessary data collected and processed',
+            },
+            {
+              principle: 'Accuracy',
+              status: 'compliant' as const,
+              description: 'Data accuracy maintained, update mechanisms in place',
+            },
+            {
+              principle: 'Storage limitation',
+              status: 'compliant' as const,
+              description: 'Data retention policies implemented, automatic deletion',
+            },
+            {
+              principle: 'Integrity and confidentiality',
+              status: 'compliant' as const,
+              description: 'Encryption, access controls, secure storage',
+            },
+            {
+              principle: 'Accountability',
+              status: 'compliant' as const,
+              description: 'Audit logging, compliance monitoring, documentation',
+            },
+          ],
+        },
+      };
+
+      logger.debug({ 
+        hasNist: !!complianceMetrics.nist,
+        hasOwasp: !!complianceMetrics.owasp,
+        hasPci: !!complianceMetrics.pci,
+        hasGdpr: !!complianceMetrics.gdpr,
+      }, 'Compliance metrics object built successfully');
+
+      return complianceMetrics;
+    } catch (error) {
+      logger.error({ error, stack: (error as Error).stack }, 'Error building compliance metrics object');
+      // Return a minimal valid structure
+      return {
+        nist: { score: 0, controls: [] },
+        owasp: { score: 0, top10: [] },
+        pci: { score: 0, requirements: [] },
+        gdpr: { score: 0, principles: [] },
+      };
+    }
   }
 
   private calculateAuthScore(metrics: any): number {
     let score = 100;
 
+    // Defensive checks
+    const failedLogins = metrics?.authStats?.failedLogins ?? 0;
+    const accountLockouts = metrics?.authStats?.accountLockouts ?? 0;
+
     // Deduct for failed logins
-    if (metrics.authStats.failedLogins > 50) score -= 20;
-    else if (metrics.authStats.failedLogins > 20) score -= 10;
-    else if (metrics.authStats.failedLogins > 10) score -= 5;
+    if (failedLogins > 50) score -= 20;
+    else if (failedLogins > 20) score -= 10;
+    else if (failedLogins > 10) score -= 5;
 
     // Deduct for account lockouts
-    if (metrics.authStats.accountLockouts > 5) score -= 15;
-    else if (metrics.authStats.accountLockouts > 0) score -= 5;
+    if (accountLockouts > 5) score -= 15;
+    else if (accountLockouts > 0) score -= 5;
 
     // TODO: Add MFA bonus
     // TODO: Add session security bonus
@@ -461,10 +607,13 @@ export class ComplianceService {
   private calculateRateLimitScore(metrics: any): number {
     let score = 100;
 
+    // Defensive check
+    const violations = metrics?.rateLimitStats?.violations ?? 0;
+
     // Deduct for violations
-    if (metrics.rateLimitStats.violations > 20) score -= 15;
-    else if (metrics.rateLimitStats.violations > 10) score -= 10;
-    else if (metrics.rateLimitStats.violations > 0) score -= 5;
+    if (violations > 20) score -= 15;
+    else if (violations > 10) score -= 10;
+    else if (violations > 0) score -= 5;
 
     return Math.max(0, Math.min(100, score));
   }
@@ -494,7 +643,7 @@ export class ComplianceService {
     let total = 0;
 
     // AC-2: Account Management
-    if (metrics.authStats.accountLockouts > 0) score += 25;
+    if ((metrics?.authStats?.accountLockouts ?? 0) > 0) score += 25;
     total += 25;
 
     // AC-7: Unsuccessful Logon Attempts
@@ -520,7 +669,7 @@ export class ComplianceService {
   }
 
   private calculatePCIScore(posture: SecurityPosture, metrics: any): number {
-    // Count compliant requirements
+    // Count compliant requirements (hardcoded based on implementation)
     const compliant = 8;
     const partial = 1;
     const total = 10;

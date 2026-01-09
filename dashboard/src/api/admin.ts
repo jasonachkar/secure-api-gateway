@@ -180,11 +180,25 @@ export const adminApi = {
   // Compliance
   getSecurityPosture: async (): Promise<SecurityPosture> => {
     const { data } = await apiClient.get('/admin/compliance/posture');
+    if (data.error) {
+      throw new Error(data.error.message || 'Failed to fetch security posture');
+    }
+    if (!data.posture) {
+      console.error('No posture data in response:', data);
+      throw new Error('Invalid response: missing posture data');
+    }
     return data.posture;
   },
 
   getComplianceMetrics: async (): Promise<ComplianceMetrics> => {
     const { data } = await apiClient.get('/admin/compliance/metrics');
+    if (data.error) {
+      throw new Error(data.error.message || 'Failed to fetch compliance metrics');
+    }
+    if (!data.metrics) {
+      console.error('No metrics data in response:', data);
+      throw new Error('Invalid response: missing metrics data');
+    }
     return data.metrics;
   },
 };

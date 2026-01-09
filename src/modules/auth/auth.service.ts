@@ -203,6 +203,10 @@ export class AuthService {
     accessToken: string;
     refreshToken: string;
     expiresIn: number;
+    user: {
+      userId: string;
+      username: string;
+    };
   }> {
     // Check account lockout (by username and IP)
     const lockoutKey = `${username}:${ip}`;
@@ -248,7 +252,15 @@ export class AuthService {
 
     logger.info({ username, userId: user.userId }, 'User logged in successfully');
 
-    return { accessToken, refreshToken, expiresIn };
+    return { 
+      accessToken, 
+      refreshToken, 
+      expiresIn,
+      user: {
+        userId: user.userId,
+        username: user.username,
+      },
+    };
   }
 
   /**
@@ -259,6 +271,10 @@ export class AuthService {
     accessToken: string;
     refreshToken: string;
     expiresIn: number;
+    user: {
+      userId: string;
+      username: string;
+    };
   }> {
     // Verify refresh token (this will throw if invalid/expired)
     const { verifyToken } = await import('../../middleware/auth.js');
@@ -305,7 +321,15 @@ export class AuthService {
 
     logger.info({ userId: payload.sub, oldJti: payload.jti }, 'Refresh token rotated');
 
-    return { accessToken, refreshToken: newRefreshToken, expiresIn };
+    return { 
+      accessToken, 
+      refreshToken: newRefreshToken, 
+      expiresIn,
+      user: {
+        userId: payload.sub,
+        username: payload.username,
+      },
+    };
   }
 
   /**

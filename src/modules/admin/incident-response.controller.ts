@@ -168,5 +168,71 @@ export class IncidentResponseController {
     const statistics = await this.incidentService.getStatistics();
     reply.send({ statistics });
   }
+
+  /**
+   * POST /admin/incidents/seed-test-data
+   * Seed test incidents for development/demo purposes
+   */
+  async seedTestIncidents(request: FastifyRequest, reply: FastifyReply) {
+    const user = (request as any).user;
+    
+    try {
+      const testIncidents = [
+        {
+          title: 'CRITICAL: Brute Force Attack Detected',
+          description: 'Multiple failed login attempts from IP 192.168.1.100. Detected 25 failed login attempts within 5 minutes. Account lockout triggered.',
+          type: 'brute_force' as const,
+          severity: 'critical' as const,
+          affectedIPs: ['192.168.1.100'],
+          tags: ['auto-generated', 'threat-intelligence', 'brute-force'],
+        },
+        {
+          title: 'HIGH: Rate Limit Violations from Multiple IPs',
+          description: 'Excessive API requests detected. 15+ rate limit violations from IP 10.0.0.50 in the last hour. Possible DDoS attempt.',
+          type: 'rate_limit_abuse' as const,
+          severity: 'high' as const,
+          affectedIPs: ['10.0.0.50', '10.0.0.51'],
+          tags: ['auto-generated', 'rate-limiting'],
+        },
+        {
+          title: 'MEDIUM: Suspicious Activity Pattern',
+          description: 'Unusual access pattern detected. User account showing activity from multiple geographic locations within short time window.',
+          type: 'suspicious_activity' as const,
+          severity: 'medium' as const,
+          affectedIPs: ['203.0.113.45', '198.51.100.22'],
+          tags: ['suspicious', 'investigation'],
+        },
+        {
+          title: 'HIGH: Credential Stuffing Attempt',
+          description: 'Distributed login attempts detected across multiple IP addresses. Pattern suggests credential stuffing attack.',
+          type: 'credential_stuffing' as const,
+          severity: 'high' as const,
+          affectedIPs: ['172.16.0.10', '172.16.0.11', '172.16.0.12'],
+          tags: ['auto-generated', 'credential-stuffing'],
+        },
+      ];
+
+      const createdIncidents = [];
+      for (const incident of testIncidents) {
+        const created = await this.incidentService.createIncident({
+          ...incident,
+          reportedBy: user.username,
+        });
+        createdIncidents.push(created);
+      }
+
+      reply.code(201).send({
+        message: `Created ${createdIncidents.length} test incidents`,
+        incidents: createdIncidents,
+      });
+    } catch (error: any) {
+      reply.code(500).send({
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: error.message || 'Failed to seed test incidents',
+        },
+      });
+    }
+  }
 }
 

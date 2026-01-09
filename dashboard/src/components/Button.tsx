@@ -108,7 +108,7 @@ export function Button({
     },
     ghost: {
       backgroundColor: theme.colors.neutral[100],
-      borderColor: theme.colors.border.dark,
+      border: `1px solid ${theme.colors.border.dark}`,
     },
   };
 

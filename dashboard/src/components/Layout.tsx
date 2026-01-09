@@ -16,6 +16,7 @@ interface LayoutProps {
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: '📊' },
+  { path: '/about', label: 'About', icon: 'ℹ️' },
   { path: '/threats', label: 'Threats', icon: '🛡️' },
   { path: '/incidents', label: 'Incidents', icon: '🚨' },
   { path: '/compliance', label: 'Compliance', icon: '✅' },

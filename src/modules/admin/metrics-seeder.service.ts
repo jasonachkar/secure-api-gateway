@@ -36,6 +36,49 @@ export class MetricsSeederService {
     for (let i = 0; i < 5; i++) {
       setTimeout(() => this.generateMetrics(), i * 500);
     }
+
+    // Generate some high-threat scenarios immediately to create incidents
+    setTimeout(() => {
+      this.generateHighThreatScenario().catch(err => {
+        logger.debug({ error: err }, 'Failed to generate high-threat scenario');
+      });
+    }, 2000);
+  }
+
+  /**
+   * Generate a high-threat scenario to trigger incident creation
+   */
+  private async generateHighThreatScenario(): Promise<void> {
+    try {
+      // Use a specific IP and trigger multiple events quickly
+      const highThreatIP = '192.168.100.1';
+      
+      // Trigger multiple failed logins to reach high threat score
+      for (let i = 0; i < 15; i++) {
+        await this.metricsService.recordAuthEvent({
+          type: 'login_failure',
+          username: `target_user_${i}`,
+          ip: highThreatIP,
+        });
+        await this.threatIntelService.recordEvent(highThreatIP, 'failed_login');
+        // Small delay to ensure events are recorded
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+
+      // Also trigger rate limit violations
+      for (let i = 0; i < 8; i++) {
+        await this.metricsService.recordRateLimitViolation({
+          ip: highThreatIP,
+          path: '/api/auth/login',
+        });
+        await this.threatIntelService.recordEvent(highThreatIP, 'rate_limit');
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+
+      logger.info({ ip: highThreatIP }, 'Generated high-threat scenario for testing');
+    } catch (error) {
+      logger.debug({ error }, 'Error generating high-threat scenario');
+    }
   }
 
   /**
@@ -120,6 +163,14 @@ export class MetricsSeederService {
       // Occasionally record suspicious activity
       if (Math.random() < 0.02) {
         await this.threatIntelService.recordEvent(ip, 'suspicious');
+      }
+
+      // Occasionally trigger a high-threat scenario to generate incidents
+      // This helps demonstrate auto-incident creation
+      if (Math.random() < 0.01) { // 1% chance
+        this.generateHighThreatScenario().catch(err => {
+          logger.debug({ error: err }, 'Failed to generate high-threat scenario');
+        });
       }
     } catch (error) {
       logger.debug({ error }, 'Error generating metrics data');

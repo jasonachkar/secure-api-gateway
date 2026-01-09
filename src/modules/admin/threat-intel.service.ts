@@ -59,11 +59,14 @@ export class ThreatIntelService {
   private readonly THREAT_KEY_PREFIX = 'threat:ip:';
   private readonly BLOCKED_IPS_KEY = 'threat:blocked_ips';
   private readonly ATTACK_PATTERNS_KEY = 'threat:attack_patterns';
+  private readonly INCIDENT_CREATED_KEY_PREFIX = 'threat:incident_created:';
   private readonly THREAT_RETENTION = 7 * 24 * 60 * 60; // 7 days
   private abuseIPDB: AbuseIPDBService;
+  private incidentService?: any; // IncidentResponseService (optional to avoid circular dependency)
 
-  constructor(private redis: Redis) {
+  constructor(private redis: Redis, incidentService?: any) {
     this.abuseIPDB = new AbuseIPDBService();
+    this.incidentService = incidentService;
   }
 
   /**
@@ -140,6 +143,11 @@ export class ThreatIntelService {
       // Auto-block if threat score is critical
       if (threat.threatScore! >= 90) {
         await this.blockIP(ip, 'automatic', `Critical threat score: ${threat.threatScore}`);
+      }
+
+      // Auto-create incident for high/critical threats (if incident service is available)
+      if (this.incidentService && (threat.threatLevel === 'high' || threat.threatLevel === 'critical')) {
+        await this.autoCreateIncidentIfNeeded(threat as IPThreatInfo);
       }
 
       logger.debug({ ip, eventType, threatScore: threat.threatScore }, 'Recorded security event');
@@ -432,6 +440,48 @@ export class ThreatIntelService {
     }
 
     return patterns;
+  }
+
+  /**
+   * Auto-create incident from threat if not already created
+   * Uses deduplication to avoid creating multiple incidents for the same threat
+   */
+  private async autoCreateIncidentIfNeeded(threat: IPThreatInfo): Promise<void> {
+    if (!this.incidentService) return;
+
+    try {
+      // Check if we've already created an incident for this IP in the last 24 hours
+      const incidentKey = `${this.INCIDENT_CREATED_KEY_PREFIX}${threat.ip}`;
+      const alreadyCreated = await this.redis.get(incidentKey);
+      
+      if (alreadyCreated) {
+        logger.debug({ ip: threat.ip }, 'Incident already created for this threat, skipping');
+        return;
+      }
+
+      // Create incident using the incident service
+      const incident = await this.incidentService.createIncidentFromThreat(
+        {
+          ip: threat.ip,
+          threatScore: threat.threatScore,
+          threatLevel: threat.threatLevel,
+          eventTypes: threat.eventTypes,
+        },
+        'system'
+      );
+
+      if (incident) {
+        // Mark that we've created an incident for this IP (expires in 24 hours)
+        await this.redis.setex(incidentKey, 24 * 60 * 60, '1');
+        logger.info(
+          { ip: threat.ip, incidentId: incident.id, threatLevel: threat.threatLevel },
+          'Auto-created incident from threat intelligence'
+        );
+      }
+    } catch (error) {
+      // Non-critical - log but don't fail the threat recording
+      logger.warn({ error, ip: threat.ip }, 'Failed to auto-create incident from threat');
+    }
   }
 
   /**

@@ -325,7 +325,7 @@ export async function createApp(): Promise<FastifyInstance> {
   });
 
   // Register module routes
-  await registerAuthRoutes(app, redis);
+  await registerAuthRoutes(app, redis, auditService);
   await registerAuditRoutes(app, auditService);
   await registerReportsRoutes(app);
   await registerProxyRoutes(app);

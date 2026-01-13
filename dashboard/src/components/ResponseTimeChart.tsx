@@ -5,6 +5,8 @@
 
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { format } from 'date-fns';
+import { theme } from '../styles/theme';
+import { ChartTooltip } from './ChartTooltip';
 
 interface ResponseTimeDataPoint {
   timestamp: number;
@@ -30,56 +32,35 @@ export function ResponseTimeChart({ data, title = 'Response Time Percentiles', i
   if (isLoading || chartData.length === 0) {
     return (
       <div className="chart-card chart-card--loading">
-        <div className="skeleton skeleton--chart-title" />
-        <div className="skeleton skeleton--chart" />
+        <div className="skeleton chart-card__skeleton-title" />
+        <div className="skeleton chart-card__skeleton-body" />
       </div>
     );
   }
 
   return (
     <div className="chart-card">
-      <h3 className="chart-title">{title}</h3>
+      <h3 className="chart-card__title">{title}</h3>
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={chartData}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
           <XAxis 
             dataKey="time" 
-            stroke="var(--color-text-tertiary)" 
-            style={{ fontSize: '12px' }}
-            tick={{ fill: 'var(--color-text-tertiary)' }}
+            stroke={theme.colors.text.tertiary} 
+            tick={{ className: 'chart-axis-tick' }}
           />
           <YAxis 
-            stroke="var(--color-text-tertiary)" 
-            style={{ fontSize: '12px' }}
-            tick={{ fill: 'var(--color-text-tertiary)' }}
+            stroke={theme.colors.text.tertiary} 
+            tick={{ className: 'chart-axis-tick' }}
             label={{ 
               value: 'ms', 
               angle: -90, 
               position: 'insideLeft',
-              style: {
-                fontSize: '12px',
-                fill: 'var(--color-text-secondary)',
-              }
+              className: 'chart-axis-label',
             }} 
           />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: 'var(--color-bg-primary)',
-              border: '1px solid var(--color-border-light)',
-              borderRadius: '6px',
-              fontSize: '12px',
-              color: 'var(--color-text-primary)',
-              boxShadow: 'var(--shadow-lg)',
-            }}
-            labelStyle={{
-              color: 'var(--color-text-secondary)',
-              fontWeight: 500,
-            }}
-          />
-          <Legend
-            wrapperStyle={{ fontSize: '12px' }}
-            iconType="line"
-          />
+          <Tooltip content={<ChartTooltip />} />
+          <Legend iconType="line" />
           <Line
             type="monotone"
             dataKey="P50 (Median)"

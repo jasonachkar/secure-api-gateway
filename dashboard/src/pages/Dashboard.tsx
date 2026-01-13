@@ -10,12 +10,14 @@ import { RequestRateChart } from '../components/RequestRateChart';
 import { ErrorRateChart } from '../components/ErrorRateChart';
 import { ResponseTimeChart } from '../components/ResponseTimeChart';
 import { LiveEventFeed } from '../components/LiveEventFeed';
+import { DataSourcesCard } from '../components/DataSourcesCard';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { SectionHeader } from '../components/SectionHeader';
 import { useSSE } from '../hooks/useSSE';
 import { adminApi } from '../api/admin';
-import type { SecurityPosture } from '../types';
+import { theme } from '../styles/theme';
+import type { IngestionStatus, SecurityPosture } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -60,6 +62,7 @@ export function Dashboard() {
   const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
   const [currentMetrics, setCurrentMetrics] = useState<RealtimeMetrics | null>(null);
   const [posture, setPosture] = useState<SecurityPosture | null>(null);
+  const [ingestionStatus, setIngestionStatus] = useState<IngestionStatus | null>(null);
   const [infoBannerDismissed, setInfoBannerDismissed] = useState(() => {
     return localStorage.getItem('dashboard-info-banner-dismissed') === 'true';
   });
@@ -69,18 +72,60 @@ export function Dashboard() {
     enabled: true,
   });
 
+  const formatTimestamp = (value?: number) => {
+    if (!value) return 'No events yet';
+    return new Date(value).toLocaleString();
+  };
+
   // Load security posture on mount
   useEffect(() => {
-    adminApi.getSecurityPosture().then(setPosture).catch(() => {
-      // Silently fail - posture is optional
+    adminApi
+      .getSecurityPosture()
+      .then(setPosture)
+      .catch(() => {
+        // Silently fail - posture is optional
+      });
+  }, []);
+
+  useEffect(() => {
+    adminApi.getIngestionStatus().then(setIngestionStatus).catch(() => {
+      // Silently fail - ingestion status is optional
     });
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadIngestionStatus = async () => {
+      try {
+        setIngestionLoading(true);
+        const response = await adminApi.getIngestionStatus();
+        if (!isMounted) return;
+        setIngestionSources(response.sources);
+        setIngestionError(null);
+      } catch (ingestionErr) {
+        if (!isMounted) return;
+        setIngestionError('Unable to load ingestion status.');
+      } finally {
+        if (isMounted) {
+          setIngestionLoading(false);
+        }
+      }
+    };
+
+    loadIngestionStatus();
+    const interval = setInterval(loadIngestionStatus, 15000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   // Update history and events when new data arrives
   useEffect(() => {
     if (!data) return;
-    
-    // Skip connection messages and invalid data
+
     if (data.type === 'connected' || !data.requestsPerSecond) {
       return;
     }
@@ -88,37 +133,42 @@ export function Dashboard() {
     const metrics = data as unknown as RealtimeMetrics;
     setCurrentMetrics(metrics);
 
-    // Update request rate history
-    setRequestRateHistory(prev => {
-      const newHistory = [...prev, {
-        timestamp: metrics.timestamp || Date.now(),
-        requests: metrics.requestsPerSecond,
-      }];
+    setRequestRateHistory((prev) => {
+      const newHistory = [
+        ...prev,
+        {
+          timestamp: metrics.timestamp || Date.now(),
+          requests: metrics.requestsPerSecond,
+        },
+      ];
       return newHistory.slice(-MAX_HISTORY);
     });
 
-    // Update error rate history
-    setErrorRateHistory(prev => {
-      const newHistory = [...prev, {
-        timestamp: metrics.timestamp || Date.now(),
-        errors4xx: metrics.errors4xx || 0,
-        errors5xx: metrics.errors5xx || 0,
-      }];
+    setErrorRateHistory((prev) => {
+      const newHistory = [
+        ...prev,
+        {
+          timestamp: metrics.timestamp || Date.now(),
+          errors4xx: metrics.errors4xx || 0,
+          errors5xx: metrics.errors5xx || 0,
+        },
+      ];
       return newHistory.slice(-MAX_HISTORY);
     });
 
-    // Update response time history
-    setResponseTimeHistory(prev => {
-      const newHistory = [...prev, {
-        timestamp: metrics.timestamp || Date.now(),
-        p50: metrics.responseTimeStats.p50,
-        p95: metrics.responseTimeStats.p95,
-        p99: metrics.responseTimeStats.p99,
-      }];
+    setResponseTimeHistory((prev) => {
+      const newHistory = [
+        ...prev,
+        {
+          timestamp: metrics.timestamp || Date.now(),
+          p50: metrics.responseTimeStats.p50,
+          p95: metrics.responseTimeStats.p95,
+          p99: metrics.responseTimeStats.p99,
+        },
+      ];
       return newHistory.slice(-MAX_HISTORY);
     });
 
-    // Generate security events from metrics
     const events: SecurityEvent[] = [];
 
     if (metrics.authStats.failedLogins > 5) {
@@ -158,54 +208,57 @@ export function Dashboard() {
     }
 
     if (events.length > 0) {
-      setSecurityEvents(prev => [...prev, ...events].slice(-50));
+      setSecurityEvents((prev) => [...prev, ...events].slice(-50));
     }
   }, [data]);
 
+  const statusClass = isConnected ? 'status-pill--success' : 'status-pill--danger';
+
+  const gradeClass = posture
+    ? posture.grade === 'A'
+      ? 'posture-grade--A'
+      : posture.grade === 'B'
+        ? 'posture-grade--B'
+        : posture.grade === 'C'
+          ? 'posture-grade--C'
+          : 'posture-grade--D'
+    : '';
+
   return (
     <Layout>
-      <div className="page">
-        {/* Header with connection status */}
+      <div className="page-stack">
         <SectionHeader
           title="Security Monitoring"
           subtitle="Real-time security metrics and threat detection"
-          actions={(
-            <div
-              className="connection-status"
-              style={{
-                '--status-bg': isConnected ? 'var(--color-success-100)' : 'var(--color-error-100)',
-                '--status-color': isConnected ? 'var(--color-success-800)' : 'var(--color-error-800)',
-                '--status-dot': isConnected ? 'var(--color-success-500)' : 'var(--color-error-500)',
-              } as CSSProperties}
-            >
-              <span className="connection-status__dot" />
+          actions={
+            <div className={`status-pill ${statusClass}`}>
+              <span className="status-pill__dot" />
               {isConnected ? 'LIVE' : 'DISCONNECTED'}
             </div>
-          )}
+          }
         />
 
         {error && (
-          <div className="alert">
+          <div className="alert alert--danger">
             <strong>Connection Error:</strong> {error}
           </div>
         )}
 
-        {/* Info Banner */}
         {!infoBannerDismissed && (
-          <Card className="info-banner" variant="outlined" padding="md">
-            <div className="info-banner__content">
+          <div className="alert alert--info info-banner">
+            <div className="flex-1">
               <div className="info-banner__title">👋 New to this dashboard?</div>
               <div className="info-banner__text">
-                This is a live demonstration of a production-grade API Gateway security monitoring dashboard.
-                Learn more about what each section shows in the{' '}
+                This is a live demonstration of a production-grade API Gateway security monitoring dashboard. Learn
+                more about what each section shows in the{' '}
                 <Link to="/about" className="info-banner__link">
                   About page
-                </Link>.
+                </Link>
+                .
               </div>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
+            <button
+              className="info-banner__close"
               onClick={() => {
                 setInfoBannerDismissed(true);
                 localStorage.setItem('dashboard-info-banner-dismissed', 'true');
@@ -217,38 +270,30 @@ export function Dashboard() {
           </Card>
         )}
 
-        {/* Security Posture Card */}
         {posture && (
-          <Card className="posture-summary">
-            <div
-              className="posture-summary__grade"
-              style={{
-                '--posture-bg':
-                  posture.grade === 'A'
-                    ? 'var(--color-success-100)'
-                    : posture.grade === 'B'
-                      ? 'var(--color-primary-100)'
-                      : posture.grade === 'C'
-                        ? 'var(--color-warning-100)'
-                        : 'var(--color-error-100)',
-                '--posture-color':
-                  posture.grade === 'A'
-                    ? 'var(--color-success-800)'
-                    : posture.grade === 'B'
-                      ? 'var(--color-primary-800)'
-                      : posture.grade === 'C'
-                        ? 'var(--color-warning-800)'
-                        : 'var(--color-error-800)',
-                '--posture-border':
-                  posture.grade === 'A'
-                    ? 'var(--color-success-500)'
-                    : posture.grade === 'B'
-                      ? 'var(--color-primary-500)'
-                      : posture.grade === 'C'
-                        ? 'var(--color-warning-500)'
-                        : 'var(--color-error-500)',
-              } as CSSProperties}
-            >
+          <div style={{ 
+            backgroundColor: theme.colors.background.primary,
+            padding: theme.spacing.lg,
+            borderRadius: theme.borderRadius.lg,
+            boxShadow: theme.shadows.md,
+            marginBottom: theme.spacing.xl,
+            display: 'flex',
+            alignItems: 'center',
+            gap: theme.spacing.lg,
+          }}>
+            <div style={{
+              width: '80px',
+              height: '80px',
+              borderRadius: '50%',
+              backgroundColor: posture.grade === 'A' ? theme.colors.success[100] : posture.grade === 'B' ? theme.colors.primary[100] : posture.grade === 'C' ? theme.colors.warning[100] : theme.colors.error[100],
+              color: posture.grade === 'A' ? theme.colors.success[800] : posture.grade === 'B' ? theme.colors.primary[800] : posture.grade === 'C' ? theme.colors.warning[800] : theme.colors.error[800],
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: theme.typography.fontSize['4xl'],
+              fontWeight: theme.typography.fontWeight.bold,
+              border: `3px solid ${posture.grade === 'A' ? theme.colors.success[500] : posture.grade === 'B' ? theme.colors.primary[500] : posture.grade === 'C' ? theme.colors.warning[500] : theme.colors.error[500]}`,
+            }}>
               {posture.grade}
             </div>
             <div className="posture-summary__content">
@@ -266,14 +311,109 @@ export function Dashboard() {
           </Card>
         )}
 
+        {ingestionStatus && (
+          <section style={{ marginBottom: theme.spacing.xl }}>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              marginBottom: theme.spacing.md 
+            }}>
+              <div>
+                <h2 style={{ ...theme.typography.h3 }}>Ingestion Status</h2>
+                <p style={{ ...theme.typography.small, color: theme.colors.text.secondary }}>
+                  Normalized event pipeline health and adapter readiness
+                </p>
+              </div>
+              <span style={{ 
+                padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+                borderRadius: theme.borderRadius.md,
+                backgroundColor: ingestionStatus.storage.redisConnected
+                  ? theme.colors.success[100]
+                  : theme.colors.error[100],
+                color: ingestionStatus.storage.redisConnected
+                  ? theme.colors.success[800]
+                  : theme.colors.error[800],
+                fontSize: theme.typography.fontSize.sm,
+                fontWeight: theme.typography.fontWeight.medium,
+              }}>
+                Redis {ingestionStatus.storage.redisConnected ? 'Connected' : 'Disconnected'}
+              </span>
+            </div>
+
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', 
+              gap: theme.spacing.lg, 
+              marginBottom: theme.spacing.lg 
+            }}>
+              <MetricCard
+                title="Normalized Events"
+                value={ingestionStatus.storage.totalEvents}
+                subtitle="Stored in Redis/Postgres"
+                color="blue"
+              />
+              <MetricCard
+                title="Last Event"
+                value={formatTimestamp(ingestionStatus.storage.lastEventAt)}
+                color="green"
+              />
+              <MetricCard
+                title="Postgres Storage"
+                value={ingestionStatus.storage.postgresConnected ? 'Connected' : 'Not Configured'}
+                color={ingestionStatus.storage.postgresConnected ? 'green' : 'yellow'}
+              />
+            </div>
+
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', 
+              gap: theme.spacing.md 
+            }}>
+              {ingestionStatus.adapters.map(adapter => (
+                <div key={adapter.provider} style={{ 
+                  backgroundColor: theme.colors.background.primary,
+                  padding: theme.spacing.md,
+                  borderRadius: theme.borderRadius.lg,
+                  boxShadow: theme.shadows.sm,
+                  border: `1px solid ${theme.colors.border.light}`,
+                }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between',
+                    marginBottom: theme.spacing.xs 
+                  }}>
+                    <div style={{ fontWeight: theme.typography.fontWeight.semibold }}>
+                      {adapter.name}
+                    </div>
+                    <span style={{ 
+                      padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+                      borderRadius: theme.borderRadius.md,
+                      backgroundColor: adapter.healthy ? theme.colors.success[100] : theme.colors.warning[100],
+                      color: adapter.healthy ? theme.colors.success[800] : theme.colors.warning[800],
+                      fontSize: theme.typography.fontSize.xs,
+                      fontWeight: theme.typography.fontWeight.medium,
+                    }}>
+                      {adapter.configured ? 'Configured' : 'Needs setup'}
+                    </span>
+                  </div>
+                  <div style={{ 
+                    ...theme.typography.small,
+                    color: theme.colors.text.secondary,
+                  }}>
+                    {adapter.detail || 'Status unavailable'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Key Metrics Cards */}
         {currentMetrics && (
-          <div className="grid grid--metrics section-block">
-            <MetricCard
-              title="Requests/sec"
-              value={currentMetrics.requestsPerSecond.toFixed(2)}
-              color="blue"
-            />
+          <div className="page-grid page-grid--cards">
+            <MetricCard title="Requests/sec" value={currentMetrics.requestsPerSecond.toFixed(2)} color="blue" />
             <MetricCard
               title="Error Rate"
               value={`${currentMetrics.errorRate.toFixed(2)}%`}
@@ -285,11 +425,7 @@ export function Dashboard() {
               subtitle="Last 5 min"
               color={currentMetrics.authStats.failedLogins > 10 ? 'red' : 'yellow'}
             />
-            <MetricCard
-              title="Active Sessions"
-              value={currentMetrics.authStats.activeSessions}
-              color="blue"
-            />
+            <MetricCard title="Active Sessions" value={currentMetrics.authStats.activeSessions} color="blue" />
             <MetricCard
               title="Rate Limit Violations"
               value={currentMetrics.rateLimitStats.violations}
@@ -304,9 +440,8 @@ export function Dashboard() {
           </div>
         )}
 
-        {/* Charts and Live Feed Layout */}
         <div className="dashboard-grid">
-          <div className="dashboard-stack">
+          <div className="dashboard-grid__charts">
             <RequestRateChart data={requestRateHistory} title="Request Rate (Real-time)" />
             <ErrorRateChart data={errorRateHistory} title="Error Rate by Type" />
             {responseTimeHistory.length > 0 && (
@@ -316,19 +451,22 @@ export function Dashboard() {
           <LiveEventFeed events={securityEvents} maxEvents={15} />
         </div>
 
-        {/* Export Section */}
-        <Card className="export-section">
-          <SectionHeader title="Export Data" />
-          <div className="inline-row">
+        <Card className="page-stack">
+          <div className="section-title">Export Data</div>
+          <div className="action-row">
             <Button
               variant="primary"
               onClick={() => {
                 if (currentMetrics) {
-                  const dataStr = JSON.stringify({
-                    timestamp: new Date().toISOString(),
-                    metrics: currentMetrics,
-                    posture: posture,
-                  }, null, 2);
+                  const dataStr = JSON.stringify(
+                    {
+                      timestamp: new Date().toISOString(),
+                      metrics: currentMetrics,
+                      posture: posture,
+                    },
+                    null,
+                    2
+                  );
                   const blob = new Blob([dataStr], { type: 'application/json' });
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement('a');
@@ -348,9 +486,9 @@ export function Dashboard() {
                 if (securityEvents.length > 0) {
                   const csv = [
                     'Timestamp,Type,Severity,Message',
-                    ...securityEvents.map(e => 
-                      `${new Date(e.timestamp).toISOString()},${e.type},${e.severity},"${e.message}"`
-                    )
+                    ...securityEvents.map(
+                      (e) => `${new Date(e.timestamp).toISOString()},${e.type},${e.severity},"${e.message}"`
+                    ),
                   ].join('\n');
                   const blob = new Blob([csv], { type: 'text/csv' });
                   const url = URL.createObjectURL(blob);

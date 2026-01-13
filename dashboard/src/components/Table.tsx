@@ -7,16 +7,15 @@ import React from 'react';
 
 interface TableProps {
   children: React.ReactNode;
-  style?: React.CSSProperties;
+  className?: string;
 }
 
-export function Table({ children, style }: TableProps) {
+export function Table({ children, className }: TableProps) {
+  const classes = ['data-table', className].filter(Boolean).join(' ');
+
   return (
-    <div
-      className="data-table__container"
-      style={style}
-    >
-      <table className="data-table">{children}</table>
+    <div className={classes}>
+      <table>{children}</table>
     </div>
   );
 }
@@ -26,13 +25,7 @@ interface TableHeaderProps {
 }
 
 export function TableHeader({ children }: TableHeaderProps) {
-  return (
-    <thead
-      className="data-table__head"
-    >
-      {children}
-    </thead>
-  );
+  return <thead>{children}</thead>;
 }
 
 interface TableBodyProps {
@@ -46,11 +39,14 @@ export function TableBody({ children }: TableBodyProps) {
 interface TableRowProps {
   children: React.ReactNode;
   onClick?: () => void;
-  style?: React.CSSProperties;
+  className?: string;
 }
 
-export function TableRow({ children, onClick, style }: TableRowProps) {
-  const classes = ['data-table__row', onClick ? 'data-table__row--hoverable' : '']
+export function TableRow({ children, onClick, className }: TableRowProps) {
+  const classes = [
+    onClick ? 'data-table__row--clickable' : null,
+    className,
+  ]
     .filter(Boolean)
     .join(' ');
 
@@ -58,42 +54,32 @@ export function TableRow({ children, onClick, style }: TableRowProps) {
     <tr
       onClick={onClick}
       className={classes}
-      style={style}
     >
       {children}
     </tr>
   );
 }
 
-interface TableHeaderCellProps {
+interface TableHeaderCellProps extends React.ThHTMLAttributes<HTMLTableCellElement> {
   children: React.ReactNode;
-  style?: React.CSSProperties;
 }
 
-export function TableHeaderCell({ children, style }: TableHeaderCellProps) {
+export function TableHeaderCell({ children, className, ...props }: TableHeaderCellProps) {
   return (
-    <th
-      className="data-table__header-cell"
-      style={style}
-    >
+    <th className={className} {...props}>
       {children}
     </th>
   );
 }
 
-interface TableCellProps {
+interface TableCellProps extends React.TdHTMLAttributes<HTMLTableCellElement> {
   children: React.ReactNode;
-  style?: React.CSSProperties;
 }
 
-export function TableCell({ children, style }: TableCellProps) {
+export function TableCell({ children, className, ...props }: TableCellProps) {
   return (
-    <td
-      className="data-table__cell"
-      style={style}
-    >
+    <td className={className} {...props}>
       {children}
     </td>
   );
 }
-

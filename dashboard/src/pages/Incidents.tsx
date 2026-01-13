@@ -3,7 +3,8 @@
  * Manage security incidents, track response times, and generate reports
  */
 
-import { useState, useEffect, type CSSProperties } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { MetricCard } from '../components/MetricCard';
 import { Button } from '../components/Button';
@@ -11,25 +12,105 @@ import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
 import { SectionHeader } from '../components/SectionHeader';
 import { adminApi } from '../api/admin';
-import type { Incident, IncidentStatistics, IncidentStatus, IncidentSeverity, IncidentType } from '../types';
-import { format } from 'date-fns';
+import type { Incident, IncidentStatistics, IncidentStatus, IncidentSeverity, IncidentType, IncidentTimelineEntry, IncidentTimelineEntryType } from '../types';
+import { format, formatDistanceToNow } from 'date-fns';
 
-const severityColors: Record<IncidentSeverity, { bg: string; text: string; badge: string }> = {
-  critical: { bg: 'var(--color-error-100)', text: 'var(--color-error-800)', badge: 'var(--color-error-600)' },
-  high: { bg: 'var(--color-warning-100)', text: 'var(--color-warning-800)', badge: 'var(--color-warning-600)' },
-  medium: { bg: 'var(--color-warning-100)', text: 'var(--color-warning-800)', badge: 'var(--color-warning-500)' },
-  low: { bg: 'var(--color-success-100)', text: 'var(--color-success-800)', badge: 'var(--color-success-600)' },
+const severityBadgeClass: Record<IncidentSeverity, string> = {
+  critical: 'badge-critical',
+  high: 'badge-high',
+  medium: 'badge-medium',
+  low: 'badge-low',
 };
 
-const statusColors: Record<IncidentStatus, { bg: string; text: string }> = {
-  open: { bg: 'var(--color-primary-100)', text: 'var(--color-primary-800)' },
-  investigating: { bg: 'var(--color-warning-100)', text: 'var(--color-warning-800)' },
-  contained: { bg: 'var(--color-warning-100)', text: 'var(--color-warning-800)' },
-  resolved: { bg: 'var(--color-success-100)', text: 'var(--color-success-800)' },
-  closed: { bg: 'var(--color-neutral-200)', text: 'var(--color-neutral-700)' },
+const statusBadgeClass: Record<IncidentStatus, string> = {
+  open: 'badge-status-open',
+  investigating: 'badge-status-investigating',
+  contained: 'badge-status-contained',
+  resolved: 'badge-status-resolved',
+  closed: 'badge-status-closed',
+};
+
+const timelineTypeStyles: Record<IncidentTimelineEntryType, { label: string; bg: string; text: string; border: string }> = {
+  note: { label: 'Note', bg: '#e0f2fe', text: '#0369a1', border: '#7dd3fc' },
+  status_change: { label: 'Status', bg: '#fef9c3', text: '#92400e', border: '#facc15' },
+  assignment: { label: 'Assignment', bg: '#ede9fe', text: '#6d28d9', border: '#c4b5fd' },
+  action: { label: 'Action', bg: '#dcfce7', text: '#166534', border: '#86efac' },
+};
+
+const playbookActions = [
+  {
+    key: 'disable_user',
+    label: 'Disable user',
+    description: 'Suspend account access and revoke active sessions.',
+    promptLabel: 'User or email',
+  },
+  {
+    key: 'block_ip',
+    label: 'Block IP',
+    description: 'Add the IP address to the block list.',
+    promptLabel: 'IP address',
+  },
+  {
+    key: 'open_ticket',
+    label: 'Open ticket',
+    description: 'Create a follow-up ticket in the tracking system.',
+    promptLabel: 'Ticket reference',
+  },
+];
+
+const normalizeNoteToTimeline = (content: string): { type: IncidentTimelineEntryType; metadata?: Record<string, unknown> } => {
+  if (content.startsWith('Status changed to ')) {
+    return {
+      type: 'status_change',
+      metadata: {
+        status: content.replace('Status changed to ', ''),
+      },
+    };
+  }
+  if (content.startsWith('Assigned to ')) {
+    return {
+      type: 'assignment',
+      metadata: {
+        assignedTo: content.replace('Assigned to ', ''),
+      },
+    };
+  }
+  return { type: 'note' };
+};
+
+const buildTimelineEntries = (incident: Incident): IncidentTimelineEntry[] => {
+  if (incident.timeline?.length) {
+    return [...incident.timeline].sort((a, b) => a.timestamp - b.timestamp);
+  }
+
+  const fallback: IncidentTimelineEntry[] = [
+    {
+      id: `created-${incident.id}`,
+      type: 'note',
+      timestamp: incident.createdAt,
+      actor: incident.reportedBy || 'system',
+      summary: 'Incident created',
+    },
+  ];
+
+  incident.notes.forEach((note, idx) => {
+    const normalized = normalizeNoteToTimeline(note.content);
+    fallback.push({
+      id: `note-${incident.id}-${idx}`,
+      type: normalized.type,
+      timestamp: note.timestamp,
+      actor: note.author,
+      summary: note.content,
+      metadata: normalized.metadata,
+    });
+  });
+
+  return fallback.sort((a, b) => a.timestamp - b.timestamp);
 };
 
 export function Incidents() {
+  const [searchParams] = useSearchParams();
+  const incidentIdParam = searchParams.get('incidentId');
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [statistics, setStatistics] = useState<IncidentStatistics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,10 +119,22 @@ export function Incidents() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState<IncidentStatus | 'all'>('all');
   const [filterSeverity, setFilterSeverity] = useState<IncidentSeverity | 'all'>('all');
+  const [actionInProgress, setActionInProgress] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
   }, [filterStatus, filterSeverity]);
+
+  useEffect(() => {
+    if (!incidentIdParam || incidents.length === 0) {
+      return;
+    }
+
+    const incident = incidents.find((item) => item.id === incidentIdParam);
+    if (incident) {
+      setSelectedIncident(incident);
+    }
+  }, [incidentIdParam, incidents]);
 
   const fetchData = async () => {
     try {
@@ -108,6 +201,25 @@ export function Incidents() {
     }
   };
 
+  const handlePlaybookAction = async (id: string, action: typeof playbookActions[number]) => {
+    const target = action.promptLabel ? prompt(`${action.promptLabel}:`) : '';
+    if (action.promptLabel && !target) return;
+
+    try {
+      setActionInProgress(action.key);
+      await adminApi.runIncidentAction(id, action.key, target || undefined);
+      await fetchData();
+      if (selectedIncident?.id === id) {
+        const updated = await adminApi.getIncident(id);
+        setSelectedIncident(updated);
+      }
+    } catch (err: any) {
+      alert('Failed to execute playbook action: ' + err.message);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
   const formatDuration = (ms: number): string => {
     if (ms < 60000) return `${Math.round(ms / 1000)}s`;
     if (ms < 3600000) return `${Math.round(ms / 60000)}m`;
@@ -115,51 +227,38 @@ export function Incidents() {
     return `${Math.round(ms / 86400000)}d`;
   };
 
+  const timelineEntries = selectedIncident ? buildTimelineEntries(selectedIncident) : [];
+
   return (
     <Layout>
-      <div className="page">
+      <div className="page-stack">
         <SectionHeader
           title="Incident Response"
           subtitle="Track and manage security incidents with response time metrics"
-          actions={(
-            <div className="section-actions">
-              <Button variant="primary" onClick={() => setShowCreateModal(true)}>
-                + New Incident
-              </Button>
+          actions={
+            <>
+              <Button onClick={() => setShowCreateModal(true)}>+ New Incident</Button>
               <Button variant="secondary" onClick={fetchData}>
                 Refresh
               </Button>
-            </div>
-          )}
+            </>
+          }
         />
 
-        {loading && (
-          <div className="loading-state">Loading incidents...</div>
-        )}
+        {loading && <div className="empty-state">Loading incidents...</div>}
 
-        {error && (
-          <div className="alert">{error}</div>
-        )}
+        {error && <div className="alert alert--danger">{error}</div>}
 
         {!loading && !error && statistics && (
-          <>
-            {/* Statistics Cards */}
-            <div className="grid grid--metrics">
-              <MetricCard
-                title="Total Incidents"
-                value={statistics.totalIncidents}
-                color="blue"
-              />
+          <div className="page-stack">
+            <div className="page-grid page-grid--cards">
+              <MetricCard title="Total Incidents" value={statistics.totalIncidents} color="blue" />
               <MetricCard
                 title="Open Incidents"
                 value={statistics.openIncidents}
                 color={statistics.openIncidents > 0 ? 'red' : 'green'}
               />
-              <MetricCard
-                title="Resolved"
-                value={statistics.resolvedIncidents}
-                color="green"
-              />
+              <MetricCard title="Resolved" value={statistics.resolvedIncidents} color="green" />
               <MetricCard
                 title="Avg Response Time"
                 value={statistics.averageResponseTime > 0 ? formatDuration(statistics.averageResponseTime) : 'N/A'}
@@ -177,12 +276,11 @@ export function Incidents() {
               />
             </div>
 
-            {/* Filters */}
-            <div className="filters">
+            <div className="filter-row">
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value as IncidentStatus | 'all')}
-                className="form-select"
+                className="form-control"
               >
                 <option value="all">All Statuses</option>
                 <option value="open">Open</option>
@@ -194,7 +292,7 @@ export function Incidents() {
               <select
                 value={filterSeverity}
                 onChange={(e) => setFilterSeverity(e.target.value as IncidentSeverity | 'all')}
-                className="form-select"
+                className="form-control"
               >
                 <option value="all">All Severities</option>
                 <option value="critical">Critical</option>
@@ -204,180 +302,253 @@ export function Incidents() {
               </select>
             </div>
 
-            {/* Incidents List */}
-            <div className="stack incidents-list">
+            <div className="page-stack">
               {incidents.length === 0 ? (
                 <Card className="empty-state">No incidents found</Card>
               ) : (
                 incidents.map((incident) => {
-                  const sevColors = severityColors[incident.severity];
-                  const statColors = statusColors[incident.status];
+                  const severityClass = severityBadgeClass[incident.severity];
+                  const statusClass = statusBadgeClass[incident.status];
+                  const cardClass = `incident-card incident-card--${incident.severity}`;
+
                   return (
                     <Card
                       key={incident.id}
-                      className="incident-card"
-                      style={{ '--incident-accent': sevColors.badge } as CSSProperties}
+                      className={cardClass}
                       onClick={() => setSelectedIncident(incident)}
+                      role="button"
                     >
-                      <div className="incident-card__header">
-                        <div className="incident-card__content">
-                          <div className="incident-card__title-row">
-                            <h3 className="incident-card__title">{incident.title}</h3>
-                            <Badge
-                              tone="custom"
-                              style={{ '--badge-bg': sevColors.bg, '--badge-color': sevColors.text } as CSSProperties}
-                            >
-                              {incident.severity.toUpperCase()}
-                            </Badge>
-                            <Badge
-                              tone="custom"
-                              style={{ '--badge-bg': statColors.bg, '--badge-color': statColors.text } as CSSProperties}
-                            >
-                              {incident.status.toUpperCase()}
-                            </Badge>
-                          </div>
-                          <p className="incident-card__description">
-                            {incident.description.substring(0, 150)}...
-                          </p>
-                          <div className="incident-card__meta">
-                            <span>Type: <strong>{incident.type.replace(/_/g, ' ')}</strong></span>
-                            <span>Reported: <strong>{format(new Date(incident.createdAt), 'MMM dd, yyyy HH:mm')}</strong></span>
-                            {incident.assignedTo && <span>Assigned: <strong>{incident.assignedTo}</strong></span>}
-                            {incident.responseTime && <span>Response: <strong>{formatDuration(incident.responseTime)}</strong></span>}
-                            {incident.resolutionTime && <span>Resolution: <strong>{formatDuration(incident.resolutionTime)}</strong></span>}
+                      <div className="page-stack flex-1">
+                        <div className="card-header">
+                          <div>
+                            <div className="section-title">{incident.title}</div>
+                            <div className="tag-group">
+                              <Badge className={severityClass}>{incident.severity.toUpperCase()}</Badge>
+                              <Badge className={statusClass}>{incident.status.toUpperCase()}</Badge>
+                            </div>
                           </div>
                         </div>
-                        <div className="incident-card__actions">
-                          <Button
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedIncident(incident);
-                            }}
-                          >
-                            View Details
-                          </Button>
+                        <p className="incident-description">
+                          {incident.description.substring(0, 150)}...
+                        </p>
+                        <div className="incident-meta">
+                          <span>
+                            Type: <strong>{incident.type.replace(/_/g, ' ')}</strong>
+                          </span>
+                          <span>
+                            Reported: <strong>{format(new Date(incident.createdAt), 'MMM dd, yyyy HH:mm')}</strong>
+                          </span>
+                          {incident.assignedTo && (
+                            <span>
+                              Assigned: <strong>{incident.assignedTo}</strong>
+                            </span>
+                          )}
+                          {incident.responseTime && (
+                            <span>
+                              Response: <strong>{formatDuration(incident.responseTime)}</strong>
+                            </span>
+                          )}
+                          {incident.resolutionTime && (
+                            <span>
+                              Resolution: <strong>{formatDuration(incident.resolutionTime)}</strong>
+                            </span>
+                          )}
                         </div>
+                      </div>
+                      <div className="incident-actions">
+                        <Button
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedIncident(incident);
+                          }}
+                        >
+                          View Details
+                        </Button>
                       </div>
                     </Card>
                   );
                 })
               )}
             </div>
-          </>
+          </div>
         )}
 
-        {/* Incident Detail Modal */}
         {selectedIncident && (
-          <div className="modal-backdrop" onClick={() => setSelectedIncident(null)}>
-            <div className="modal" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header">
+          <div className="modal-overlay" onClick={() => setSelectedIncident(null)}>
+            <div
+              className="modal modal__content modal__scroll"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="modal__header">
                 <div>
-                  <h2 className="modal-title">{selectedIncident.title}</h2>
-                  <div className="inline-row">
-                    <Badge
-                      tone="custom"
-                      style={{
-                        '--badge-bg': severityColors[selectedIncident.severity].bg,
-                        '--badge-color': severityColors[selectedIncident.severity].text,
-                      } as CSSProperties}
-                    >
+                  <div className="modal__title">{selectedIncident.title}</div>
+                  <div className="tag-group">
+                    <Badge className={severityBadgeClass[selectedIncident.severity]}>
                       {selectedIncident.severity.toUpperCase()}
                     </Badge>
-                    <Badge
-                      tone="custom"
-                      style={{
-                        '--badge-bg': statusColors[selectedIncident.status].bg,
-                        '--badge-color': statusColors[selectedIncident.status].text,
-                      } as CSSProperties}
-                    >
+                    <Badge className={statusBadgeClass[selectedIncident.status]}>
                       {selectedIncident.status.toUpperCase()}
                     </Badge>
                   </div>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => setSelectedIncident(null)}>
+                <button className="modal__close" onClick={() => setSelectedIncident(null)}>
                   ×
                 </Button>
               </div>
 
-              <div className="stack">
+              <div className="page-stack">
                 <div>
-                  <h3 className="subsection-title">Description</h3>
-                  <p className="subsection-body">{selectedIncident.description}</p>
+                  <div className="section-title">Description</div>
+                  <p className="section-subtitle text-prewrap">
+                    {selectedIncident.description}
+                  </p>
                 </div>
 
-                <div className="metadata-list">
+                <div className="detail-grid">
                   <div>
-                    <div className="metadata-label">Type</div>
-                    <div className="metadata-value">{selectedIncident.type.replace(/_/g, ' ')}</div>
+                    <div className="text-xs text-muted">Type</div>
+                    <div className="font-semibold">{selectedIncident.type.replace(/_/g, ' ')}</div>
                   </div>
                   <div>
-                    <div className="metadata-label">Reported By</div>
-                    <div className="metadata-value">{selectedIncident.reportedBy}</div>
+                    <div className="text-xs text-muted">Reported By</div>
+                    <div className="font-semibold">{selectedIncident.reportedBy}</div>
                   </div>
                   <div>
-                    <div className="metadata-label">Created</div>
-                    <div className="metadata-value">{format(new Date(selectedIncident.createdAt), 'MMM dd, yyyy HH:mm:ss')}</div>
+                    <div className="text-xs text-muted">Created</div>
+                    <div className="font-semibold">
+                      {format(new Date(selectedIncident.createdAt), 'MMM dd, yyyy HH:mm:ss')}
+                    </div>
                   </div>
                   {selectedIncident.assignedTo && (
                     <div>
-                      <div className="metadata-label">Assigned To</div>
-                      <div className="metadata-value">{selectedIncident.assignedTo}</div>
+                      <div className="text-xs text-muted">Assigned To</div>
+                      <div className="font-semibold">{selectedIncident.assignedTo}</div>
                     </div>
                   )}
                   {selectedIncident.responseTime && (
                     <div>
-                      <div className="metadata-label">Response Time</div>
-                      <div className="metadata-value">{formatDuration(selectedIncident.responseTime)}</div>
+                      <div className="text-xs text-muted">Response Time</div>
+                      <div className="font-semibold">{formatDuration(selectedIncident.responseTime)}</div>
                     </div>
                   )}
                   {selectedIncident.resolutionTime && (
                     <div>
-                      <div className="metadata-label">Resolution Time</div>
-                      <div className="metadata-value">{formatDuration(selectedIncident.resolutionTime)}</div>
+                      <div className="text-xs text-muted">Resolution Time</div>
+                      <div className="font-semibold">{formatDuration(selectedIncident.resolutionTime)}</div>
                     </div>
                   )}
                 </div>
 
                 {selectedIncident.affectedIPs.length > 0 && (
                   <div>
-                    <h3 className="subsection-title">Affected IPs</h3>
-                    <div className="inline-row inline-row--wrap">
+                    <div className="section-title">Affected IPs</div>
+                    <div className="tag-group">
                       {selectedIncident.affectedIPs.map((ip) => (
-                        <span key={ip} className="pill">
+                        <Badge key={ip} className="text-mono ui-badge--neutral">
                           {ip}
-                        </span>
+                        </Badge>
                       ))}
                     </div>
                   </div>
                 )}
 
-                <div>
-                  <h3 className="subsection-title">Notes</h3>
-                  <div className="notes-list">
-                    {selectedIncident.notes.length === 0 ? (
-                      <div className="empty-text">No notes yet</div>
-                    ) : (
-                      selectedIncident.notes.map((note, idx) => (
-                        <div key={idx} className="note-card">
-                          <div className="note-card__meta">
-                            <span className="note-card__author">{note.author}</span>
-                            <span className="note-card__timestamp">
-                              {format(new Date(note.timestamp), 'MMM dd, HH:mm')}
+              <div style={{ marginBottom: '20px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>Playbook Actions</h3>
+                <div style={{ display: 'grid', gap: '10px' }}>
+                  {playbookActions.map((action) => (
+                    <div
+                      key={action.key}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '12px 14px',
+                        borderRadius: '8px',
+                        border: '1px solid #e2e8f0',
+                        backgroundColor: '#f8fafc',
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: '600', marginBottom: '4px' }}>{action.label}</div>
+                        <div style={{ color: '#64748b', fontSize: '13px' }}>{action.description}</div>
+                      </div>
+                      <button
+                        onClick={() => handlePlaybookAction(selectedIncident.id, action)}
+                        disabled={actionInProgress === action.key}
+                        style={{
+                          backgroundColor: actionInProgress === action.key ? '#94a3b8' : '#0f172a',
+                          color: 'white',
+                          padding: '8px 14px',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: actionInProgress === action.key ? 'wait' : 'pointer',
+                          fontSize: '12px',
+                          fontWeight: '600',
+                        }}
+                      >
+                        {actionInProgress === action.key ? 'Running...' : 'Run'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>Timeline</h3>
+                <div style={{ maxHeight: '260px', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {timelineEntries.length === 0 ? (
+                    <div style={{ color: '#94a3b8', fontSize: '14px' }}>No timeline events yet</div>
+                  ) : (
+                    timelineEntries.map((entry) => {
+                      const style = timelineTypeStyles[entry.type];
+                      return (
+                        <div
+                          key={entry.id}
+                          style={{
+                            padding: '12px',
+                            borderRadius: '8px',
+                            border: `1px solid ${style.border}`,
+                            backgroundColor: 'white',
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span
+                                style={{
+                                  padding: '2px 8px',
+                                  borderRadius: '999px',
+                                  backgroundColor: style.bg,
+                                  color: style.text,
+                                  fontSize: '11px',
+                                  fontWeight: '600',
+                                }}
+                              >
+                                {style.label}
+                              </span>
+                              <span style={{ fontWeight: '600', fontSize: '14px' }}>{entry.summary}</span>
+                            </div>
+                            <span style={{ color: '#64748b', fontSize: '12px' }}>
+                              {format(new Date(entry.timestamp), 'MMM dd, HH:mm')} · {formatDistanceToNow(new Date(entry.timestamp), { addSuffix: true })}
                             </span>
                           </div>
-                          <div className="note-card__content">{note.content}</div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: '12px' }}>
+                            <span>Actor: <strong style={{ color: '#0f172a' }}>{entry.actor}</strong></span>
+                            {entry.type === 'action' && (
+                              <span style={{ color: '#16a34a', fontWeight: '600' }}>Audit logged</span>
+                            )}
+                          </div>
                         </div>
-                      ))
-                    )}
-                  </div>
+                      );
+                    })
+                  )}
                 </div>
 
-                <div className="inline-row inline-row--wrap">
+                <div className="action-row">
                   <select
                     value={selectedIncident.status}
                     onChange={(e) => handleStatusChange(selectedIncident.id, e.target.value as IncidentStatus)}
-                    className="form-select"
+                    className="form-control"
                   >
                     <option value="open">Open</option>
                     <option value="investigating">Investigating</option>
@@ -388,20 +559,20 @@ export function Incidents() {
                   <Button variant="secondary" onClick={() => handleAssign(selectedIncident.id)}>
                     Assign
                   </Button>
-                  <Button variant="primary" onClick={() => handleAddNote(selectedIncident.id)}>
-                    Add Note
-                  </Button>
+                  <Button onClick={() => handleAddNote(selectedIncident.id)}>Add Note</Button>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* Create Incident Modal */}
         {showCreateModal && (
-          <div className="modal-backdrop" onClick={() => setShowCreateModal(false)}>
-            <div className="modal modal--sm" onClick={(e) => e.stopPropagation()}>
-              <h2 className="subsection-title">Create New Incident</h2>
+          <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+            <div
+              className="modal modal__content modal__content--compact"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="modal__title">Create New Incident</div>
               <CreateIncidentForm
                 onSuccess={() => {
                   setShowCreateModal(false);
@@ -433,8 +604,8 @@ function CreateIncidentForm({ onSuccess, onCancel }: { onSuccess: () => void; on
         description,
         type,
         severity,
-        affectedIPs: affectedIPs.split(',').map(ip => ip.trim()).filter(Boolean),
-        tags: tags.split(',').map(t => t.trim()).filter(Boolean),
+        affectedIPs: affectedIPs.split(',').map((ip) => ip.trim()).filter(Boolean),
+        tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
       });
       onSuccess();
     } catch (err: any) {
@@ -443,7 +614,7 @@ function CreateIncidentForm({ onSuccess, onCancel }: { onSuccess: () => void; on
   };
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} className="page-stack">
       <div className="form-field">
         <label className="form-label">Title *</label>
         <input
@@ -451,7 +622,7 @@ function CreateIncidentForm({ onSuccess, onCancel }: { onSuccess: () => void; on
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           required
-          className="form-input"
+          className="form-control"
         />
       </div>
       <div className="form-field">
@@ -461,17 +632,17 @@ function CreateIncidentForm({ onSuccess, onCancel }: { onSuccess: () => void; on
           onChange={(e) => setDescription(e.target.value)}
           required
           rows={4}
-          className="form-textarea"
+          className="form-control"
         />
       </div>
-      <div className="form-grid form-grid--two">
-        <div className="form-field">
+      <div className="form-grid">
+        <div>
           <label className="form-label">Type *</label>
           <select
             value={type}
             onChange={(e) => setType(e.target.value as IncidentType)}
             required
-            className="form-select"
+            className="form-control"
           >
             <option value="brute_force">Brute Force</option>
             <option value="credential_stuffing">Credential Stuffing</option>
@@ -485,13 +656,13 @@ function CreateIncidentForm({ onSuccess, onCancel }: { onSuccess: () => void; on
             <option value="other">Other</option>
           </select>
         </div>
-        <div className="form-field">
+        <div>
           <label className="form-label">Severity *</label>
           <select
             value={severity}
             onChange={(e) => setSeverity(e.target.value as IncidentSeverity)}
             required
-            className="form-select"
+            className="form-control"
           >
             <option value="low">Low</option>
             <option value="medium">Medium</option>
@@ -507,7 +678,7 @@ function CreateIncidentForm({ onSuccess, onCancel }: { onSuccess: () => void; on
           value={affectedIPs}
           onChange={(e) => setAffectedIPs(e.target.value)}
           placeholder="192.168.1.1, 10.0.0.1"
-          className="form-input"
+          className="form-control"
         />
       </div>
       <div className="form-field">
@@ -517,16 +688,14 @@ function CreateIncidentForm({ onSuccess, onCancel }: { onSuccess: () => void; on
           value={tags}
           onChange={(e) => setTags(e.target.value)}
           placeholder="urgent, production"
-          className="form-input"
+          className="form-control"
         />
       </div>
-      <div className="inline-row inline-row--end">
+      <div className="modal__footer">
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" variant="primary">
-          Create Incident
-        </Button>
+        <Button type="submit">Create Incident</Button>
       </div>
     </form>
   );

@@ -20,25 +20,10 @@ interface LiveEventFeedProps {
   maxEvents?: number;
 }
 
-const severityStyles = {
-  info: {
-    backgroundColor: 'var(--color-primary-50)',
-    color: 'var(--color-primary-800)',
-    borderColor: 'var(--color-primary-200)',
-    icon: 'ℹ️',
-  },
-  warning: {
-    backgroundColor: 'var(--color-warning-50)',
-    color: 'var(--color-warning-800)',
-    borderColor: 'var(--color-warning-200)',
-    icon: '⚠️',
-  },
-  critical: {
-    backgroundColor: 'var(--color-error-50)',
-    color: 'var(--color-error-800)',
-    borderColor: 'var(--color-error-100)',
-    icon: '🚨',
-  },
+const severityIcons = {
+  info: 'ℹ️',
+  warning: '⚠️',
+  critical: '🚨',
 };
 
 export function LiveEventFeed({ events, maxEvents = 10 }: LiveEventFeedProps) {
@@ -62,37 +47,39 @@ export function LiveEventFeed({ events, maxEvents = 10 }: LiveEventFeedProps) {
 
       <div className="live-feed__list">
         {displayEvents.length === 0 ? (
-          <div className="live-feed__empty">
-            Waiting for events...
-          </div>
+          <div className="empty-state">Waiting for events...</div>
         ) : (
           displayEvents.map((event, index) => {
-            const style = severityStyles[event.severity];
-            const itemClassName = ['live-feed__item', index === 0 ? 'live-feed__item--new' : '']
+            const icon = severityIcons[event.severity];
+            const itemClasses = [
+              'live-feed__item',
+              `live-feed__item--${event.severity}`,
+              index === 0 ? 'animate-slideIn' : null,
+            ]
               .filter(Boolean)
               .join(' ');
             return (
               <div
                 key={`${event.timestamp}-${index}`}
-                className={itemClassName}
-                style={{
-                  '--event-bg': style.backgroundColor,
-                  '--event-color': style.color,
-                  '--event-border': style.borderColor,
-                } as CSSProperties}
+                className={itemClasses}
               >
-                <div className="live-feed__item-body">
-                  <span className="live-feed__icon" aria-hidden="true">
-                    {style.icon}
-                  </span>
-                  <div className="live-feed__content">
-                    <div className="live-feed__meta">
-                      <span className="live-feed__type">{event.type}</span>
-                      <span className="live-feed__time">{format(new Date(event.timestamp), 'HH:mm:ss')}</span>
+                <div className="live-feed__item-header">
+                  <span className="live-feed__item-icon">{icon}</span>
+                  <div className="live-feed__item-body">
+                    <div className="live-feed__item-meta">
+                      <span className="live-feed__item-type">
+                        {event.type}
+                      </span>
+                      <span className="live-feed__item-time">
+                        {format(new Date(event.timestamp), 'HH:mm:ss')}
+                      </span>
+                    </div>
+                    <div className="live-feed__item-text">
+                      {event.message}
                     </div>
                     <div className="live-feed__message">{event.message}</div>
                     {event.username && (
-                      <div className="live-feed__user">
+                      <div className="live-feed__item-detail">
                         User: {event.username} ({event.userId})
                       </div>
                     )}

@@ -1,24 +1,19 @@
-/**
- * Section header with title, subtitle, and actions.
- */
-
 import React from 'react';
 
-type SectionHeaderProps = {
-  title: string;
-  subtitle?: string;
+interface SectionHeaderProps {
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
   actions?: React.ReactNode;
-  className?: string;
-};
+}
 
-export function SectionHeader({ title, subtitle, actions, className = '' }: SectionHeaderProps) {
+export function SectionHeader({ title, subtitle, actions }: SectionHeaderProps) {
   return (
-    <div className={['section-header', className].filter(Boolean).join(' ')}>
+    <div className="section-header">
       <div>
-        <h2 className="section-title">{title}</h2>
-        {subtitle && <p className="section-subtitle">{subtitle}</p>}
+        <div className="section-header__title">{title}</div>
+        {subtitle ? <div className="section-header__subtitle">{subtitle}</div> : null}
       </div>
-      {actions && <div className="section-actions">{actions}</div>}
+      {actions ? <div className="section-header__actions">{actions}</div> : null}
     </div>
   );
 }

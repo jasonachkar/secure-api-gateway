@@ -28,6 +28,33 @@ export function Layout({ children }: LayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout } = useAuth();
+  const [demoMode, setDemoMode] = React.useState(false);
+  const [demoModeLoaded, setDemoModeLoaded] = React.useState(false);
+
+  React.useEffect(() => {
+    let isMounted = true;
+
+    const loadConfig = async () => {
+      try {
+        const config = await adminApi.getRuntimeConfig();
+        if (isMounted) {
+          setDemoMode(config.demoMode);
+        }
+      } catch (error) {
+        console.error('Failed to load runtime config:', error);
+      } finally {
+        if (isMounted) {
+          setDemoModeLoaded(true);
+        }
+      }
+    };
+
+    loadConfig();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -43,17 +70,22 @@ export function Layout({ children }: LayoutProps) {
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <div className="layout">
+    <div className="app-shell">
       {/* Enhanced Sidebar */}
-      <aside className="sidebar">
-        <div className="sidebar__brand">
-          <h1 className="sidebar__title">
-            <span>🔒</span>
-            <span>Security Dashboard</span>
-          </h1>
+      <aside className="app-shell__sidebar">
+        <div className="app-shell__sidebar-brand">
+          <div className="app-shell__title">
+            <span role="img" aria-label="lock">
+              🔒
+            </span>{' '}
+            Security Dashboard
+          </div>
+          <div className="app-shell__subtitle">
+            Enterprise security hub
+          </div>
         </div>
 
-        <nav className="sidebar__nav">
+        <nav className="app-shell__nav">
           {navItems.map((item) => (
             <NavLink 
               key={item.path} 
@@ -66,12 +98,41 @@ export function Layout({ children }: LayoutProps) {
           ))}
         </nav>
 
-        <div className="sidebar__footer">
+        <div style={{ 
+          paddingTop: theme.spacing.lg,
+          borderTop: `1px solid ${theme.colors.neutral[700]}`,
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: theme.spacing.sm,
+            marginBottom: theme.spacing.md,
+            borderRadius: theme.borderRadius.md,
+            backgroundColor: theme.colors.neutral[700],
+            fontSize: theme.typography.fontSize.sm,
+          }}>
+            <span style={{ fontWeight: theme.typography.fontWeight.medium }}>
+              Demo Mode
+            </span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+              <input
+                type="checkbox"
+                checked={demoMode}
+                disabled
+                aria-label="Demo mode enabled"
+                style={{ accentColor: theme.colors.warning[400] }}
+              />
+              <span>
+                {demoModeLoaded ? (demoMode ? 'On' : 'Off') : '...'}
+              </span>
+            </label>
+          </div>
           <Button
             variant="danger"
             size="md"
             onClick={handleLogout}
-            fullWidth
+            className="button-full"
           >
             Logout
           </Button>
@@ -79,8 +140,38 @@ export function Layout({ children }: LayoutProps) {
       </aside>
 
       {/* Enhanced Main Content */}
-      <main className="main">
-        <div className="main__inner">
+      <main style={{ 
+        flex: 1, 
+        backgroundColor: theme.colors.background.secondary, 
+        padding: theme.spacing.xl,
+        minHeight: '100vh',
+        maxWidth: '100%',
+        overflowX: 'hidden',
+      }}>
+        <div style={{ maxWidth: '1600px', margin: '0 auto' }}>
+          {demoMode && (
+            <div style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              marginBottom: theme.spacing.md,
+            }}>
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: theme.spacing.xs,
+                padding: `${theme.spacing.xs} ${theme.spacing.md}`,
+                backgroundColor: theme.colors.warning[100],
+                color: theme.colors.warning[800],
+                border: `1px solid ${theme.colors.warning[300]}`,
+                borderRadius: theme.borderRadius.full,
+                fontSize: theme.typography.fontSize.sm,
+                fontWeight: theme.typography.fontWeight.semibold,
+                letterSpacing: '0.2px',
+              }}>
+                Demo Data
+              </span>
+            </div>
+          )}
           {children}
         </div>
       </main>
@@ -96,12 +187,17 @@ interface NavLinkProps {
 }
 
 function NavLink({ to, active, icon, children }: NavLinkProps) {
+  const classes = [
+    'nav-link',
+    active ? 'nav-link--active' : 'nav-link--inactive',
+  ].join(' ');
+
   return (
     <Link
       to={to}
-      className={['nav-link', active ? 'nav-link--active' : ''].filter(Boolean).join(' ')}
+      className={classes}
     >
-      {icon && <span className="nav-icon">{icon}</span>}
+      {icon && <span className="nav-link__icon">{icon}</span>}
       <span>{children}</span>
     </Link>
   );

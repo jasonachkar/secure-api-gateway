@@ -24,17 +24,14 @@ export function Button({
   fullWidth = false,
   children,
   disabled,
-  style,
   className,
   ...props
 }: ButtonProps) {
   const classes = [
-    'btn',
-    `btn--${variant}`,
-    `btn--${size}`,
-    isLoading ? 'btn--loading' : '',
-    fullWidth ? 'btn--full' : '',
-    className ?? '',
+    'ui-button',
+    `ui-button--${size}`,
+    `ui-button--${variant}`,
+    className,
   ]
     .filter(Boolean)
     .join(' ');
@@ -44,11 +41,10 @@ export function Button({
       {...props}
       disabled={disabled || isLoading}
       className={classes}
-      style={style}
     >
       {isLoading ? (
         <>
-          <span className="btn__spinner" aria-hidden="true" />
+          <span className="ui-button__spinner" />
           Loading...
         </>
       ) : (

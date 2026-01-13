@@ -23,16 +23,11 @@ export function MetricCard({
   icon,
   isLoading = false
 }: MetricCardProps) {
-  const colors = {
-    blue: 'var(--color-primary-500)',
-    green: 'var(--color-success-500)',
-    red: 'var(--color-error-500)',
-    yellow: 'var(--color-warning-500)',
-  };
+  const cardClasses = ['metric-card', `metric-card--${color}`].join(' ');
 
   if (isLoading) {
     return (
-      <div className="metric-card" style={{ '--metric-accent': colors[color] } as React.CSSProperties}>
+      <div className={cardClasses}>
         <div className="skeleton skeleton--title" />
         <div className="skeleton skeleton--value" />
         {subtitle && (
@@ -43,20 +38,16 @@ export function MetricCard({
   }
 
   return (
-    <div className="metric-card" style={{ '--metric-accent': colors[color] } as React.CSSProperties}>
+    <div className={cardClasses}>
       <div className="metric-card__header">
-        <div className="metric-card__title">{title}</div>
+        <div className="metric-card__label">{title}</div>
         {icon && (
           <div className="metric-card__icon">{icon}</div>
         )}
       </div>
-      <div className="metric-card__value">
-        {value}
-      </div>
+      <div className="metric-card__value">{value}</div>
       {subtitle && (
-        <div className="metric-card__subtitle">
-          {subtitle}
-        </div>
+        <div className="metric-card__subtitle">{subtitle}</div>
       )}
     </div>
   );

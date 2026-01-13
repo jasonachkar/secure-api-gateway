@@ -1,41 +1,18 @@
-/**
- * Reusable Card component
- */
-
 import React from 'react';
 
-type CardVariant = 'default' | 'outlined' | 'subtle';
+interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+  variant?: 'default' | 'outlined' | 'soft';
+}
 
-type CardProps = {
-  children: React.ReactNode;
-  className?: string;
-  variant?: CardVariant;
-  padding?: 'sm' | 'md' | 'lg' | 'xl';
-  onClick?: () => void;
-  style?: React.CSSProperties;
-};
-
-const paddingClassMap: Record<NonNullable<CardProps['padding']>, string> = {
-  sm: 'card--padding-sm',
-  md: 'card--padding-md',
-  lg: 'card--padding-lg',
-  xl: 'card--padding-xl',
-};
-
-export function Card({ children, className = '', variant = 'default', padding = 'lg', onClick, style }: CardProps) {
+export function Card({ variant = 'default', className, ...props }: CardProps) {
   const classes = [
-    'card',
-    `card--${variant}`,
-    paddingClassMap[padding],
-    onClick ? 'card--clickable' : '',
+    'ui-card',
+    variant === 'outlined' ? 'ui-card--outlined' : null,
+    variant === 'soft' ? 'ui-card--soft' : null,
     className,
   ]
     .filter(Boolean)
     .join(' ');
 
-  return (
-    <div className={classes} onClick={onClick} style={style}>
-      {children}
-    </div>
-  );
+  return <div {...props} className={classes} />;
 }

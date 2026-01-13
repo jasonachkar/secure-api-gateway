@@ -2,7 +2,8 @@
  * Threat Intelligence page
  */
 
-import { useState, useEffect, type CSSProperties } from 'react';
+import { useState, useEffect } from 'react';
+import { format } from 'date-fns';
 import { Layout } from '../components/Layout';
 import { MetricCard } from '../components/MetricCard';
 import { Button } from '../components/Button';
@@ -11,13 +12,19 @@ import { Card } from '../components/Card';
 import { SectionHeader } from '../components/SectionHeader';
 import { adminApi } from '../api/admin';
 import type { IPThreatInfo, ThreatStatistics, AttackPattern, ThreatLevel } from '../types';
-import { format } from 'date-fns';
 
-const threatLevelColors: Record<ThreatLevel, { bg: string; text: string; badge: string }> = {
-  critical: { bg: 'var(--color-error-50)', text: 'var(--color-error-800)', badge: 'var(--color-error-600)' },
-  high: { bg: 'var(--color-warning-50)', text: 'var(--color-warning-800)', badge: 'var(--color-warning-600)' },
-  medium: { bg: 'var(--color-warning-100)', text: 'var(--color-warning-800)', badge: 'var(--color-warning-500)' },
-  low: { bg: 'var(--color-success-50)', text: 'var(--color-success-800)', badge: 'var(--color-success-600)' },
+const threatLevelBadgeClass: Record<ThreatLevel, string> = {
+  critical: 'badge-critical',
+  high: 'badge-high',
+  medium: 'badge-medium',
+  low: 'badge-low',
+};
+
+const threatScoreClass: Record<ThreatLevel, string> = {
+  critical: 'threat-score--critical',
+  high: 'threat-score--high',
+  medium: 'threat-score--medium',
+  low: 'threat-score--low',
 };
 
 export function Threats() {
@@ -76,39 +83,26 @@ export function Threats() {
 
   return (
     <Layout>
-      <div className="page">
+      <div className="page-stack">
         <SectionHeader
           title="Threat Intelligence"
           subtitle="IP reputation tracking and attack pattern detection"
-          actions={(
+          actions={
             <Button variant="primary" onClick={fetchData} isLoading={loading}>
               Refresh
             </Button>
-          )}
+          }
         />
 
-        {loading && !error && (
-          <div className="loading-state">Loading threat intelligence...</div>
-        )}
+        {loading && !error && <div className="empty-state">Loading threat intelligence...</div>}
 
-        {error && (
-          <div className="alert">{error}</div>
-        )}
+        {error && <div className="alert alert--danger">{error}</div>}
 
         {!loading && !error && statistics && (
-          <>
-            {/* Statistics Cards */}
-            <div className="grid grid--metrics">
-              <MetricCard
-                title="Total Threats"
-                value={statistics.totalThreats}
-                color="blue"
-              />
-              <MetricCard
-                title="Blocked IPs"
-                value={statistics.blockedIPs}
-                color="red"
-              />
+          <div className="page-stack">
+            <div className="page-grid page-grid--cards">
+              <MetricCard title="Total Threats" value={statistics.totalThreats} color="blue" />
+              <MetricCard title="Blocked IPs" value={statistics.blockedIPs} color="red" />
               <MetricCard
                 title="Critical Threats"
                 value={statistics.criticalThreats}
@@ -119,161 +113,154 @@ export function Threats() {
                 value={statistics.highThreats}
                 color={statistics.highThreats > 0 ? 'yellow' : 'green'}
               />
-              <MetricCard
-                title="Medium Threats"
-                value={statistics.mediumThreats}
-                color="blue"
-              />
-              <MetricCard
-                title="Low Threats"
-                value={statistics.lowThreats}
-                color="green"
-              />
+              <MetricCard title="Medium Threats" value={statistics.mediumThreats} color="blue" />
+              <MetricCard title="Low Threats" value={statistics.lowThreats} color="green" />
             </div>
 
-            {/* Attack Patterns */}
             {patterns.length > 0 && (
-              <section className="section-block">
-                <SectionHeader title="Active Attack Patterns" />
-                <div className="stack">
+              <div className="page-stack">
+                <div className="section-title">Active Attack Patterns</div>
+                <div className="page-stack">
                   {patterns.map((pattern, index) => {
-                    const colors = threatLevelColors[pattern.severity];
+                    const cardClass = `threat-card threat-card--${pattern.severity}`;
                     return (
-                      <Card
-                        key={index}
-                        className="threat-pattern"
-                        style={{ '--pattern-accent': colors.badge } as CSSProperties}
-                      >
-                        <div className="threat-pattern__header">
-                          <div className="threat-pattern__title-row">
-                            <h3 className="threat-pattern__title">
-                              {pattern.type.replace(/_/g, ' ').toUpperCase()}
-                            </h3>
-                            <Badge
-                              tone="custom"
-                              style={{ '--badge-bg': colors.bg, '--badge-color': colors.text } as CSSProperties}
-                            >
+                      <Card key={index} className={cardClass}>
+                        <div className="threat-card__header">
+                          <div className="threat-card__identity">
+                            <div className="section-title">{pattern.type.replace(/_/g, ' ').toUpperCase()}</div>
+                            <Badge className={threatLevelBadgeClass[pattern.severity]}>
                               {pattern.severity.toUpperCase()}
                             </Badge>
                           </div>
                           <p className="threat-pattern__description">{pattern.description}</p>
                         </div>
-                        <div className="threat-pattern__meta">
-                          <span><strong>{pattern.ipAddresses.length}</strong> IP addresses</span>
-                          <span><strong>{pattern.eventCount}</strong> events</span>
-                          <span>Last <strong>{Math.round(pattern.timeWindow / 60000)}min</strong></span>
+                        <div className="section-subtitle">{pattern.description}</div>
+                        <div className="incident-meta">
+                          <span>
+                            <strong>{pattern.ipAddresses.length}</strong> IP addresses
+                          </span>
+                          <span>
+                            <strong>{pattern.eventCount}</strong> events
+                          </span>
+                          <span>
+                            Last <strong>{Math.round(pattern.timeWindow / 60000)}min</strong>
+                          </span>
                         </div>
                       </Card>
                     );
                   })}
                 </div>
-              </section>
+              </div>
             )}
 
-            {/* Top Threats */}
-            <section className="section-block">
-              <SectionHeader title="Top Threats (by Score)" />
+            <div className="page-stack">
+              <div className="section-title">Top Threats (by Score)</div>
               {threats.length === 0 ? (
                 <Card className="empty-state">No threats detected</Card>
               ) : (
-                <div className="stack">
+                <div className="page-stack">
                   {threats.map((threat) => {
-                    const colors = threatLevelColors[threat.threatLevel];
+                    const threatCardClass = [
+                      'threat-card',
+                      `threat-card--${threat.threatLevel}`,
+                      threat.isBlocked ? 'threat-card--blocked' : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' ');
+
                     return (
-                      <Card
-                        key={threat.ip}
-                        className={['threat-card', threat.isBlocked ? 'threat-card--blocked' : ''].join(' ')}
-                        style={{ '--threat-accent': colors.badge } as CSSProperties}
-                      >
-                        <div className="threat-card__layout">
-                          <div>
-                            <div className="threat-card__header">
-                              <h3 className="threat-card__ip">{threat.ip}</h3>
-                              {threat.isBlocked && (
-                                <Badge tone="danger">🚫 BLOCKED</Badge>
-                              )}
-                              <Badge
-                                tone="custom"
-                                style={{ '--badge-bg': colors.bg, '--badge-color': colors.text } as CSSProperties}
-                              >
-                                {threat.threatLevel.toUpperCase()}
-                              </Badge>
-                            </div>
-
-                            <div className="threat-card__stats">
-                              <div>
-                                <div className="stat-caption">Threat Score</div>
-                                <div className="threat-card__score" style={{ color: colors.badge }}>
-                                  {threat.threatScore}/100
-                                </div>
-                                {threat.abuseScore !== undefined && (
-                                  <div className="stat-caption">AbuseIPDB: {threat.abuseScore}%</div>
-                                )}
-                              </div>
-
-                              <div>
-                                <div className="stat-caption">Total Events</div>
-                                <div className="stat-value">{threat.totalEvents}</div>
-                              </div>
-
-                              {threat.geo && (
-                                <div>
-                                  <div className="stat-caption">Location</div>
-                                  <div className="threat-card__location">
-                                    {threat.geo.city && `${threat.geo.city}, `}
-                                    {threat.geo.country || 'Unknown'}
-                                  </div>
-                                </div>
-                              )}
-
-                              <div>
-                                <div className="stat-caption">First/Last Seen</div>
-                                <div className="threat-card__times">
-                                  {format(new Date(threat.firstSeen), 'MMM dd, HH:mm')}
-                                  <br />
-                                  {format(new Date(threat.lastSeen), 'MMM dd, HH:mm')}
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="threat-card__event-grid">
-                              <div className="threat-event">
-                                <div className="stat-caption">Failed Logins</div>
-                                <div className="threat-event__value threat-event__value--error">
-                                  {threat.eventTypes.failedLogins}
-                                </div>
-                              </div>
-                              <div className="threat-event">
-                                <div className="stat-caption">Rate Limits</div>
-                                <div className="threat-event__value threat-event__value--warning">
-                                  {threat.eventTypes.rateLimitViolations}
-                                </div>
-                              </div>
-                              <div className="threat-event">
-                                <div className="stat-caption">Suspicious</div>
-                                <div className="threat-event__value threat-event__value--critical">
-                                  {threat.eventTypes.suspiciousActivity}
-                                </div>
-                              </div>
-                              <div className="threat-event">
-                                <div className="stat-caption">Lockouts</div>
-                                <div className="threat-event__value threat-event__value--danger">
-                                  {threat.eventTypes.accountLockouts}
-                                </div>
-                              </div>
-                            </div>
+                      <Card key={threat.ip} className={threatCardClass}>
+                        <div className="threat-card__header">
+                          <div className="threat-card__identity">
+                            <div className="text-mono section-title">{threat.ip}</div>
+                            {threat.isBlocked && <Badge className="badge-critical">🚫 BLOCKED</Badge>}
+                            <Badge className={threatLevelBadgeClass[threat.threatLevel]}>
+                              {threat.threatLevel.toUpperCase()}
+                            </Badge>
                           </div>
-
-                          <div className="threat-card__actions">
+                          <div className="incident-actions">
                             {threat.isBlocked ? (
-                              <Button variant="success" onClick={() => handleUnblockIP(threat.ip)}>
+                              <Button
+                                variant="success"
+                                size="sm"
+                                className="button-nowrap"
+                                onClick={() => handleUnblockIP(threat.ip)}
+                              >
                                 Unblock IP
                               </Button>
                             ) : (
-                              <Button variant="danger" onClick={() => handleBlockIP(threat.ip)}>
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                className="button-nowrap"
+                                onClick={() => handleBlockIP(threat.ip)}
+                              >
                                 Block IP
                               </Button>
                             )}
+                          </div>
+                        </div>
+
+                        <div className="threat-card__meta-grid">
+                          <div>
+                            <div className="threat-card__meta-label">Threat Score</div>
+                            <div className={`threat-score ${threatScoreClass[threat.threatLevel]}`}>
+                              {threat.threatScore}/100
+                            </div>
+                            {threat.abuseScore !== undefined && (
+                              <div className="text-xs text-muted">AbuseIPDB: {threat.abuseScore}%</div>
+                            )}
+                          </div>
+
+                          <div>
+                            <div className="threat-card__meta-label">Total Events</div>
+                            <div className="threat-card__meta-value">{threat.totalEvents}</div>
+                          </div>
+
+                          {threat.geo && (
+                            <div>
+                              <div className="threat-card__meta-label">Location</div>
+                              <div className="threat-card__meta-value">
+                                {threat.geo.city && `${threat.geo.city}, `}
+                                {threat.geo.country || 'Unknown'}
+                              </div>
+                            </div>
+                          )}
+
+                          <div>
+                            <div className="threat-card__meta-label">First/Last Seen</div>
+                            <div className="text-sm">
+                              {format(new Date(threat.firstSeen), 'MMM dd, HH:mm')}
+                              <br />
+                              {format(new Date(threat.lastSeen), 'MMM dd, HH:mm')}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="inline-grid-4">
+                          <div className="inline-stat">
+                            <div className="inline-stat__label">Failed Logins</div>
+                            <div className="inline-stat__value text-danger">
+                              {threat.eventTypes.failedLogins}
+                            </div>
+                          </div>
+                          <div className="inline-stat">
+                            <div className="inline-stat__label">Rate Limits</div>
+                            <div className="inline-stat__value text-warning">
+                              {threat.eventTypes.rateLimitViolations}
+                            </div>
+                          </div>
+                          <div className="inline-stat">
+                            <div className="inline-stat__label">Suspicious</div>
+                            <div className="inline-stat__value text-danger">
+                              {threat.eventTypes.suspiciousActivity}
+                            </div>
+                          </div>
+                          <div className="inline-stat">
+                            <div className="inline-stat__label">Lockouts</div>
+                            <div className="inline-stat__value text-danger">
+                              {threat.eventTypes.accountLockouts}
+                            </div>
                           </div>
                         </div>
                       </Card>
@@ -281,9 +268,8 @@ export function Threats() {
                   })}
                 </div>
               )}
-            </section>
+            </div>
 
-            {/* Top Countries */}
             {statistics.topCountries.length > 0 && (
               <section className="section-block">
                 <SectionHeader title="Threats by Country" />
@@ -302,7 +288,7 @@ export function Threats() {
                 </Card>
               </section>
             )}
-          </>
+          </div>
         )}
       </div>
     </Layout>

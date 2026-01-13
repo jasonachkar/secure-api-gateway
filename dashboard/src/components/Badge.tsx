@@ -1,24 +1,15 @@
-/**
- * Reusable Badge component
- */
+import React from 'react';
 
-import type { CSSProperties, ReactNode } from 'react';
+type BadgeVariant = 'success' | 'warning' | 'error' | 'info' | 'neutral';
 
-type BadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'custom';
+interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  variant?: BadgeVariant;
+}
 
-type BadgeProps = {
-  children: ReactNode;
-  className?: string;
-  tone?: BadgeTone;
-  style?: CSSProperties;
-};
+export function Badge({ variant = 'neutral', className, ...props }: BadgeProps) {
+  const classes = ['ui-badge', `ui-badge--${variant}`, className]
+    .filter(Boolean)
+    .join(' ');
 
-export function Badge({ children, className = '', tone = 'neutral', style }: BadgeProps) {
-  const classes = ['badge', `badge--${tone}`, className].filter(Boolean).join(' ');
-
-  return (
-    <span className={classes} style={style}>
-      {children}
-    </span>
-  );
+  return <span {...props} className={classes} />;
 }

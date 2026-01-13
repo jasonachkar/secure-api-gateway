@@ -161,6 +161,29 @@ export class IncidentResponseController {
   }
 
   /**
+   * POST /admin/incidents/:id/playbook
+   * Run a playbook action (mocked)
+   */
+  async runPlaybookAction(request: FastifyRequest, reply: FastifyReply) {
+    const user = (request as any).user;
+    const params = request.params as any;
+    const body = request.body as any;
+
+    const incident = await this.incidentService.runPlaybookAction(
+      params.id,
+      body.action,
+      user.username,
+      body.target
+    );
+
+    if (!incident) {
+      return reply.code(404).send({ error: 'Incident not found' });
+    }
+
+    return reply.send({ incident });
+  }
+
+  /**
    * GET /admin/incidents/statistics
    * Get incident statistics
    */
@@ -235,4 +258,3 @@ export class IncidentResponseController {
     }
   }
 }
-

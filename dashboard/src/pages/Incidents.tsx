@@ -7,8 +7,17 @@ import { useState, useEffect } from 'react';
 import { Layout } from '../components/Layout';
 import { MetricCard } from '../components/MetricCard';
 import { adminApi } from '../api/admin';
-import type { Incident, IncidentStatistics, IncidentStatus, IncidentSeverity, IncidentType } from '../types';
-import { format, formatDistanceToNow } from 'date-fns';
+import type {
+  Incident,
+  IncidentStatistics,
+  IncidentStatus,
+  IncidentSeverity,
+  IncidentType,
+  IncidentTimelineEntry,
+  IncidentTimelineEntryType,
+  IncidentPlaybookAction,
+} from '../types';
+import { format } from 'date-fns';
 
 const severityColors: Record<IncidentSeverity, { bg: string; text: string; badge: string }> = {
   critical: { bg: '#fee2e2', text: '#991b1b', badge: '#dc2626' },
@@ -34,6 +43,7 @@ export function Incidents() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState<IncidentStatus | 'all'>('all');
   const [filterSeverity, setFilterSeverity] = useState<IncidentSeverity | 'all'>('all');
+  const [playbookActionLoading, setPlaybookActionLoading] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -104,12 +114,111 @@ export function Incidents() {
     }
   };
 
+  const handlePlaybookAction = async (id: string, action: IncidentPlaybookAction) => {
+    let target: string | undefined;
+
+    if (action === 'disable_user') {
+      target = prompt('Disable which user (username)?') || undefined;
+    } else if (action === 'block_ip') {
+      target = prompt('Block which IP address?') || undefined;
+    } else if (action === 'open_ticket') {
+      target = prompt('Ticket summary or system reference?') || undefined;
+    }
+
+    try {
+      setPlaybookActionLoading(action);
+      await adminApi.runIncidentPlaybookAction(id, action, target);
+      await fetchData();
+      if (selectedIncident?.id === id) {
+        const updated = await adminApi.getIncident(id);
+        setSelectedIncident(updated);
+      }
+    } catch (err: any) {
+      alert('Failed to run playbook action: ' + err.message);
+    } finally {
+      setPlaybookActionLoading(null);
+    }
+  };
+
   const formatDuration = (ms: number): string => {
     if (ms < 60000) return `${Math.round(ms / 1000)}s`;
     if (ms < 3600000) return `${Math.round(ms / 60000)}m`;
     if (ms < 86400000) return `${Math.round(ms / 3600000)}h`;
     return `${Math.round(ms / 86400000)}d`;
   };
+
+  const buildTimelineFallback = (incident: Incident): IncidentTimelineEntry[] => {
+    const entries: IncidentTimelineEntry[] = [
+      {
+        id: `created-${incident.id}`,
+        timestamp: incident.createdAt,
+        type: 'created',
+        author: incident.reportedBy,
+        summary: 'Incident created',
+      },
+    ];
+
+    incident.notes.forEach((note, idx) => {
+      let type: IncidentTimelineEntryType = 'note';
+      let summary = 'Note added';
+
+      if (note.content.startsWith('Status changed to ')) {
+        type = 'status_change';
+        summary = note.content;
+      } else if (note.content.startsWith('Assigned to ')) {
+        type = 'assignment';
+        summary = note.content;
+      } else if (note.content === 'Incident details updated') {
+        type = 'update';
+        summary = note.content;
+      }
+
+      entries.push({
+        id: `${incident.id}-${idx}`,
+        timestamp: note.timestamp,
+        type,
+        author: note.author,
+        summary,
+        details: type === 'note' ? note.content : undefined,
+      });
+    });
+
+    return entries.sort((a, b) => a.timestamp - b.timestamp);
+  };
+
+  const getTimelineEntries = (incident: Incident): IncidentTimelineEntry[] => {
+    if (incident.timeline && incident.timeline.length > 0) {
+      return [...incident.timeline].sort((a, b) => a.timestamp - b.timestamp);
+    }
+    return buildTimelineFallback(incident);
+  };
+
+  const formatTimelineLabel = (type: IncidentTimelineEntryType): string => {
+    switch (type) {
+      case 'created':
+        return 'Created';
+      case 'note':
+        return 'Note';
+      case 'status_change':
+        return 'Status';
+      case 'assignment':
+        return 'Assignment';
+      case 'action':
+        return 'Playbook';
+      case 'update':
+        return 'Update';
+      default:
+        return 'Update';
+    }
+  };
+
+  const playbookActions: Array<{ action: IncidentPlaybookAction; label: string; description: string }> = [
+    { action: 'disable_user', label: 'Disable user', description: 'Suspend the affected user account.' },
+    { action: 'block_ip', label: 'Block IP', description: 'Block malicious IP at the edge.' },
+    { action: 'open_ticket', label: 'Open ticket', description: 'Create an incident ticket for tracking.' },
+  ];
+
+  const timelineEntries = selectedIncident ? getTimelineEntries(selectedIncident) : [];
 
   return (
     <Layout>
@@ -479,28 +588,77 @@ export function Incidents() {
               )}
 
               <div style={{ marginBottom: '20px' }}>
-                <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>Notes</h3>
-                <div style={{ maxHeight: '200px', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {selectedIncident.notes.length === 0 ? (
-                    <div style={{ color: '#94a3b8', fontSize: '14px' }}>No notes yet</div>
+                <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>Playbook Actions</h3>
+                <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+                  {playbookActions.map((playbook) => (
+                    <button
+                      key={playbook.action}
+                      onClick={() => handlePlaybookAction(selectedIncident.id, playbook.action)}
+                      disabled={playbookActionLoading === playbook.action}
+                      style={{
+                        padding: '12px',
+                        borderRadius: '8px',
+                        border: '1px solid #e2e8f0',
+                        backgroundColor: playbookActionLoading === playbook.action ? '#e2e8f0' : '#f8fafc',
+                        cursor: playbookActionLoading === playbook.action ? 'not-allowed' : 'pointer',
+                        textAlign: 'left',
+                      }}
+                    >
+                      <div style={{ fontWeight: '600', marginBottom: '4px' }}>{playbook.label}</div>
+                      <div style={{ fontSize: '12px', color: '#64748b' }}>{playbook.description}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>Timeline</h3>
+                <div style={{ maxHeight: '240px', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {timelineEntries.length === 0 ? (
+                    <div style={{ color: '#94a3b8', fontSize: '14px' }}>No timeline entries yet</div>
                   ) : (
-                    selectedIncident.notes.map((note, idx) => (
+                    timelineEntries.map((entry) => (
                       <div
-                        key={idx}
+                        key={entry.id}
                         style={{
                           padding: '12px',
                           backgroundColor: '#f8fafc',
                           borderRadius: '6px',
                           fontSize: '14px',
+                          border: '1px solid #e2e8f0',
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                          <span style={{ fontWeight: '600' }}>{note.author}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{
+                              fontSize: '11px',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.04em',
+                              padding: '2px 6px',
+                              borderRadius: '999px',
+                              backgroundColor: '#e2e8f0',
+                              color: '#475569',
+                              fontWeight: '600',
+                            }}>
+                              {formatTimelineLabel(entry.type)}
+                            </span>
+                            <span style={{ fontWeight: '600' }}>{entry.author}</span>
+                          </div>
                           <span style={{ color: '#64748b', fontSize: '12px' }}>
-                            {format(new Date(note.timestamp), 'MMM dd, HH:mm')}
+                            {format(new Date(entry.timestamp), 'MMM dd, HH:mm')}
                           </span>
                         </div>
-                        <div style={{ color: '#475569' }}>{note.content}</div>
+                        <div style={{ color: '#1f2937', fontWeight: '600', marginBottom: entry.details ? '4px' : 0 }}>
+                          {entry.summary}
+                        </div>
+                        {entry.details && (
+                          <div style={{ color: '#475569' }}>{entry.details}</div>
+                        )}
+                        {entry.metadata?.ticketId && (
+                          <div style={{ color: '#475569', fontSize: '12px', marginTop: '4px' }}>
+                            Ticket ID: <strong>{String(entry.metadata.ticketId)}</strong>
+                          </div>
+                        )}
                       </div>
                     ))
                   )}
@@ -790,4 +948,3 @@ function CreateIncidentForm({ onSuccess, onCancel }: { onSuccess: () => void; on
     </form>
   );
 }
-

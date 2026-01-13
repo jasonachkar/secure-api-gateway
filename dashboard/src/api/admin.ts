@@ -18,6 +18,7 @@ import type {
   IncidentStatus,
   IncidentSeverity,
   IncidentType,
+  IncidentPlaybookAction,
   SecurityPosture,
   ComplianceMetrics,
 } from '../types';
@@ -164,6 +165,11 @@ export const adminApi = {
 
   addIncidentNote: async (id: string, content: string): Promise<Incident> => {
     const { data } = await apiClient.post(`/admin/incidents/${id}/notes`, { content });
+    return data.incident;
+  },
+
+  runIncidentPlaybookAction: async (id: string, action: IncidentPlaybookAction, target?: string): Promise<Incident> => {
+    const { data } = await apiClient.post(`/admin/incidents/${id}/playbook`, { action, target });
     return data.incident;
   },
 

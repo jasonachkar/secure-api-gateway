@@ -3,9 +3,8 @@
  * Shows real-time security events with improved design and animations
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type CSSProperties } from 'react';
 import { format } from 'date-fns';
-import { theme } from '../styles/theme';
 
 interface SecurityEvent {
   timestamp: number;
@@ -23,21 +22,21 @@ interface LiveEventFeedProps {
 
 const severityStyles = {
   info: {
-    backgroundColor: theme.colors.primary[50],
-    color: theme.colors.primary[800],
-    borderColor: theme.colors.primary[200],
+    backgroundColor: 'var(--color-primary-50)',
+    color: 'var(--color-primary-800)',
+    borderColor: 'var(--color-primary-200)',
     icon: 'ℹ️',
   },
   warning: {
-    backgroundColor: theme.colors.warning[50],
-    color: theme.colors.warning[800],
-    borderColor: theme.colors.warning[200],
+    backgroundColor: 'var(--color-warning-50)',
+    color: 'var(--color-warning-800)',
+    borderColor: 'var(--color-warning-200)',
     icon: '⚠️',
   },
   critical: {
-    backgroundColor: theme.colors.error[50],
-    color: theme.colors.error[800],
-    borderColor: theme.colors.error[200],
+    backgroundColor: 'var(--color-error-50)',
+    color: 'var(--color-error-800)',
+    borderColor: 'var(--color-error-100)',
     icon: '🚨',
   },
 };
@@ -52,135 +51,48 @@ export function LiveEventFeed({ events, maxEvents = 10 }: LiveEventFeedProps) {
   }, [events, maxEvents]);
 
   return (
-    <div style={{
-      backgroundColor: theme.colors.background.primary,
-      padding: theme.spacing.lg,
-      borderRadius: theme.borderRadius.lg,
-      boxShadow: theme.shadows.md,
-      height: '640px',
-      display: 'flex',
-      flexDirection: 'column',
-    }}>
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        marginBottom: theme.spacing.lg 
-      }}>
-        <h3 style={{ 
-          fontSize: theme.typography.fontSize.lg, 
-          fontWeight: theme.typography.fontWeight.semibold,
-          color: theme.colors.text.primary,
-        }}>
-          Live Security Events
-        </h3>
-        <div style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: theme.spacing.sm,
-          padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
-          backgroundColor: theme.colors.primary[100],
-          borderRadius: theme.borderRadius.sm,
-          fontSize: theme.typography.fontSize.sm,
-          fontWeight: theme.typography.fontWeight.medium,
-          color: theme.colors.primary[800],
-        }}>
-          <span style={{
-            width: '8px',
-            height: '8px',
-            backgroundColor: theme.colors.success[500],
-            borderRadius: '50%',
-            animation: 'pulse 2s infinite',
-          }} />
+    <div className="live-feed">
+      <div className="live-feed__header">
+        <h3 className="live-feed__title">Live Security Events</h3>
+        <div className="live-feed__status">
+          <span className="live-feed__status-dot" />
           LIVE
         </div>
       </div>
 
-      <div style={{
-        flex: 1,
-        overflowY: 'auto',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: theme.spacing.md,
-        paddingRight: theme.spacing.xs,
-      }}>
+      <div className="live-feed__list">
         {displayEvents.length === 0 ? (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: '100%',
-            color: theme.colors.text.tertiary,
-            fontSize: theme.typography.fontSize.base,
-          }}>
+          <div className="live-feed__empty">
             Waiting for events...
           </div>
         ) : (
           displayEvents.map((event, index) => {
             const style = severityStyles[event.severity];
+            const itemClassName = ['live-feed__item', index === 0 ? 'live-feed__item--new' : '']
+              .filter(Boolean)
+              .join(' ');
             return (
               <div
                 key={`${event.timestamp}-${index}`}
+                className={itemClassName}
                 style={{
-                  padding: theme.spacing.md,
-                  backgroundColor: style.backgroundColor,
-                  borderRadius: theme.borderRadius.md,
-                  borderLeft: `4px solid ${style.borderColor}`,
-                  boxShadow: theme.shadows.sm,
-                  animation: index === 0 ? 'slideIn 0.3s ease-out' : undefined,
-                  transition: theme.transitions.normal,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.boxShadow = theme.shadows.md;
-                  e.currentTarget.style.transform = 'translateX(2px)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.boxShadow = theme.shadows.sm;
-                  e.currentTarget.style.transform = 'translateX(0)';
-                }}
+                  '--event-bg': style.backgroundColor,
+                  '--event-color': style.color,
+                  '--event-border': style.borderColor,
+                } as CSSProperties}
               >
-                <div style={{ display: 'flex', alignItems: 'start', gap: theme.spacing.sm }}>
-                  <span style={{ fontSize: '18px', lineHeight: 1 }}>{style.icon}</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'start', 
-                      marginBottom: theme.spacing.xs 
-                    }}>
-                      <span style={{
-                        fontSize: theme.typography.fontSize.sm,
-                        fontWeight: theme.typography.fontWeight.semibold,
-                        color: style.color,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.05em',
-                      }}>
-                        {event.type}
-                      </span>
-                      <span style={{ 
-                        fontSize: theme.typography.fontSize.xs, 
-                        color: theme.colors.text.tertiary, 
-                        whiteSpace: 'nowrap', 
-                        marginLeft: theme.spacing.sm 
-                      }}>
-                        {format(new Date(event.timestamp), 'HH:mm:ss')}
-                      </span>
+                <div className="live-feed__item-body">
+                  <span className="live-feed__icon" aria-hidden="true">
+                    {style.icon}
+                  </span>
+                  <div className="live-feed__content">
+                    <div className="live-feed__meta">
+                      <span className="live-feed__type">{event.type}</span>
+                      <span className="live-feed__time">{format(new Date(event.timestamp), 'HH:mm:ss')}</span>
                     </div>
-                    <div style={{ 
-                      fontSize: theme.typography.fontSize.base, 
-                      color: style.color, 
-                      marginBottom: event.username ? theme.spacing.xs : 0,
-                      lineHeight: theme.typography.lineHeight.relaxed,
-                    }}>
-                      {event.message}
-                    </div>
+                    <div className="live-feed__message">{event.message}</div>
                     {event.username && (
-                      <div style={{ 
-                        fontSize: theme.typography.fontSize.xs, 
-                        color: theme.colors.text.tertiary, 
-                        fontFamily: theme.typography.fontFamily.mono,
-                        marginTop: theme.spacing.xs,
-                      }}>
+                      <div className="live-feed__user">
                         User: {event.username} ({event.userId})
                       </div>
                     )}
@@ -191,25 +103,6 @@ export function LiveEventFeed({ events, maxEvents = 10 }: LiveEventFeedProps) {
           })
         )}
       </div>
-
-      <style>
-        {`
-          @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-          }
-          @keyframes slideIn {
-            from {
-              transform: translateX(-10px);
-              opacity: 0;
-            }
-            to {
-              transform: translateX(0);
-              opacity: 1;
-            }
-          }
-        `}
-      </style>
     </div>
   );
 }

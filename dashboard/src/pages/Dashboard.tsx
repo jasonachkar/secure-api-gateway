@@ -2,7 +2,7 @@
  * Main dashboard page with metrics
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { MetricCard } from '../components/MetricCard';
@@ -11,9 +11,10 @@ import { ErrorRateChart } from '../components/ErrorRateChart';
 import { ResponseTimeChart } from '../components/ResponseTimeChart';
 import { LiveEventFeed } from '../components/LiveEventFeed';
 import { Button } from '../components/Button';
+import { Card } from '../components/Card';
+import { SectionHeader } from '../components/SectionHeader';
 import { useSSE } from '../hooks/useSSE';
 import { adminApi } from '../api/admin';
-import { theme } from '../styles/theme';
 import type { SecurityPosture } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -163,175 +164,97 @@ export function Dashboard() {
 
   return (
     <Layout>
-      <div>
+      <div className="page">
         {/* Header with connection status */}
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center', 
-          marginBottom: theme.spacing.xl 
-        }}>
-          <div>
-            <h1 style={{ 
-              ...theme.typography.h1,
-              fontSize: theme.typography.fontSize['3xl'],
-              marginBottom: theme.spacing.sm,
-            }}>
-              Security Monitoring
-            </h1>
-            <p style={{ 
-              ...theme.typography.body,
-              color: theme.colors.text.secondary,
-            }}>
-              Real-time security metrics and threat detection
-            </p>
-          </div>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: theme.spacing.sm,
-            padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-            backgroundColor: isConnected ? theme.colors.success[100] : theme.colors.error[100],
-            borderRadius: theme.borderRadius.md,
-            fontSize: theme.typography.fontSize.base,
-            fontWeight: theme.typography.fontWeight.medium,
-            color: isConnected ? theme.colors.success[800] : theme.colors.error[800],
-          }}>
-            <span style={{
-              width: '8px',
-              height: '8px',
-              backgroundColor: isConnected ? theme.colors.success[500] : theme.colors.error[500],
-              borderRadius: '50%',
-            }} />
-            {isConnected ? 'LIVE' : 'DISCONNECTED'}
-          </div>
-        </div>
+        <SectionHeader
+          title="Security Monitoring"
+          subtitle="Real-time security metrics and threat detection"
+          actions={(
+            <div
+              className="connection-status"
+              style={{
+                '--status-bg': isConnected ? 'var(--color-success-100)' : 'var(--color-error-100)',
+                '--status-color': isConnected ? 'var(--color-success-800)' : 'var(--color-error-800)',
+                '--status-dot': isConnected ? 'var(--color-success-500)' : 'var(--color-error-500)',
+              } as CSSProperties}
+            >
+              <span className="connection-status__dot" />
+              {isConnected ? 'LIVE' : 'DISCONNECTED'}
+            </div>
+          )}
+        />
 
         {error && (
-          <div style={{
-            backgroundColor: theme.colors.error[50],
-            color: theme.colors.error[800],
-            padding: theme.spacing.md,
-            borderRadius: theme.borderRadius.lg,
-            marginBottom: theme.spacing.lg,
-            borderLeft: `4px solid ${theme.colors.error[500]}`,
-            boxShadow: theme.shadows.sm,
-          }}>
+          <div className="alert">
             <strong>Connection Error:</strong> {error}
           </div>
         )}
 
         {/* Info Banner */}
         {!infoBannerDismissed && (
-          <div style={{
-            backgroundColor: theme.colors.primary[50],
-            border: `1px solid ${theme.colors.primary[200]}`,
-            borderRadius: theme.borderRadius.lg,
-            padding: theme.spacing.md,
-            marginBottom: theme.spacing.lg,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            gap: theme.spacing.md,
-            boxShadow: theme.shadows.sm,
-          }}>
-            <div style={{ flex: 1 }}>
-              <div style={{
-                ...theme.typography.body,
-                fontWeight: theme.typography.fontWeight.medium,
-                color: theme.colors.primary[900],
-                marginBottom: theme.spacing.xs,
-              }}>
-                👋 New to this dashboard?
-              </div>
-              <div style={{
-                ...theme.typography.body,
-                fontSize: theme.typography.fontSize.sm,
-                color: theme.colors.primary[700],
-              }}>
-                This is a live demonstration of a production-grade API Gateway security monitoring dashboard. 
+          <Card className="info-banner" variant="outlined" padding="md">
+            <div className="info-banner__content">
+              <div className="info-banner__title">👋 New to this dashboard?</div>
+              <div className="info-banner__text">
+                This is a live demonstration of a production-grade API Gateway security monitoring dashboard.
                 Learn more about what each section shows in the{' '}
-                <Link 
-                  to="/about" 
-                  style={{ 
-                    color: theme.colors.primary[600], 
-                    fontWeight: theme.typography.fontWeight.medium,
-                    textDecoration: 'underline',
-                  }}
-                >
+                <Link to="/about" className="info-banner__link">
                   About page
                 </Link>.
               </div>
             </div>
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 setInfoBannerDismissed(true);
                 localStorage.setItem('dashboard-info-banner-dismissed', 'true');
               }}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: theme.colors.primary[600],
-                cursor: 'pointer',
-                fontSize: theme.typography.fontSize.lg,
-                padding: theme.spacing.xs,
-                lineHeight: 1,
-                flexShrink: 0,
-              }}
               aria-label="Dismiss banner"
             >
               ×
-            </button>
-          </div>
+            </Button>
+          </Card>
         )}
 
         {/* Security Posture Card */}
         {posture && (
-          <div style={{
-            backgroundColor: theme.colors.background.primary,
-            padding: theme.spacing.lg,
-            borderRadius: theme.borderRadius.lg,
-            boxShadow: theme.shadows.md,
-            marginBottom: theme.spacing.xl,
-            display: 'flex',
-            alignItems: 'center',
-            gap: theme.spacing.lg,
-          }}>
-            <div style={{
-              width: '80px',
-              height: '80px',
-              borderRadius: '50%',
-              backgroundColor: posture.grade === 'A' ? theme.colors.success[100] : posture.grade === 'B' ? theme.colors.primary[100] : posture.grade === 'C' ? theme.colors.warning[100] : theme.colors.error[100],
-              color: posture.grade === 'A' ? theme.colors.success[800] : posture.grade === 'B' ? theme.colors.primary[800] : posture.grade === 'C' ? theme.colors.warning[800] : theme.colors.error[800],
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: theme.typography.fontSize['4xl'],
-              fontWeight: theme.typography.fontWeight.bold,
-              border: `3px solid ${posture.grade === 'A' ? theme.colors.success[500] : posture.grade === 'B' ? theme.colors.primary[500] : posture.grade === 'C' ? theme.colors.warning[500] : theme.colors.error[500]}`,
-            }}>
+          <Card className="posture-summary">
+            <div
+              className="posture-summary__grade"
+              style={{
+                '--posture-bg':
+                  posture.grade === 'A'
+                    ? 'var(--color-success-100)'
+                    : posture.grade === 'B'
+                      ? 'var(--color-primary-100)'
+                      : posture.grade === 'C'
+                        ? 'var(--color-warning-100)'
+                        : 'var(--color-error-100)',
+                '--posture-color':
+                  posture.grade === 'A'
+                    ? 'var(--color-success-800)'
+                    : posture.grade === 'B'
+                      ? 'var(--color-primary-800)'
+                      : posture.grade === 'C'
+                        ? 'var(--color-warning-800)'
+                        : 'var(--color-error-800)',
+                '--posture-border':
+                  posture.grade === 'A'
+                    ? 'var(--color-success-500)'
+                    : posture.grade === 'B'
+                      ? 'var(--color-primary-500)'
+                      : posture.grade === 'C'
+                        ? 'var(--color-warning-500)'
+                        : 'var(--color-error-500)',
+              } as CSSProperties}
+            >
               {posture.grade}
             </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ 
-                ...theme.typography.body,
-                color: theme.colors.text.tertiary, 
-                marginBottom: theme.spacing.xs 
-              }}>
-                Security Posture Score
-              </div>
-              <div style={{ 
-                fontSize: theme.typography.fontSize['4xl'], 
-                fontWeight: theme.typography.fontWeight.bold, 
-                color: theme.colors.text.primary 
-              }}>
-                {posture.overallScore}/100
-              </div>
-              <div style={{ 
-                ...theme.typography.small,
-                color: theme.colors.text.tertiary, 
-                marginTop: theme.spacing.xs 
-              }}>
+            <div className="posture-summary__content">
+              <div className="posture-summary__label">Security Posture Score</div>
+              <div className="posture-summary__value">{posture.overallScore}/100</div>
+              <div className="posture-summary__meta">
                 {posture.recommendations.length > 0 && `${posture.recommendations.length} recommendation(s)`}
               </div>
             </div>
@@ -340,17 +263,12 @@ export function Dashboard() {
                 View Details
               </Button>
             </Link>
-          </div>
+          </Card>
         )}
 
         {/* Key Metrics Cards */}
         {currentMetrics && (
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
-            gap: theme.spacing.lg, 
-            marginBottom: theme.spacing.xl 
-          }}>
+          <div className="grid grid--metrics section-block">
             <MetricCard
               title="Requests/sec"
               value={currentMetrics.requestsPerSecond.toFixed(2)}
@@ -387,13 +305,8 @@ export function Dashboard() {
         )}
 
         {/* Charts and Live Feed Layout */}
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: '2fr 1fr', 
-          gap: theme.spacing.lg, 
-          marginBottom: theme.spacing.xl 
-        }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div className="dashboard-grid">
+          <div className="dashboard-stack">
             <RequestRateChart data={requestRateHistory} title="Request Rate (Real-time)" />
             <ErrorRateChart data={errorRateHistory} title="Error Rate by Type" />
             {responseTimeHistory.length > 0 && (
@@ -404,20 +317,9 @@ export function Dashboard() {
         </div>
 
         {/* Export Section */}
-        <section style={{ 
-          marginTop: theme.spacing.xl,
-          backgroundColor: theme.colors.background.primary,
-          padding: theme.spacing.lg,
-          borderRadius: theme.borderRadius.lg,
-          boxShadow: theme.shadows.md,
-        }}>
-          <h2 style={{ 
-            ...theme.typography.h3,
-            marginBottom: theme.spacing.md,
-          }}>
-            Export Data
-          </h2>
-          <div style={{ display: 'flex', gap: theme.spacing.md }}>
+        <Card className="export-section">
+          <SectionHeader title="Export Data" />
+          <div className="inline-row">
             <Button
               variant="primary"
               onClick={() => {
@@ -464,7 +366,7 @@ export function Dashboard() {
               Export Events (CSV)
             </Button>
           </div>
-        </section>
+        </Card>
       </div>
     </Layout>
   );

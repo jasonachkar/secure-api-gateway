@@ -2,20 +2,22 @@
  * Threat Intelligence page
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type CSSProperties } from 'react';
 import { Layout } from '../components/Layout';
 import { MetricCard } from '../components/MetricCard';
 import { Button } from '../components/Button';
+import { Badge } from '../components/Badge';
+import { Card } from '../components/Card';
+import { SectionHeader } from '../components/SectionHeader';
 import { adminApi } from '../api/admin';
-import { theme } from '../styles/theme';
 import type { IPThreatInfo, ThreatStatistics, AttackPattern, ThreatLevel } from '../types';
 import { format } from 'date-fns';
 
 const threatLevelColors: Record<ThreatLevel, { bg: string; text: string; badge: string }> = {
-  critical: { bg: theme.colors.error[50], text: theme.colors.error[800], badge: theme.colors.error[600] },
-  high: { bg: theme.colors.warning[50], text: theme.colors.warning[800], badge: theme.colors.warning[600] },
-  medium: { bg: theme.colors.warning[100], text: theme.colors.warning[700], badge: theme.colors.warning[500] },
-  low: { bg: theme.colors.success[50], text: theme.colors.success[800], badge: theme.colors.success[600] },
+  critical: { bg: 'var(--color-error-50)', text: 'var(--color-error-800)', badge: 'var(--color-error-600)' },
+  high: { bg: 'var(--color-warning-50)', text: 'var(--color-warning-800)', badge: 'var(--color-warning-600)' },
+  medium: { bg: 'var(--color-warning-100)', text: 'var(--color-warning-800)', badge: 'var(--color-warning-500)' },
+  low: { bg: 'var(--color-success-50)', text: 'var(--color-success-800)', badge: 'var(--color-success-600)' },
 };
 
 export function Threats() {
@@ -74,62 +76,29 @@ export function Threats() {
 
   return (
     <Layout>
-      <div>
-        {/* Header */}
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center', 
-          marginBottom: theme.spacing.xl 
-        }}>
-          <div>
-            <h1 style={{ 
-              ...theme.typography.h1,
-              fontSize: theme.typography.fontSize['3xl'],
-              marginBottom: theme.spacing.sm,
-            }}>
-              Threat Intelligence
-            </h1>
-            <p style={{ 
-              ...theme.typography.body,
-              color: theme.colors.text.secondary,
-            }}>
-              IP reputation tracking and attack pattern detection
-            </p>
-          </div>
-          <Button variant="primary" onClick={fetchData} isLoading={loading}>
-            Refresh
-          </Button>
-        </div>
+      <div className="page">
+        <SectionHeader
+          title="Threat Intelligence"
+          subtitle="IP reputation tracking and attack pattern detection"
+          actions={(
+            <Button variant="primary" onClick={fetchData} isLoading={loading}>
+              Refresh
+            </Button>
+          )}
+        />
 
         {loading && !error && (
-          <div style={{ 
-            textAlign: 'center', 
-            padding: theme.spacing['2xl'], 
-            color: theme.colors.text.tertiary 
-          }}>
-            Loading threat intelligence...
-          </div>
+          <div className="loading-state">Loading threat intelligence...</div>
         )}
 
         {error && (
-          <div style={{
-            backgroundColor: theme.colors.error[50],
-            color: theme.colors.error[800],
-            padding: theme.spacing.md,
-            borderRadius: theme.borderRadius.lg,
-            marginBottom: theme.spacing.lg,
-            borderLeft: `4px solid ${theme.colors.error[500]}`,
-            boxShadow: theme.shadows.sm,
-          }}>
-            {error}
-          </div>
+          <div className="alert">{error}</div>
         )}
 
         {!loading && !error && statistics && (
           <>
             {/* Statistics Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '30px' }}>
+            <div className="grid grid--metrics">
               <MetricCard
                 title="Total Threats"
                 value={statistics.totalThreats}
@@ -164,52 +133,37 @@ export function Threats() {
 
             {/* Attack Patterns */}
             {patterns.length > 0 && (
-              <section style={{ marginBottom: '30px' }}>
-                <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '15px' }}>
-                  Active Attack Patterns
-                </h2>
-                <div style={{ display: 'grid', gap: '15px' }}>
+              <section className="section-block">
+                <SectionHeader title="Active Attack Patterns" />
+                <div className="stack">
                   {patterns.map((pattern, index) => {
                     const colors = threatLevelColors[pattern.severity];
                     return (
-                      <div
+                      <Card
                         key={index}
-                        style={{
-                          backgroundColor: 'white',
-                          padding: '20px',
-                          borderRadius: '8px',
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                          borderLeft: `4px solid ${colors.badge}`,
-                        }}
+                        className="threat-pattern"
+                        style={{ '--pattern-accent': colors.badge } as CSSProperties}
                       >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '12px' }}>
-                          <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                              <h3 style={{ fontSize: '16px', fontWeight: '600' }}>
-                                {pattern.type.replace(/_/g, ' ').toUpperCase()}
-                              </h3>
-                              <span style={{
-                                padding: '4px 8px',
-                                backgroundColor: colors.bg,
-                                color: colors.text,
-                                fontSize: '12px',
-                                borderRadius: '4px',
-                                fontWeight: '600',
-                              }}>
-                                {pattern.severity.toUpperCase()}
-                              </span>
-                            </div>
-                            <p style={{ color: '#64748b', fontSize: '14px' }}>
-                              {pattern.description}
-                            </p>
+                        <div className="threat-pattern__header">
+                          <div className="threat-pattern__title-row">
+                            <h3 className="threat-pattern__title">
+                              {pattern.type.replace(/_/g, ' ').toUpperCase()}
+                            </h3>
+                            <Badge
+                              tone="custom"
+                              style={{ '--badge-bg': colors.bg, '--badge-color': colors.text } as CSSProperties}
+                            >
+                              {pattern.severity.toUpperCase()}
+                            </Badge>
                           </div>
+                          <p className="threat-pattern__description">{pattern.description}</p>
                         </div>
-                        <div style={{ display: 'flex', gap: '20px', fontSize: '14px', color: '#64748b' }}>
+                        <div className="threat-pattern__meta">
                           <span><strong>{pattern.ipAddresses.length}</strong> IP addresses</span>
                           <span><strong>{pattern.eventCount}</strong> events</span>
                           <span>Last <strong>{Math.round(pattern.timeWindow / 60000)}min</strong></span>
                         </div>
-                      </div>
+                      </Card>
                     );
                   })}
                 </div>
@@ -217,95 +171,55 @@ export function Threats() {
             )}
 
             {/* Top Threats */}
-            <section style={{ marginBottom: '30px' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '15px' }}>
-                Top Threats (by Score)
-              </h2>
+            <section className="section-block">
+              <SectionHeader title="Top Threats (by Score)" />
               {threats.length === 0 ? (
-                <div style={{
-                  backgroundColor: 'white',
-                  padding: '40px',
-                  borderRadius: '8px',
-                  textAlign: 'center',
-                  color: '#94a3b8',
-                }}>
-                  No threats detected
-                </div>
+                <Card className="empty-state">No threats detected</Card>
               ) : (
-                <div style={{ display: 'grid', gap: '15px' }}>
+                <div className="stack">
                   {threats.map((threat) => {
                     const colors = threatLevelColors[threat.threatLevel];
                     return (
-                      <div
+                      <Card
                         key={threat.ip}
-                        style={{
-                          backgroundColor: 'white',
-                          padding: '20px',
-                          borderRadius: '8px',
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                          border: threat.isBlocked ? '2px solid #ef4444' : '1px solid #e2e8f0',
-                        }}
+                        className={['threat-card', threat.isBlocked ? 'threat-card--blocked' : ''].join(' ')}
+                        style={{ '--threat-accent': colors.badge } as CSSProperties}
                       >
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '20px', alignItems: 'start' }}>
+                        <div className="threat-card__layout">
                           <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-                              <h3 style={{ fontSize: '18px', fontWeight: '600', fontFamily: 'monospace' }}>
-                                {threat.ip}
-                              </h3>
+                            <div className="threat-card__header">
+                              <h3 className="threat-card__ip">{threat.ip}</h3>
                               {threat.isBlocked && (
-                                <span style={{
-                                  padding: '4px 8px',
-                                  backgroundColor: '#fee2e2',
-                                  color: '#991b1b',
-                                  fontSize: '12px',
-                                  borderRadius: '4px',
-                                  fontWeight: '600',
-                                }}>
-                                  🚫 BLOCKED
-                                </span>
+                                <Badge tone="danger">🚫 BLOCKED</Badge>
                               )}
-                              <span style={{
-                                padding: '4px 8px',
-                                backgroundColor: colors.bg,
-                                color: colors.text,
-                                fontSize: '12px',
-                                borderRadius: '4px',
-                                fontWeight: '600',
-                              }}>
+                              <Badge
+                                tone="custom"
+                                style={{ '--badge-bg': colors.bg, '--badge-color': colors.text } as CSSProperties}
+                              >
                                 {threat.threatLevel.toUpperCase()}
-                              </span>
+                              </Badge>
                             </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '15px' }}>
+                            <div className="threat-card__stats">
                               <div>
-                                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
-                                  Threat Score
-                                </div>
-                                <div style={{ fontSize: '24px', fontWeight: 'bold', color: colors.badge }}>
+                                <div className="stat-caption">Threat Score</div>
+                                <div className="threat-card__score" style={{ color: colors.badge }}>
                                   {threat.threatScore}/100
                                 </div>
                                 {threat.abuseScore !== undefined && (
-                                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
-                                    AbuseIPDB: {threat.abuseScore}%
-                                  </div>
+                                  <div className="stat-caption">AbuseIPDB: {threat.abuseScore}%</div>
                                 )}
                               </div>
 
                               <div>
-                                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
-                                  Total Events
-                                </div>
-                                <div style={{ fontSize: '18px', fontWeight: '600' }}>
-                                  {threat.totalEvents}
-                                </div>
+                                <div className="stat-caption">Total Events</div>
+                                <div className="stat-value">{threat.totalEvents}</div>
                               </div>
 
                               {threat.geo && (
                                 <div>
-                                  <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
-                                    Location
-                                  </div>
-                                  <div style={{ fontSize: '14px', fontWeight: '500' }}>
+                                  <div className="stat-caption">Location</div>
+                                  <div className="threat-card__location">
                                     {threat.geo.city && `${threat.geo.city}, `}
                                     {threat.geo.country || 'Unknown'}
                                   </div>
@@ -313,10 +227,8 @@ export function Threats() {
                               )}
 
                               <div>
-                                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
-                                  First/Last Seen
-                                </div>
-                                <div style={{ fontSize: '12px' }}>
+                                <div className="stat-caption">First/Last Seen</div>
+                                <div className="threat-card__times">
                                   {format(new Date(threat.firstSeen), 'MMM dd, HH:mm')}
                                   <br />
                                   {format(new Date(threat.lastSeen), 'MMM dd, HH:mm')}
@@ -324,73 +236,47 @@ export function Threats() {
                               </div>
                             </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
-                              <div style={{ padding: '8px', backgroundColor: '#f1f5f9', borderRadius: '4px', textAlign: 'center' }}>
-                                <div style={{ fontSize: '11px', color: '#64748b' }}>Failed Logins</div>
-                                <div style={{ fontSize: '16px', fontWeight: '600', color: '#ef4444' }}>
+                            <div className="threat-card__event-grid">
+                              <div className="threat-event">
+                                <div className="stat-caption">Failed Logins</div>
+                                <div className="threat-event__value threat-event__value--error">
                                   {threat.eventTypes.failedLogins}
                                 </div>
                               </div>
-                              <div style={{ padding: '8px', backgroundColor: '#f1f5f9', borderRadius: '4px', textAlign: 'center' }}>
-                                <div style={{ fontSize: '11px', color: '#64748b' }}>Rate Limits</div>
-                                <div style={{ fontSize: '16px', fontWeight: '600', color: '#f59e0b' }}>
+                              <div className="threat-event">
+                                <div className="stat-caption">Rate Limits</div>
+                                <div className="threat-event__value threat-event__value--warning">
                                   {threat.eventTypes.rateLimitViolations}
                                 </div>
                               </div>
-                              <div style={{ padding: '8px', backgroundColor: '#f1f5f9', borderRadius: '4px', textAlign: 'center' }}>
-                                <div style={{ fontSize: '11px', color: '#64748b' }}>Suspicious</div>
-                                <div style={{ fontSize: '16px', fontWeight: '600', color: '#dc2626' }}>
+                              <div className="threat-event">
+                                <div className="stat-caption">Suspicious</div>
+                                <div className="threat-event__value threat-event__value--critical">
                                   {threat.eventTypes.suspiciousActivity}
                                 </div>
                               </div>
-                              <div style={{ padding: '8px', backgroundColor: '#f1f5f9', borderRadius: '4px', textAlign: 'center' }}>
-                                <div style={{ fontSize: '11px', color: '#64748b' }}>Lockouts</div>
-                                <div style={{ fontSize: '16px', fontWeight: '600', color: '#991b1b' }}>
+                              <div className="threat-event">
+                                <div className="stat-caption">Lockouts</div>
+                                <div className="threat-event__value threat-event__value--danger">
                                   {threat.eventTypes.accountLockouts}
                                 </div>
                               </div>
                             </div>
                           </div>
 
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <div className="threat-card__actions">
                             {threat.isBlocked ? (
-                              <button
-                                onClick={() => handleUnblockIP(threat.ip)}
-                                style={{
-                                  backgroundColor: '#22c55e',
-                                  color: 'white',
-                                  padding: '10px 16px',
-                                  border: 'none',
-                                  borderRadius: '6px',
-                                  cursor: 'pointer',
-                                  fontSize: '14px',
-                                  fontWeight: '500',
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
+                              <Button variant="success" onClick={() => handleUnblockIP(threat.ip)}>
                                 Unblock IP
-                              </button>
+                              </Button>
                             ) : (
-                              <button
-                                onClick={() => handleBlockIP(threat.ip)}
-                                style={{
-                                  backgroundColor: '#ef4444',
-                                  color: 'white',
-                                  padding: '10px 16px',
-                                  border: 'none',
-                                  borderRadius: '6px',
-                                  cursor: 'pointer',
-                                  fontSize: '14px',
-                                  fontWeight: '500',
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
+                              <Button variant="danger" onClick={() => handleBlockIP(threat.ip)}>
                                 Block IP
-                              </button>
+                              </Button>
                             )}
                           </div>
                         </div>
-                      </div>
+                      </Card>
                     );
                   })}
                 </div>
@@ -399,62 +285,21 @@ export function Threats() {
 
             {/* Top Countries */}
             {statistics.topCountries.length > 0 && (
-              <section>
-                <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '15px' }}>
-                  Threats by Country
-                </h2>
-                <div style={{
-                  backgroundColor: 'white',
-                  padding: '20px',
-                  borderRadius: '8px',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                }}>
-                  <div style={{ display: 'grid', gap: '12px' }}>
+              <section className="section-block">
+                <SectionHeader title="Threats by Country" />
+                <Card>
+                  <div className="country-list">
                     {statistics.topCountries.map((country, index) => (
-                      <div
-                        key={country.country}
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          padding: '10px',
-                          backgroundColor: '#f8fafc',
-                          borderRadius: '6px',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <span style={{
-                            width: '24px',
-                            height: '24px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            backgroundColor: '#3b82f6',
-                            color: 'white',
-                            borderRadius: '50%',
-                            fontSize: '12px',
-                            fontWeight: 'bold',
-                          }}>
-                            {index + 1}
-                          </span>
-                          <span style={{ fontSize: '16px', fontWeight: '600' }}>
-                            {country.country}
-                          </span>
+                      <div key={country.country} className="country-item">
+                        <div className="inline-row">
+                          <span className="rank-pill">{index + 1}</span>
+                          <span className="country-name">{country.country}</span>
                         </div>
-                        <span style={{
-                          padding: '4px 12px',
-                          backgroundColor: '#dbeafe',
-                          color: '#1e40af',
-                          fontSize: '14px',
-                          borderRadius: '12px',
-                          fontWeight: '600',
-                        }}>
-                          {country.count} threats
-                        </span>
+                        <Badge tone="primary">{country.count} threats</Badge>
                       </div>
                     ))}
                   </div>
-                </div>
+                </Card>
               </section>
             )}
           </>

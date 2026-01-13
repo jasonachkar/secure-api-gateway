@@ -3,26 +3,30 @@
  * Manage security incidents, track response times, and generate reports
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type CSSProperties } from 'react';
 import { Layout } from '../components/Layout';
 import { MetricCard } from '../components/MetricCard';
+import { Button } from '../components/Button';
+import { Badge } from '../components/Badge';
+import { Card } from '../components/Card';
+import { SectionHeader } from '../components/SectionHeader';
 import { adminApi } from '../api/admin';
 import type { Incident, IncidentStatistics, IncidentStatus, IncidentSeverity, IncidentType } from '../types';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 
 const severityColors: Record<IncidentSeverity, { bg: string; text: string; badge: string }> = {
-  critical: { bg: '#fee2e2', text: '#991b1b', badge: '#dc2626' },
-  high: { bg: '#fed7aa', text: '#9a3412', badge: '#ea580c' },
-  medium: { bg: '#fef3c7', text: '#92400e', badge: '#f59e0b' },
-  low: { bg: '#d1fae5', text: '#065f46', badge: '#10b981' },
+  critical: { bg: 'var(--color-error-100)', text: 'var(--color-error-800)', badge: 'var(--color-error-600)' },
+  high: { bg: 'var(--color-warning-100)', text: 'var(--color-warning-800)', badge: 'var(--color-warning-600)' },
+  medium: { bg: 'var(--color-warning-100)', text: 'var(--color-warning-800)', badge: 'var(--color-warning-500)' },
+  low: { bg: 'var(--color-success-100)', text: 'var(--color-success-800)', badge: 'var(--color-success-600)' },
 };
 
 const statusColors: Record<IncidentStatus, { bg: string; text: string }> = {
-  open: { bg: '#dbeafe', text: '#1e40af' },
-  investigating: { bg: '#fef3c7', text: '#92400e' },
-  contained: { bg: '#fde68a', text: '#78350f' },
-  resolved: { bg: '#d1fae5', text: '#065f46' },
-  closed: { bg: '#e5e7eb', text: '#374151' },
+  open: { bg: 'var(--color-primary-100)', text: 'var(--color-primary-800)' },
+  investigating: { bg: 'var(--color-warning-100)', text: 'var(--color-warning-800)' },
+  contained: { bg: 'var(--color-warning-100)', text: 'var(--color-warning-800)' },
+  resolved: { bg: 'var(--color-success-100)', text: 'var(--color-success-800)' },
+  closed: { bg: 'var(--color-neutral-200)', text: 'var(--color-neutral-700)' },
 };
 
 export function Incidents() {
@@ -113,73 +117,34 @@ export function Incidents() {
 
   return (
     <Layout>
-      <div>
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-          <div>
-            <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '10px' }}>
-              Incident Response
-            </h1>
-            <p style={{ color: '#64748b' }}>
-              Track and manage security incidents with response time metrics
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              style={{
-                backgroundColor: '#3b82f6',
-                color: 'white',
-                padding: '10px 16px',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '500',
-              }}
-            >
-              + New Incident
-            </button>
-            <button
-              onClick={fetchData}
-              style={{
-                backgroundColor: '#f1f5f9',
-                color: '#475569',
-                padding: '10px 16px',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '500',
-              }}
-            >
-              Refresh
-            </button>
-          </div>
-        </div>
+      <div className="page">
+        <SectionHeader
+          title="Incident Response"
+          subtitle="Track and manage security incidents with response time metrics"
+          actions={(
+            <div className="section-actions">
+              <Button variant="primary" onClick={() => setShowCreateModal(true)}>
+                + New Incident
+              </Button>
+              <Button variant="secondary" onClick={fetchData}>
+                Refresh
+              </Button>
+            </div>
+          )}
+        />
 
         {loading && (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
-            Loading incidents...
-          </div>
+          <div className="loading-state">Loading incidents...</div>
         )}
 
         {error && (
-          <div style={{
-            backgroundColor: '#fee2e2',
-            color: '#991b1b',
-            padding: '16px',
-            borderRadius: '8px',
-            marginBottom: '20px',
-          }}>
-            {error}
-          </div>
+          <div className="alert">{error}</div>
         )}
 
         {!loading && !error && statistics && (
           <>
             {/* Statistics Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '30px' }}>
+            <div className="grid grid--metrics">
               <MetricCard
                 title="Total Incidents"
                 value={statistics.totalIncidents}
@@ -213,16 +178,11 @@ export function Incidents() {
             </div>
 
             {/* Filters */}
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+            <div className="filters">
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value as IncidentStatus | 'all')}
-                style={{
-                  padding: '8px 12px',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                }}
+                className="form-select"
               >
                 <option value="all">All Statuses</option>
                 <option value="open">Open</option>
@@ -234,12 +194,7 @@ export function Incidents() {
               <select
                 value={filterSeverity}
                 onChange={(e) => setFilterSeverity(e.target.value as IncidentSeverity | 'all')}
-                style={{
-                  padding: '8px 12px',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                }}
+                className="form-select"
               >
                 <option value="all">All Severities</option>
                 <option value="critical">Critical</option>
@@ -250,65 +205,41 @@ export function Incidents() {
             </div>
 
             {/* Incidents List */}
-            <div style={{ display: 'grid', gap: '15px', marginBottom: '30px' }}>
+            <div className="stack incidents-list">
               {incidents.length === 0 ? (
-                <div style={{
-                  backgroundColor: 'white',
-                  padding: '40px',
-                  borderRadius: '8px',
-                  textAlign: 'center',
-                  color: '#94a3b8',
-                }}>
-                  No incidents found
-                </div>
+                <Card className="empty-state">No incidents found</Card>
               ) : (
                 incidents.map((incident) => {
                   const sevColors = severityColors[incident.severity];
                   const statColors = statusColors[incident.status];
                   return (
-                    <div
+                    <Card
                       key={incident.id}
-                      style={{
-                        backgroundColor: 'white',
-                        padding: '20px',
-                        borderRadius: '8px',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                        borderLeft: `4px solid ${sevColors.badge}`,
-                        cursor: 'pointer',
-                      }}
+                      className="incident-card"
+                      style={{ '--incident-accent': sevColors.badge } as CSSProperties}
                       onClick={() => setSelectedIncident(incident)}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-                            <h3 style={{ fontSize: '18px', fontWeight: '600' }}>
-                              {incident.title}
-                            </h3>
-                            <span style={{
-                              padding: '4px 8px',
-                              backgroundColor: sevColors.bg,
-                              color: sevColors.text,
-                              fontSize: '12px',
-                              borderRadius: '4px',
-                              fontWeight: '600',
-                            }}>
+                      <div className="incident-card__header">
+                        <div className="incident-card__content">
+                          <div className="incident-card__title-row">
+                            <h3 className="incident-card__title">{incident.title}</h3>
+                            <Badge
+                              tone="custom"
+                              style={{ '--badge-bg': sevColors.bg, '--badge-color': sevColors.text } as CSSProperties}
+                            >
                               {incident.severity.toUpperCase()}
-                            </span>
-                            <span style={{
-                              padding: '4px 8px',
-                              backgroundColor: statColors.bg,
-                              color: statColors.text,
-                              fontSize: '12px',
-                              borderRadius: '4px',
-                              fontWeight: '600',
-                            }}>
+                            </Badge>
+                            <Badge
+                              tone="custom"
+                              style={{ '--badge-bg': statColors.bg, '--badge-color': statColors.text } as CSSProperties}
+                            >
                               {incident.status.toUpperCase()}
-                            </span>
+                            </Badge>
                           </div>
-                          <p style={{ color: '#64748b', marginBottom: '12px', fontSize: '14px' }}>
+                          <p className="incident-card__description">
                             {incident.description.substring(0, 150)}...
                           </p>
-                          <div style={{ display: 'flex', gap: '20px', fontSize: '12px', color: '#64748b' }}>
+                          <div className="incident-card__meta">
                             <span>Type: <strong>{incident.type.replace(/_/g, ' ')}</strong></span>
                             <span>Reported: <strong>{format(new Date(incident.createdAt), 'MMM dd, yyyy HH:mm')}</strong></span>
                             {incident.assignedTo && <span>Assigned: <strong>{incident.assignedTo}</strong></span>}
@@ -316,28 +247,19 @@ export function Incidents() {
                             {incident.resolutionTime && <span>Resolution: <strong>{formatDuration(incident.resolutionTime)}</strong></span>}
                           </div>
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          <button
+                        <div className="incident-card__actions">
+                          <Button
+                            size="sm"
                             onClick={(e) => {
                               e.stopPropagation();
                               setSelectedIncident(incident);
                             }}
-                            style={{
-                              backgroundColor: '#3b82f6',
-                              color: 'white',
-                              padding: '8px 12px',
-                              border: 'none',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                              fontSize: '12px',
-                              fontWeight: '500',
-                            }}
                           >
                             View Details
-                          </button>
+                          </Button>
                         </div>
                       </div>
-                    </div>
+                    </Card>
                   );
                 })
               )}
@@ -347,213 +269,129 @@ export function Incidents() {
 
         {/* Incident Detail Modal */}
         {selectedIncident && (
-          <div
-            style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: 'rgba(0,0,0,0.5)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 1000,
-              padding: '20px',
-            }}
-            onClick={() => setSelectedIncident(null)}
-          >
-            <div
-              style={{
-                backgroundColor: 'white',
-                borderRadius: '8px',
-                padding: '30px',
-                maxWidth: '800px',
-                width: '100%',
-                maxHeight: '90vh',
-                overflow: 'auto',
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '20px' }}>
+          <div className="modal-backdrop" onClick={() => setSelectedIncident(null)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
                 <div>
-                  <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '10px' }}>
-                    {selectedIncident.title}
-                  </h2>
-                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                    <span style={{
-                      padding: '4px 8px',
-                      backgroundColor: severityColors[selectedIncident.severity].bg,
-                      color: severityColors[selectedIncident.severity].text,
-                      fontSize: '12px',
-                      borderRadius: '4px',
-                      fontWeight: '600',
-                    }}>
+                  <h2 className="modal-title">{selectedIncident.title}</h2>
+                  <div className="inline-row">
+                    <Badge
+                      tone="custom"
+                      style={{
+                        '--badge-bg': severityColors[selectedIncident.severity].bg,
+                        '--badge-color': severityColors[selectedIncident.severity].text,
+                      } as CSSProperties}
+                    >
                       {selectedIncident.severity.toUpperCase()}
-                    </span>
-                    <span style={{
-                      padding: '4px 8px',
-                      backgroundColor: statusColors[selectedIncident.status].bg,
-                      color: statusColors[selectedIncident.status].text,
-                      fontSize: '12px',
-                      borderRadius: '4px',
-                      fontWeight: '600',
-                    }}>
+                    </Badge>
+                    <Badge
+                      tone="custom"
+                      style={{
+                        '--badge-bg': statusColors[selectedIncident.status].bg,
+                        '--badge-color': statusColors[selectedIncident.status].text,
+                      } as CSSProperties}
+                    >
                       {selectedIncident.status.toUpperCase()}
-                    </span>
+                    </Badge>
                   </div>
                 </div>
-                <button
-                  onClick={() => setSelectedIncident(null)}
-                  style={{
-                    backgroundColor: '#f1f5f9',
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '8px 12px',
-                    cursor: 'pointer',
-                    fontSize: '18px',
-                  }}
-                >
+                <Button variant="ghost" size="sm" onClick={() => setSelectedIncident(null)}>
                   ×
-                </button>
+                </Button>
               </div>
 
-              <div style={{ marginBottom: '20px' }}>
-                <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '8px' }}>Description</h3>
-                <p style={{ color: '#64748b', whiteSpace: 'pre-wrap' }}>{selectedIncident.description}</p>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '15px', marginBottom: '20px' }}>
+              <div className="stack">
                 <div>
-                  <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Type</div>
-                  <div style={{ fontWeight: '600' }}>{selectedIncident.type.replace(/_/g, ' ')}</div>
+                  <h3 className="subsection-title">Description</h3>
+                  <p className="subsection-body">{selectedIncident.description}</p>
                 </div>
-                <div>
-                  <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Reported By</div>
-                  <div style={{ fontWeight: '600' }}>{selectedIncident.reportedBy}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Created</div>
-                  <div style={{ fontWeight: '600' }}>{format(new Date(selectedIncident.createdAt), 'MMM dd, yyyy HH:mm:ss')}</div>
-                </div>
-                {selectedIncident.assignedTo && (
-                  <div>
-                    <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Assigned To</div>
-                    <div style={{ fontWeight: '600' }}>{selectedIncident.assignedTo}</div>
-                  </div>
-                )}
-                {selectedIncident.responseTime && (
-                  <div>
-                    <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Response Time</div>
-                    <div style={{ fontWeight: '600' }}>{formatDuration(selectedIncident.responseTime)}</div>
-                  </div>
-                )}
-                {selectedIncident.resolutionTime && (
-                  <div>
-                    <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Resolution Time</div>
-                    <div style={{ fontWeight: '600' }}>{formatDuration(selectedIncident.resolutionTime)}</div>
-                  </div>
-                )}
-              </div>
 
-              {selectedIncident.affectedIPs.length > 0 && (
-                <div style={{ marginBottom: '20px' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '8px' }}>Affected IPs</h3>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                    {selectedIncident.affectedIPs.map((ip) => (
-                      <span
-                        key={ip}
-                        style={{
-                          padding: '4px 8px',
-                          backgroundColor: '#f1f5f9',
-                          borderRadius: '4px',
-                          fontSize: '12px',
-                          fontFamily: 'monospace',
-                        }}
-                      >
-                        {ip}
-                      </span>
-                    ))}
+                <div className="metadata-list">
+                  <div>
+                    <div className="metadata-label">Type</div>
+                    <div className="metadata-value">{selectedIncident.type.replace(/_/g, ' ')}</div>
                   </div>
-                </div>
-              )}
-
-              <div style={{ marginBottom: '20px' }}>
-                <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>Notes</h3>
-                <div style={{ maxHeight: '200px', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {selectedIncident.notes.length === 0 ? (
-                    <div style={{ color: '#94a3b8', fontSize: '14px' }}>No notes yet</div>
-                  ) : (
-                    selectedIncident.notes.map((note, idx) => (
-                      <div
-                        key={idx}
-                        style={{
-                          padding: '12px',
-                          backgroundColor: '#f8fafc',
-                          borderRadius: '6px',
-                          fontSize: '14px',
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                          <span style={{ fontWeight: '600' }}>{note.author}</span>
-                          <span style={{ color: '#64748b', fontSize: '12px' }}>
-                            {format(new Date(note.timestamp), 'MMM dd, HH:mm')}
-                          </span>
-                        </div>
-                        <div style={{ color: '#475569' }}>{note.content}</div>
-                      </div>
-                    ))
+                  <div>
+                    <div className="metadata-label">Reported By</div>
+                    <div className="metadata-value">{selectedIncident.reportedBy}</div>
+                  </div>
+                  <div>
+                    <div className="metadata-label">Created</div>
+                    <div className="metadata-value">{format(new Date(selectedIncident.createdAt), 'MMM dd, yyyy HH:mm:ss')}</div>
+                  </div>
+                  {selectedIncident.assignedTo && (
+                    <div>
+                      <div className="metadata-label">Assigned To</div>
+                      <div className="metadata-value">{selectedIncident.assignedTo}</div>
+                    </div>
+                  )}
+                  {selectedIncident.responseTime && (
+                    <div>
+                      <div className="metadata-label">Response Time</div>
+                      <div className="metadata-value">{formatDuration(selectedIncident.responseTime)}</div>
+                    </div>
+                  )}
+                  {selectedIncident.resolutionTime && (
+                    <div>
+                      <div className="metadata-label">Resolution Time</div>
+                      <div className="metadata-value">{formatDuration(selectedIncident.resolutionTime)}</div>
+                    </div>
                   )}
                 </div>
-              </div>
 
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <select
-                  value={selectedIncident.status}
-                  onChange={(e) => handleStatusChange(selectedIncident.id, e.target.value as IncidentStatus)}
-                  style={{
-                    padding: '8px 12px',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                  }}
-                >
-                  <option value="open">Open</option>
-                  <option value="investigating">Investigating</option>
-                  <option value="contained">Contained</option>
-                  <option value="resolved">Resolved</option>
-                  <option value="closed">Closed</option>
-                </select>
-                <button
-                  onClick={() => handleAssign(selectedIncident.id)}
-                  style={{
-                    backgroundColor: '#f1f5f9',
-                    color: '#475569',
-                    padding: '8px 16px',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                  }}
-                >
-                  Assign
-                </button>
-                <button
-                  onClick={() => handleAddNote(selectedIncident.id)}
-                  style={{
-                    backgroundColor: '#3b82f6',
-                    color: 'white',
-                    padding: '8px 16px',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                  }}
-                >
-                  Add Note
-                </button>
+                {selectedIncident.affectedIPs.length > 0 && (
+                  <div>
+                    <h3 className="subsection-title">Affected IPs</h3>
+                    <div className="inline-row inline-row--wrap">
+                      {selectedIncident.affectedIPs.map((ip) => (
+                        <span key={ip} className="pill">
+                          {ip}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <h3 className="subsection-title">Notes</h3>
+                  <div className="notes-list">
+                    {selectedIncident.notes.length === 0 ? (
+                      <div className="empty-text">No notes yet</div>
+                    ) : (
+                      selectedIncident.notes.map((note, idx) => (
+                        <div key={idx} className="note-card">
+                          <div className="note-card__meta">
+                            <span className="note-card__author">{note.author}</span>
+                            <span className="note-card__timestamp">
+                              {format(new Date(note.timestamp), 'MMM dd, HH:mm')}
+                            </span>
+                          </div>
+                          <div className="note-card__content">{note.content}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="inline-row inline-row--wrap">
+                  <select
+                    value={selectedIncident.status}
+                    onChange={(e) => handleStatusChange(selectedIncident.id, e.target.value as IncidentStatus)}
+                    className="form-select"
+                  >
+                    <option value="open">Open</option>
+                    <option value="investigating">Investigating</option>
+                    <option value="contained">Contained</option>
+                    <option value="resolved">Resolved</option>
+                    <option value="closed">Closed</option>
+                  </select>
+                  <Button variant="secondary" onClick={() => handleAssign(selectedIncident.id)}>
+                    Assign
+                  </Button>
+                  <Button variant="primary" onClick={() => handleAddNote(selectedIncident.id)}>
+                    Add Note
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
@@ -561,32 +399,9 @@ export function Incidents() {
 
         {/* Create Incident Modal */}
         {showCreateModal && (
-          <div
-            style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: 'rgba(0,0,0,0.5)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 1000,
-            }}
-            onClick={() => setShowCreateModal(false)}
-          >
-            <div
-              style={{
-                backgroundColor: 'white',
-                borderRadius: '8px',
-                padding: '30px',
-                maxWidth: '600px',
-                width: '100%',
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '20px' }}>Create New Incident</h2>
+          <div className="modal-backdrop" onClick={() => setShowCreateModal(false)}>
+            <div className="modal modal--sm" onClick={(e) => e.stopPropagation()}>
+              <h2 className="subsection-title">Create New Incident</h2>
               <CreateIncidentForm
                 onSuccess={() => {
                   setShowCreateModal(false);
@@ -629,59 +444,34 @@ function CreateIncidentForm({ onSuccess, onCancel }: { onSuccess: () => void; on
 
   return (
     <form onSubmit={handleSubmit}>
-      <div style={{ marginBottom: '15px' }}>
-        <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>
-          Title *
-        </label>
+      <div className="form-field">
+        <label className="form-label">Title *</label>
         <input
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           required
-          style={{
-            width: '100%',
-            padding: '8px 12px',
-            border: '1px solid #e2e8f0',
-            borderRadius: '6px',
-            fontSize: '14px',
-          }}
+          className="form-input"
         />
       </div>
-      <div style={{ marginBottom: '15px' }}>
-        <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>
-          Description *
-        </label>
+      <div className="form-field">
+        <label className="form-label">Description *</label>
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           required
           rows={4}
-          style={{
-            width: '100%',
-            padding: '8px 12px',
-            border: '1px solid #e2e8f0',
-            borderRadius: '6px',
-            fontSize: '14px',
-            fontFamily: 'inherit',
-          }}
+          className="form-textarea"
         />
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
-        <div>
-          <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>
-            Type *
-          </label>
+      <div className="form-grid form-grid--two">
+        <div className="form-field">
+          <label className="form-label">Type *</label>
           <select
             value={type}
             onChange={(e) => setType(e.target.value as IncidentType)}
             required
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              border: '1px solid #e2e8f0',
-              borderRadius: '6px',
-              fontSize: '14px',
-            }}
+            className="form-select"
           >
             <option value="brute_force">Brute Force</option>
             <option value="credential_stuffing">Credential Stuffing</option>
@@ -695,21 +485,13 @@ function CreateIncidentForm({ onSuccess, onCancel }: { onSuccess: () => void; on
             <option value="other">Other</option>
           </select>
         </div>
-        <div>
-          <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>
-            Severity *
-          </label>
+        <div className="form-field">
+          <label className="form-label">Severity *</label>
           <select
             value={severity}
             onChange={(e) => setSeverity(e.target.value as IncidentSeverity)}
             required
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              border: '1px solid #e2e8f0',
-              borderRadius: '6px',
-              fontSize: '14px',
-            }}
+            className="form-select"
           >
             <option value="low">Low</option>
             <option value="medium">Medium</option>
@@ -718,76 +500,34 @@ function CreateIncidentForm({ onSuccess, onCancel }: { onSuccess: () => void; on
           </select>
         </div>
       </div>
-      <div style={{ marginBottom: '15px' }}>
-        <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>
-          Affected IPs (comma-separated)
-        </label>
+      <div className="form-field">
+        <label className="form-label">Affected IPs (comma-separated)</label>
         <input
           type="text"
           value={affectedIPs}
           onChange={(e) => setAffectedIPs(e.target.value)}
           placeholder="192.168.1.1, 10.0.0.1"
-          style={{
-            width: '100%',
-            padding: '8px 12px',
-            border: '1px solid #e2e8f0',
-            borderRadius: '6px',
-            fontSize: '14px',
-          }}
+          className="form-input"
         />
       </div>
-      <div style={{ marginBottom: '20px' }}>
-        <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>
-          Tags (comma-separated)
-        </label>
+      <div className="form-field">
+        <label className="form-label">Tags (comma-separated)</label>
         <input
           type="text"
           value={tags}
           onChange={(e) => setTags(e.target.value)}
           placeholder="urgent, production"
-          style={{
-            width: '100%',
-            padding: '8px 12px',
-            border: '1px solid #e2e8f0',
-            borderRadius: '6px',
-            fontSize: '14px',
-          }}
+          className="form-input"
         />
       </div>
-      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-        <button
-          type="button"
-          onClick={onCancel}
-          style={{
-            backgroundColor: '#f1f5f9',
-            color: '#475569',
-            padding: '10px 16px',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            fontWeight: '500',
-          }}
-        >
+      <div className="inline-row inline-row--end">
+        <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
-        </button>
-        <button
-          type="submit"
-          style={{
-            backgroundColor: '#3b82f6',
-            color: 'white',
-            padding: '10px 16px',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            fontWeight: '500',
-          }}
-        >
+        </Button>
+        <Button type="submit" variant="primary">
           Create Incident
-        </button>
+        </Button>
       </div>
     </form>
   );
 }
-

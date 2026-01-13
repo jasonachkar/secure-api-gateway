@@ -4,7 +4,6 @@
  */
 
 import React from 'react';
-import { theme } from '../styles/theme';
 
 interface TableProps {
   children: React.ReactNode;
@@ -14,22 +13,10 @@ interface TableProps {
 export function Table({ children, style }: TableProps) {
   return (
     <div
-      style={{
-        backgroundColor: theme.colors.background.primary,
-        borderRadius: theme.borderRadius.lg,
-        boxShadow: theme.shadows.md,
-        overflow: 'hidden',
-        ...style,
-      }}
+      className="data-table__container"
+      style={style}
     >
-      <table
-        style={{
-          width: '100%',
-          borderCollapse: 'collapse',
-        }}
-      >
-        {children}
-      </table>
+      <table className="data-table">{children}</table>
     </div>
   );
 }
@@ -41,10 +28,7 @@ interface TableHeaderProps {
 export function TableHeader({ children }: TableHeaderProps) {
   return (
     <thead
-      style={{
-        backgroundColor: theme.colors.neutral[50],
-        borderBottom: `1px solid ${theme.colors.border.light}`,
-      }}
+      className="data-table__head"
     >
       {children}
     </thead>
@@ -66,20 +50,15 @@ interface TableRowProps {
 }
 
 export function TableRow({ children, onClick, style }: TableRowProps) {
-  const [isHovered, setIsHovered] = React.useState(false);
+  const classes = ['data-table__row', onClick ? 'data-table__row--hoverable' : '']
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <tr
       onClick={onClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      style={{
-        borderBottom: `1px solid ${theme.colors.border.light}`,
-        backgroundColor: isHovered ? theme.colors.neutral[50] : 'transparent',
-        cursor: onClick ? 'pointer' : 'default',
-        transition: theme.transitions.fast,
-        ...style,
-      }}
+      className={classes}
+      style={style}
     >
       {children}
     </tr>
@@ -94,16 +73,8 @@ interface TableHeaderCellProps {
 export function TableHeaderCell({ children, style }: TableHeaderCellProps) {
   return (
     <th
-      style={{
-        padding: theme.spacing.md,
-        textAlign: 'left',
-        fontSize: theme.typography.fontSize.sm,
-        fontWeight: theme.typography.fontWeight.semibold,
-        color: theme.colors.text.secondary,
-        textTransform: 'uppercase',
-        letterSpacing: '0.05em',
-        ...style,
-      }}
+      className="data-table__header-cell"
+      style={style}
     >
       {children}
     </th>
@@ -118,16 +89,11 @@ interface TableCellProps {
 export function TableCell({ children, style }: TableCellProps) {
   return (
     <td
-      style={{
-        padding: theme.spacing.md,
-        fontSize: theme.typography.fontSize.base,
-        color: theme.colors.text.primary,
-        ...style,
-      }}
+      className="data-table__cell"
+      style={style}
     >
       {children}
     </td>
   );
 }
-
 

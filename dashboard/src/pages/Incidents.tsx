@@ -34,6 +34,8 @@ export function Incidents() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState<IncidentStatus | 'all'>('all');
   const [filterSeverity, setFilterSeverity] = useState<IncidentSeverity | 'all'>('all');
+  const selectedAffectedIPs = selectedIncident?.affectedIPs ?? [];
+  const selectedNotes = selectedIncident?.notes ?? [];
 
   useEffect(() => {
     fetchData();
@@ -456,11 +458,11 @@ export function Incidents() {
                 )}
               </div>
 
-              {selectedIncident.affectedIPs.length > 0 && (
+              {selectedAffectedIPs.length > 0 && (
                 <div style={{ marginBottom: '20px' }}>
                   <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '8px' }}>Affected IPs</h3>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                    {selectedIncident.affectedIPs.map((ip) => (
+                    {selectedAffectedIPs.map((ip) => (
                       <span
                         key={ip}
                         style={{
@@ -481,10 +483,10 @@ export function Incidents() {
               <div style={{ marginBottom: '20px' }}>
                 <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>Notes</h3>
                 <div style={{ maxHeight: '200px', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {selectedIncident.notes.length === 0 ? (
+                  {selectedNotes.length === 0 ? (
                     <div style={{ color: '#94a3b8', fontSize: '14px' }}>No notes yet</div>
                   ) : (
-                    selectedIncident.notes.map((note, idx) => (
+                    selectedNotes.map((note, idx) => (
                       <div
                         key={idx}
                         style={{
@@ -790,4 +792,3 @@ function CreateIncidentForm({ onSuccess, onCancel }: { onSuccess: () => void; on
     </form>
   );
 }
-

@@ -30,6 +30,11 @@ export class IncidentResponseController {
       metadata: body.metadata,
     });
 
+    (request as any).adminAuditContext = {
+      action: 'incident.create',
+      incidentId: incident.id,
+    };
+
     reply.code(201).send({ incident });
   }
 
@@ -59,6 +64,11 @@ export class IncidentResponseController {
     const params = request.params as any;
     const incident = await this.incidentService.getIncident(params.id);
 
+    (request as any).adminAuditContext = {
+      action: 'incident.view',
+      incidentId: params.id,
+    };
+
     if (!incident) {
       return reply.code(404).send({ error: 'Incident not found' });
     }
@@ -74,6 +84,11 @@ export class IncidentResponseController {
     const user = (request as any).user;
     const params = request.params as any;
     const body = request.body as any;
+
+    (request as any).adminAuditContext = {
+      action: 'incident.update_status',
+      incidentId: params.id,
+    };
 
     const incident = await this.incidentService.updateIncidentStatus(
       params.id,
@@ -97,6 +112,11 @@ export class IncidentResponseController {
     const params = request.params as any;
     const body = request.body as any;
 
+    (request as any).adminAuditContext = {
+      action: 'incident.assign',
+      incidentId: params.id,
+    };
+
     const incident = await this.incidentService.assignIncident(
       params.id,
       body.assignedTo,
@@ -118,6 +138,11 @@ export class IncidentResponseController {
     const user = (request as any).user;
     const params = request.params as any;
     const body = request.body as any;
+
+    (request as any).adminAuditContext = {
+      action: 'incident.add_note',
+      incidentId: params.id,
+    };
 
     const incident = await this.incidentService.addNote(
       params.id,
@@ -141,6 +166,11 @@ export class IncidentResponseController {
     const params = request.params as any;
     const body = request.body as any;
 
+    (request as any).adminAuditContext = {
+      action: 'incident.update',
+      incidentId: params.id,
+    };
+
     const incident = await this.incidentService.updateIncident(
       params.id,
       {
@@ -162,12 +192,58 @@ export class IncidentResponseController {
   }
 
   /**
+   * POST /admin/incidents/:id/playbook
+   * Run a playbook action (mocked)
+   */
+  async runPlaybookAction(request: FastifyRequest, reply: FastifyReply) {
+    const user = (request as any).user;
+    const params = request.params as any;
+    const body = request.body as any;
+
+    const incident = await this.incidentService.runPlaybookAction(
+      params.id,
+      body.action,
+      user.username,
+      body.target
+    );
+
+    if (!incident) {
+      return reply.code(404).send({ error: 'Incident not found' });
+    }
+
+    return reply.send({ incident });
+  }
+
+  /**
    * GET /admin/incidents/statistics
    * Get incident statistics
    */
   async getStatistics(request: FastifyRequest, reply: FastifyReply) {
     const statistics = await this.incidentService.getStatistics();
     reply.send({ statistics });
+  }
+
+  /**
+   * POST /admin/incidents/:id/actions
+   * Execute a playbook action (mocked)
+   */
+  async executePlaybookAction(request: FastifyRequest, reply: FastifyReply) {
+    const user = (request as any).user;
+    const params = request.params as any;
+    const body = request.body as any;
+
+    const incident = await this.incidentService.executePlaybookAction(
+      params.id,
+      body.action,
+      user.username,
+      body.target
+    );
+
+    if (!incident) {
+      return reply.code(404).send({ error: 'Incident not found' });
+    }
+
+    return reply.send({ incident });
   }
 
   /**

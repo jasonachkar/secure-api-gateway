@@ -6,6 +6,7 @@
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { format } from 'date-fns';
 import { theme } from '../styles/theme';
+import { ChartTooltip } from './ChartTooltip';
 
 interface DataPoint {
   timestamp: number;
@@ -28,39 +29,16 @@ export function ErrorRateChart({ data, title = 'Error Rate', isLoading = false }
 
   if (isLoading || chartData.length === 0) {
     return (
-      <div style={{
-        backgroundColor: theme.colors.background.primary,
-        padding: theme.spacing.lg,
-        borderRadius: theme.borderRadius.lg,
-        boxShadow: theme.shadows.md,
-        height: '380px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexDirection: 'column',
-        gap: theme.spacing.md,
-      }}>
-        <div className="skeleton" style={{ width: '200px', height: '20px', borderRadius: theme.borderRadius.sm }} />
-        <div className="skeleton" style={{ width: '100%', height: '300px', borderRadius: theme.borderRadius.md }} />
+      <div className="chart-card chart-card--loading">
+        <div className="skeleton chart-card__skeleton-title" />
+        <div className="skeleton chart-card__skeleton-body" />
       </div>
     );
   }
 
   return (
-    <div style={{
-      backgroundColor: theme.colors.background.primary,
-      padding: theme.spacing.lg,
-      borderRadius: theme.borderRadius.lg,
-      boxShadow: theme.shadows.md,
-    }}>
-      <h3 style={{ 
-        fontSize: theme.typography.fontSize.lg, 
-        fontWeight: theme.typography.fontWeight.semibold, 
-        marginBottom: theme.spacing.lg,
-        color: theme.colors.text.primary,
-      }}>
-        {title}
-      </h3>
+    <div className="chart-card">
+      <h3 className="chart-card__title">{title}</h3>
       <ResponsiveContainer width="100%" height={300}>
         <AreaChart data={chartData}>
           <defs>
@@ -77,41 +55,20 @@ export function ErrorRateChart({ data, title = 'Error Rate', isLoading = false }
           <XAxis
             dataKey="time"
             stroke={theme.colors.text.tertiary}
-            style={{ fontSize: theme.typography.fontSize.sm }}
-            tick={{ fill: theme.colors.text.tertiary }}
+            tick={{ className: 'chart-axis-tick' }}
           />
           <YAxis
             stroke={theme.colors.text.tertiary}
-            style={{ fontSize: theme.typography.fontSize.sm }}
-            tick={{ fill: theme.colors.text.tertiary }}
+            tick={{ className: 'chart-axis-tick' }}
             label={{ 
               value: 'Errors/sec', 
               angle: -90, 
               position: 'insideLeft', 
-              style: { 
-                fontSize: theme.typography.fontSize.sm,
-                fill: theme.colors.text.secondary,
-              } 
+              className: 'chart-axis-label',
             }}
           />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: theme.colors.background.primary,
-              border: `1px solid ${theme.colors.border.light}`,
-              borderRadius: theme.borderRadius.md,
-              fontSize: theme.typography.fontSize.sm,
-              color: theme.colors.text.primary,
-              boxShadow: theme.shadows.lg,
-            }}
-            labelStyle={{
-              color: theme.colors.text.secondary,
-              fontWeight: theme.typography.fontWeight.medium,
-            }}
-          />
-          <Legend
-            wrapperStyle={{ fontSize: theme.typography.fontSize.sm }}
-            iconType="square"
-          />
+          <Tooltip content={<ChartTooltip />} />
+          <Legend iconType="square" />
           <Area
             type="monotone"
             dataKey="4xx Errors"

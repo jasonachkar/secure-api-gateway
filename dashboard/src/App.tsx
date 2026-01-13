@@ -21,16 +21,8 @@ function App() {
 
   if (isLoading) {
     return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontFamily: 'system-ui, sans-serif'
-      }}>
-        <div style={{ fontSize: '18px', color: '#64748b' }}>
-          Loading...
-        </div>
+      <div className="app-loading">
+        <div className="app-loading__text">Loading...</div>
       </div>
     );
   }

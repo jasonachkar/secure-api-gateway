@@ -7,7 +7,6 @@ import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { adminApi } from '../api/admin';
 import { useAuth } from '../contexts/AuthContext';
-import { theme } from '../styles/theme';
 import { Button } from './Button';
 
 interface LayoutProps {
@@ -44,45 +43,22 @@ export function Layout({ children }: LayoutProps) {
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <div style={{ 
-      display: 'flex', 
-      minHeight: '100vh', 
-      fontFamily: theme.typography.fontFamily.sans,
-      backgroundColor: theme.colors.background.secondary,
-    }}>
+    <div className="app-shell">
       {/* Enhanced Sidebar */}
-      <aside style={{
-        width: '260px',
-        backgroundColor: theme.colors.neutral[800],
-        color: theme.colors.text.inverse,
-        padding: theme.spacing.lg,
-        display: 'flex',
-        flexDirection: 'column',
-        boxShadow: theme.shadows.lg,
-        position: 'sticky',
-        top: 0,
-        height: '100vh',
-        overflowY: 'auto',
-      }}>
-        <div style={{ 
-          marginBottom: theme.spacing['2xl'],
-          paddingBottom: theme.spacing.lg,
-          borderBottom: `1px solid ${theme.colors.neutral[700]}`,
-        }}>
-          <h1 style={{ 
-            fontSize: theme.typography.fontSize.xl, 
-            fontWeight: theme.typography.fontWeight.bold,
-            color: theme.colors.text.inverse,
-            display: 'flex',
-            alignItems: 'center',
-            gap: theme.spacing.sm,
-          }}>
-            <span>🔒</span>
-            <span>Security Dashboard</span>
-          </h1>
+      <aside className="app-shell__sidebar">
+        <div className="app-shell__sidebar-brand">
+          <div className="app-shell__title">
+            <span role="img" aria-label="lock">
+              🔒
+            </span>{' '}
+            Security Dashboard
+          </div>
+          <div className="app-shell__subtitle">
+            Enterprise security hub
+          </div>
         </div>
 
-        <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: theme.spacing.xs }}>
+        <nav className="app-shell__nav">
           {navItems.map((item) => (
             <NavLink 
               key={item.path} 
@@ -95,15 +71,12 @@ export function Layout({ children }: LayoutProps) {
           ))}
         </nav>
 
-        <div style={{ 
-          paddingTop: theme.spacing.lg,
-          borderTop: `1px solid ${theme.colors.neutral[700]}`,
-        }}>
+        <div className="app-shell__footer">
           <Button
             variant="danger"
             size="md"
             onClick={handleLogout}
-            style={{ width: '100%' }}
+            className="button-full"
           >
             Logout
           </Button>
@@ -111,15 +84,8 @@ export function Layout({ children }: LayoutProps) {
       </aside>
 
       {/* Enhanced Main Content */}
-      <main style={{ 
-        flex: 1, 
-        backgroundColor: theme.colors.background.secondary, 
-        padding: theme.spacing.xl,
-        minHeight: '100vh',
-        maxWidth: '100%',
-        overflowX: 'hidden',
-      }}>
-        <div style={{ maxWidth: '1600px', margin: '0 auto' }}>
+      <main className="app-shell__main">
+        <div className="app-shell__content">
           {children}
         </div>
       </main>
@@ -135,35 +101,17 @@ interface NavLinkProps {
 }
 
 function NavLink({ to, active, icon, children }: NavLinkProps) {
-  const [isHovered, setIsHovered] = React.useState(false);
+  const classes = [
+    'nav-link',
+    active ? 'nav-link--active' : 'nav-link--inactive',
+  ].join(' ');
 
   return (
     <Link
       to={to}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: theme.spacing.sm,
-        padding: theme.spacing.md,
-        borderRadius: theme.borderRadius.md,
-        backgroundColor: active 
-          ? theme.colors.primary[600] 
-          : isHovered 
-            ? theme.colors.neutral[700] 
-            : 'transparent',
-        color: theme.colors.text.inverse,
-        textDecoration: 'none',
-        fontSize: theme.typography.fontSize.base,
-        fontWeight: active 
-          ? theme.typography.fontWeight.semibold 
-          : theme.typography.fontWeight.normal,
-        transition: theme.transitions.normal,
-        borderLeft: active ? `3px solid ${theme.colors.primary[400]}` : '3px solid transparent',
-      }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      className={classes}
     >
-      {icon && <span style={{ fontSize: '18px' }}>{icon}</span>}
+      {icon && <span className="nav-link__icon">{icon}</span>}
       <span>{children}</span>
     </Link>
   );

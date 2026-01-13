@@ -4,13 +4,15 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { format } from 'date-fns';
 import { Layout } from '../components/Layout';
 import { Button } from '../components/Button';
 import { MetricCard } from '../components/MetricCard';
+import { Card } from '../components/Card';
+import { SectionHeader } from '../components/SectionHeader';
+import { Table, TableHeader, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/Table';
 import { adminApi } from '../api/admin';
-import { theme } from '../styles/theme';
 import type { AuditLogEntry } from '../types';
-import { format } from 'date-fns';
 
 interface AuditLogFilters {
   eventType?: string;
@@ -49,7 +51,7 @@ const DATE_PRESETS = [
 
 export function AuditLogs() {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
-  const [allLogs, setAllLogs] = useState<AuditLogEntry[]>([]); // All fetched logs for filtering
+  const [allLogs, setAllLogs] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filters, setFilters] = useState<AuditLogFilters>({
@@ -60,24 +62,23 @@ export function AuditLogs() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [autoRefresh, setAutoRefresh] = useState(false);
-  const [autoRefreshInterval, setAutoRefreshInterval] = useState(30); // seconds
+  const [autoRefreshInterval, setAutoRefreshInterval] = useState(30);
 
-  // Calculate statistics from all logs
   const stats = React.useMemo(() => {
     const total = allLogs.length;
-    const successCount = allLogs.filter(log => log.success).length;
+    const successCount = allLogs.filter((log) => log.success).length;
     const failedCount = total - successCount;
     const eventTypeCounts: Record<string, number> = {};
-    
-    allLogs.forEach(log => {
+
+    allLogs.forEach((log) => {
       eventTypeCounts[log.eventType] = (eventTypeCounts[log.eventType] || 0) + 1;
     });
 
     const topEventType = Object.entries(eventTypeCounts)
       .sort(([, a], [, b]) => b - a)[0]?.[0] || 'N/A';
 
-    const uniqueUsers = new Set(allLogs.filter(log => log.username).map(log => log.username)).size;
-    const uniqueIPs = new Set(allLogs.map(log => log.ip)).size;
+    const uniqueUsers = new Set(allLogs.filter((log) => log.username).map((log) => log.username)).size;
+    const uniqueIPs = new Set(allLogs.map((log) => log.ip)).size;
 
     return {
       total,
@@ -91,14 +92,13 @@ export function AuditLogs() {
     };
   }, [allLogs]);
 
-  // Fetch logs from API
   const fetchLogs = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
 
       const params: any = {
-        limit: 1000, // Fetch more logs for client-side filtering
+        limit: 1000,
         offset: 0,
       };
 
@@ -108,89 +108,51 @@ export function AuditLogs() {
       if (filters.endTime) params.endTime = filters.endTime;
 
       const data = await adminApi.getAuditLogs(params);
-      
-      // Apply client-side filters (username, IP, success, search)
+
       let filtered = data;
-      
+
       if (filters.username) {
-        filtered = filtered.filter(log => 
-          log.username?.toLowerCase().includes(filters.username!.toLowerCase()) ||
-          log.userId?.toLowerCase().includes(filters.username!.toLowerCase())
+        filtered = filtered.filter(
+          (log) =>
+            log.username?.toLowerCase().includes(filters.username!.toLowerCase()) ||
+            log.userId?.toLowerCase().includes(filters.username!.toLowerCase())
         );
       }
 
       if (filters.ip) {
-        filtered = filtered.filter(log => 
-          log.ip.includes(filters.ip!)
-        );
+        filtered = filtered.filter((log) => log.ip?.includes(filters.ip!));
       }
 
       if (filters.success !== undefined) {
-        filtered = filtered.filter(log => log.success === filters.success);
+        filtered = filtered.filter((log) => log.success === filters.success);
       }
 
       if (filters.search) {
-        const searchLower = filters.search.toLowerCase();
-        filtered = filtered.filter(log => 
-          log.eventType.toLowerCase().includes(searchLower) ||
-          log.username?.toLowerCase().includes(searchLower) ||
-          log.userId?.toLowerCase().includes(searchLower) ||
-          log.ip.includes(searchLower) ||
-          log.message?.toLowerCase().includes(searchLower) ||
-          log.resource?.toLowerCase().includes(searchLower)
+        const searchTerm = filters.search.toLowerCase();
+        filtered = filtered.filter(
+          (log) =>
+            log.eventType?.toLowerCase().includes(searchTerm) ||
+            log.message?.toLowerCase().includes(searchTerm) ||
+            log.username?.toLowerCase().includes(searchTerm) ||
+            log.userId?.toLowerCase().includes(searchTerm) ||
+            log.ip?.toLowerCase().includes(searchTerm) ||
+            log.requestId?.toLowerCase().includes(searchTerm)
         );
       }
 
-      // Sort
-      filtered.sort((a, b) => {
-        let aVal: any;
-        let bVal: any;
-
-        switch (sortField) {
-          case 'timestamp':
-            aVal = a.timestamp;
-            bVal = b.timestamp;
-            break;
-          case 'eventType':
-            aVal = a.eventType;
-            bVal = b.eventType;
-            break;
-          case 'username':
-            aVal = a.username || a.userId || '';
-            bVal = b.username || b.userId || '';
-            break;
-          case 'ip':
-            aVal = a.ip;
-            bVal = b.ip;
-            break;
-        }
-
-        if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-        if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-        return 0;
-      });
-
       setAllLogs(filtered);
-
-      // Apply pagination
-      const start = (filters.page - 1) * filters.pageSize;
-      const end = start + filters.pageSize;
-      setLogs(filtered.slice(start, end));
     } catch (err: any) {
       setError(err.message || 'Failed to fetch audit logs');
       setAllLogs([]);
-      setLogs([]);
     } finally {
       setLoading(false);
     }
-  }, [filters, sortField, sortDirection]);
+  }, [filters]);
 
-  // Initial fetch and when filters change
   useEffect(() => {
     fetchLogs();
   }, [fetchLogs]);
 
-  // Auto-refresh
   useEffect(() => {
     if (!autoRefresh) return;
 
@@ -201,18 +163,51 @@ export function AuditLogs() {
     return () => clearInterval(interval);
   }, [autoRefresh, autoRefreshInterval, fetchLogs]);
 
-  const handleFilterChange = (key: keyof AuditLogFilters, value: any) => {
-    setFilters(prev => ({
+  useEffect(() => {
+    const sortedLogs = [...allLogs].sort((a, b) => {
+      let aValue: any = a[sortField];
+      let bValue: any = b[sortField];
+
+      if (sortField === 'timestamp') {
+        aValue = new Date(a.timestamp).getTime();
+        bValue = new Date(b.timestamp).getTime();
+      } else {
+        aValue = String(aValue || '').toLowerCase();
+        bValue = String(bValue || '').toLowerCase();
+      }
+
+      if (sortDirection === 'asc') {
+        return aValue > bValue ? 1 : -1;
+      }
+      return aValue < bValue ? 1 : -1;
+    });
+
+    const start = (filters.page - 1) * filters.pageSize;
+    const end = start + filters.pageSize;
+    setLogs(sortedLogs.slice(start, end));
+  }, [allLogs, sortField, sortDirection, filters.page, filters.pageSize]);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection('desc');
+    }
+  };
+
+  const handleFilterChange = (field: keyof AuditLogFilters, value: any) => {
+    setFilters((prev) => ({
       ...prev,
-      [key]: value,
-      page: 1, // Reset to first page on filter change
+      [field]: value,
+      page: 1,
     }));
   };
 
   const handleDatePreset = (hours: number) => {
     const endTime = Date.now();
-    const startTime = endTime - (hours * 60 * 60 * 1000);
-    setFilters(prev => ({
+    const startTime = endTime - hours * 60 * 60 * 1000;
+    setFilters((prev) => ({
       ...prev,
       startTime,
       endTime,
@@ -227,17 +222,8 @@ export function AuditLogs() {
     });
   };
 
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDirection('desc');
-    }
-  };
-
   const toggleRowExpansion = (id: string) => {
-    setExpandedRows(prev => {
+    setExpandedRows((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
@@ -249,21 +235,22 @@ export function AuditLogs() {
   };
 
   const exportToCSV = () => {
-    const headers = ['Timestamp', 'Event Type', 'User', 'IP Address', 'Status', 'Message', 'Resource', 'Action'];
-    const rows = allLogs.map(log => [
-      new Date(log.timestamp).toISOString(),
+    const headers = ['Timestamp', 'Event Type', 'User', 'IP Address', 'Status', 'Message', 'Request ID', 'Resource', 'Action'];
+    const rows = allLogs.map((log) => [
+      format(new Date(log.timestamp), 'yyyy-MM-dd HH:mm:ss'),
       log.eventType,
       log.username || log.userId || '',
       log.ip,
       log.success ? 'Success' : 'Failed',
       log.message || '',
+      log.requestId || '',
       log.resource || '',
       log.action || '',
     ]);
 
     const csv = [
       headers.join(','),
-      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      ...rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')),
     ].join('\n');
 
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -290,99 +277,63 @@ export function AuditLogs() {
   const startIndex = (filters.page - 1) * filters.pageSize + 1;
   const endIndex = Math.min(filters.page * filters.pageSize, allLogs.length);
 
-  const getEventColor = (eventType: string) => {
-    if (eventType.includes('SUCCESS')) return theme.colors.success[500];
-    if (eventType.includes('FAILURE') || eventType.includes('DENIED')) return theme.colors.error[500];
-    if (eventType.includes('LOCKED') || eventType.includes('EXCEEDED')) return theme.colors.warning[500];
-    return theme.colors.primary[500];
+  const getEventClass = (eventType: string) => {
+    if (eventType.includes('SUCCESS')) return 'audit-event--success';
+    if (eventType.includes('FAILURE') || eventType.includes('DENIED')) return 'audit-event--error';
+    if (eventType.includes('LOCKED') || eventType.includes('EXCEEDED')) return 'audit-event--warning';
+    return 'audit-event--info';
   };
 
   const hasActiveFilters = !!(
-    filters.eventType || filters.username || filters.ip || 
-    filters.startTime || filters.endTime || 
-    filters.success !== undefined || filters.search
+    filters.eventType ||
+    filters.username ||
+    filters.ip ||
+    filters.startTime ||
+    filters.endTime ||
+    filters.success !== undefined ||
+    filters.search
   );
 
   return (
     <Layout>
-      <div>
-        {/* Header */}
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center', 
-          marginBottom: theme.spacing.lg 
-        }}>
-          <div>
-            <h1 style={{ 
-              ...theme.typography.h1,
-              fontSize: theme.typography.fontSize['3xl'],
-              marginBottom: theme.spacing.sm,
-            }}>
-              Audit Logs
-            </h1>
-            <p style={{ 
-              ...theme.typography.body,
-              color: theme.colors.text.secondary,
-            }}>
-              Security event history and access logs
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: theme.spacing.md }}>
-            <Button
-              variant="ghost"
-              onClick={() => fetchLogs()}
-              disabled={loading}
-            >
-              🔄 Refresh
-            </Button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.sm }}>
-              <input
-                type="checkbox"
-                id="auto-refresh"
-                checked={autoRefresh}
-                onChange={(e) => setAutoRefresh(e.target.checked)}
-                style={{ cursor: 'pointer' }}
-              />
-              <label htmlFor="auto-refresh" style={{ 
-                ...theme.typography.body,
-                fontSize: theme.typography.fontSize.sm,
-                cursor: 'pointer',
-              }}>
-                Auto-refresh
-              </label>
-              {autoRefresh && (
-                <select
-                  value={autoRefreshInterval}
-                  onChange={(e) => setAutoRefreshInterval(Number(e.target.value))}
-                  style={{
-                    padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
-                    border: `1px solid ${theme.colors.border.medium}`,
-                    borderRadius: theme.borderRadius.sm,
-                    fontSize: theme.typography.fontSize.sm,
-                  }}
-                >
-                  <option value={10}>10s</option>
-                  <option value={30}>30s</option>
-                  <option value={60}>60s</option>
-                </select>
-              )}
+      <div className="page-stack">
+        <SectionHeader
+          title="Audit Logs"
+          subtitle="Security event history and access logs"
+          actions={
+            <div className="action-row">
+              <Button variant="ghost" onClick={() => fetchLogs()} disabled={loading}>
+                🔄 Refresh
+              </Button>
+              <div className="checkbox-row">
+                <input
+                  type="checkbox"
+                  id="auto-refresh"
+                  checked={autoRefresh}
+                  onChange={(e) => setAutoRefresh(e.target.checked)}
+                  className="checkbox-input"
+                />
+                <label htmlFor="auto-refresh" className="form-label">
+                  Auto-refresh
+                </label>
+                {autoRefresh && (
+                  <select
+                    value={autoRefreshInterval}
+                    onChange={(e) => setAutoRefreshInterval(Number(e.target.value))}
+                    className="form-control"
+                  >
+                    <option value={10}>10s</option>
+                    <option value={30}>30s</option>
+                    <option value={60}>60s</option>
+                  </select>
+                )}
+              </div>
             </div>
-          </div>
-        </div>
+          }
+        />
 
-        {/* Statistics Cards */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: theme.spacing.lg,
-          marginBottom: theme.spacing.xl,
-        }}>
-          <MetricCard
-            title="Total Logs"
-            value={stats.total.toLocaleString()}
-            color="blue"
-          />
+        <div className="page-grid page-grid--cards">
+          <MetricCard title="Total Logs" value={stats.total.toLocaleString()} color="blue" />
           <MetricCard
             title="Success Rate"
             value={`${stats.successRate}%`}
@@ -395,192 +346,79 @@ export function AuditLogs() {
             subtitle={`${stats.eventTypeCounts[stats.topEventType] || 0} occurrences`}
             color="blue"
           />
-          <MetricCard
-            title="Unique Users"
-            value={stats.uniqueUsers.toString()}
-            color="blue"
-          />
-          <MetricCard
-            title="Unique IPs"
-            value={stats.uniqueIPs.toString()}
-            color="blue"
-          />
+          <MetricCard title="Unique Users" value={stats.uniqueUsers.toString()} color="blue" />
+          <MetricCard title="Unique IPs" value={stats.uniqueIPs.toString()} color="blue" />
         </div>
 
-        {/* Filters Panel */}
-        <div style={{
-          backgroundColor: theme.colors.background.primary,
-          padding: theme.spacing.lg,
-          borderRadius: theme.borderRadius.lg,
-          boxShadow: theme.shadows.md,
-          marginBottom: theme.spacing.lg,
-        }}>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: theme.spacing.md,
-          }}>
-            <h2 style={{
-              ...theme.typography.h3,
-              margin: 0,
-            }}>
-              Filters
-            </h2>
+        <Card className="page-stack">
+          <div className="card-header">
+            <div className="section-title">Filters</div>
             {hasActiveFilters && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={clearFilters}
-              >
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
                 Clear All
               </Button>
             )}
           </div>
 
-          {/* Search */}
-          <div style={{ marginBottom: theme.spacing.md }}>
-            <label style={{
-              display: 'block',
-              ...theme.typography.body,
-              fontSize: theme.typography.fontSize.sm,
-              fontWeight: theme.typography.fontWeight.medium,
-              marginBottom: theme.spacing.xs,
-            }}>
-              Search
-            </label>
+          <div className="form-field">
+            <label className="form-label">Search</label>
             <input
               type="text"
               placeholder="Search across all fields..."
               value={filters.search || ''}
               onChange={(e) => handleFilterChange('search', e.target.value || undefined)}
-              style={{
-                width: '100%',
-                padding: theme.spacing.sm,
-                border: `1px solid ${theme.colors.border.medium}`,
-                borderRadius: theme.borderRadius.md,
-                fontSize: theme.typography.fontSize.base,
-                fontFamily: theme.typography.fontFamily.sans,
-              }}
+              className="form-control"
             />
           </div>
 
-          {/* Filter Row 1 */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: theme.spacing.md,
-            marginBottom: theme.spacing.md,
-          }}>
-            {/* Event Type */}
+          <div className="form-grid">
             <div>
-              <label style={{
-                display: 'block',
-                ...theme.typography.body,
-                fontSize: theme.typography.fontSize.sm,
-                fontWeight: theme.typography.fontWeight.medium,
-                marginBottom: theme.spacing.xs,
-              }}>
-                Event Type
-              </label>
+              <label className="form-label">Event Type</label>
               <select
                 value={filters.eventType || ''}
                 onChange={(e) => handleFilterChange('eventType', e.target.value || undefined)}
-                style={{
-                  width: '100%',
-                  padding: theme.spacing.sm,
-                  border: `1px solid ${theme.colors.border.medium}`,
-                  borderRadius: theme.borderRadius.md,
-                  fontSize: theme.typography.fontSize.base,
-                  fontFamily: theme.typography.fontFamily.sans,
-                }}
+                className="form-control"
               >
                 <option value="">All Events</option>
-                {EVENT_TYPES.map(type => (
-                  <option key={type} value={type}>{type}</option>
+                {EVENT_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
                 ))}
               </select>
             </div>
 
-            {/* User */}
             <div>
-              <label style={{
-                display: 'block',
-                ...theme.typography.body,
-                fontSize: theme.typography.fontSize.sm,
-                fontWeight: theme.typography.fontWeight.medium,
-                marginBottom: theme.spacing.xs,
-              }}>
-                User (username/ID)
-              </label>
+              <label className="form-label">User (username/ID)</label>
               <input
                 type="text"
                 placeholder="Filter by user..."
                 value={filters.username || ''}
                 onChange={(e) => handleFilterChange('username', e.target.value || undefined)}
-                style={{
-                  width: '100%',
-                  padding: theme.spacing.sm,
-                  border: `1px solid ${theme.colors.border.medium}`,
-                  borderRadius: theme.borderRadius.md,
-                  fontSize: theme.typography.fontSize.base,
-                  fontFamily: theme.typography.fontFamily.sans,
-                }}
+                className="form-control"
               />
             </div>
 
-            {/* IP Address */}
             <div>
-              <label style={{
-                display: 'block',
-                ...theme.typography.body,
-                fontSize: theme.typography.fontSize.sm,
-                fontWeight: theme.typography.fontWeight.medium,
-                marginBottom: theme.spacing.xs,
-              }}>
-                IP Address
-              </label>
+              <label className="form-label">IP Address</label>
               <input
                 type="text"
                 placeholder="Filter by IP..."
                 value={filters.ip || ''}
                 onChange={(e) => handleFilterChange('ip', e.target.value || undefined)}
-                style={{
-                  width: '100%',
-                  padding: theme.spacing.sm,
-                  border: `1px solid ${theme.colors.border.medium}`,
-                  borderRadius: theme.borderRadius.md,
-                  fontSize: theme.typography.fontSize.base,
-                  fontFamily: theme.typography.fontFamily.mono,
-                }}
+                className="form-control text-mono"
               />
             </div>
 
-            {/* Status */}
             <div>
-              <label style={{
-                display: 'block',
-                ...theme.typography.body,
-                fontSize: theme.typography.fontSize.sm,
-                fontWeight: theme.typography.fontWeight.medium,
-                marginBottom: theme.spacing.xs,
-              }}>
-                Status
-              </label>
+              <label className="form-label">Status</label>
               <select
                 value={filters.success === undefined ? '' : filters.success ? 'success' : 'failed'}
                 onChange={(e) => {
                   const value = e.target.value;
                   handleFilterChange('success', value === '' ? undefined : value === 'success');
                 }}
-                style={{
-                  width: '100%',
-                  padding: theme.spacing.sm,
-                  border: `1px solid ${theme.colors.border.medium}`,
-                  borderRadius: theme.borderRadius.md,
-                  fontSize: theme.typography.fontSize.base,
-                  fontFamily: theme.typography.fontFamily.sans,
-                }}
+                className="form-control"
               >
                 <option value="">All</option>
                 <option value="success">Success</option>
@@ -589,407 +427,176 @@ export function AuditLogs() {
             </div>
           </div>
 
-          {/* Date Range Presets */}
           <div>
-            <label style={{
-              display: 'block',
-              ...theme.typography.body,
-              fontSize: theme.typography.fontSize.sm,
-              fontWeight: theme.typography.fontWeight.medium,
-              marginBottom: theme.spacing.xs,
-            }}>
-              Date Range
-            </label>
-            <div style={{ display: 'flex', gap: theme.spacing.sm, flexWrap: 'wrap' }}>
-              {DATE_PRESETS.map(preset => (
-                <Button
-                  key={preset.hours}
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleDatePreset(preset.hours)}
-                >
+            <label className="form-label">Date Range</label>
+            <div className="action-row">
+              {DATE_PRESETS.map((preset) => (
+                <Button key={preset.hours} variant="ghost" size="sm" onClick={() => handleDatePreset(preset.hours)}>
                   {preset.label}
                 </Button>
               ))}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => handleFilterChange('startTime', undefined)}
-              >
+              <Button variant="ghost" size="sm" onClick={() => handleFilterChange('startTime', undefined)}>
                 Clear Date
               </Button>
             </div>
             {filters.startTime && (
-              <div style={{
-                marginTop: theme.spacing.xs,
-                fontSize: theme.typography.fontSize.sm,
-                color: theme.colors.text.secondary,
-              }}>
-                {format(new Date(filters.startTime), 'MMM dd, yyyy HH:mm')} - {
-                  filters.endTime ? format(new Date(filters.endTime), 'MMM dd, yyyy HH:mm') : 'Now'
-                }
+              <div className="helper-text">
+                {format(new Date(filters.startTime), 'MMM dd, yyyy HH:mm')} -{' '}
+                {filters.endTime ? format(new Date(filters.endTime), 'MMM dd, yyyy HH:mm') : 'Now'}
               </div>
             )}
           </div>
-        </div>
+        </Card>
 
-        {/* Export and Results Count */}
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: theme.spacing.md,
-        }}>
-          <div style={{
-            ...theme.typography.body,
-            color: theme.colors.text.secondary,
-            fontSize: theme.typography.fontSize.sm,
-          }}>
+        <div className="card-header">
+          <div className="section-subtitle">
             Showing {startIndex}-{endIndex} of {allLogs.length.toLocaleString()} logs
             {hasActiveFilters && ' (filtered)'}
           </div>
-          <div style={{ display: 'flex', gap: theme.spacing.sm }}>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={exportToCSV}
-              disabled={allLogs.length === 0}
-            >
+          <div className="action-row">
+            <Button variant="secondary" size="sm" onClick={exportToCSV} disabled={allLogs.length === 0}>
               📥 Export CSV
             </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={exportToJSON}
-              disabled={allLogs.length === 0}
-            >
+            <Button variant="secondary" size="sm" onClick={exportToJSON} disabled={allLogs.length === 0}>
               📥 Export JSON
             </Button>
           </div>
         </div>
 
-        {/* Error Display */}
         {error && (
-          <div style={{
-            backgroundColor: theme.colors.error[50],
-            color: theme.colors.error[800],
-            padding: theme.spacing.md,
-            borderRadius: theme.borderRadius.lg,
-            marginBottom: theme.spacing.lg,
-            borderLeft: `4px solid ${theme.colors.error[500]}`,
-          }}>
-            <strong>Error:</strong> {error}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => fetchLogs()}
-              style={{ marginLeft: theme.spacing.md }}
-            >
-              Retry
-            </Button>
-          </div>
-        )}
-
-        {/* Loading State */}
-        {loading && (
-          <div style={{
-            textAlign: 'center',
-            padding: theme.spacing['3xl'],
-            color: theme.colors.text.secondary,
-          }}>
-            <div style={{ fontSize: theme.typography.fontSize.lg }}>Loading audit logs...</div>
-          </div>
-        )}
-
-        {/* Table */}
-        {!loading && !error && (
-          <div style={{
-            backgroundColor: theme.colors.background.primary,
-            borderRadius: theme.borderRadius.lg,
-            boxShadow: theme.shadows.md,
-            overflow: 'hidden',
-          }}>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{
-                width: '100%',
-                borderCollapse: 'collapse',
-              }}>
-                <thead>
-                  <tr style={{
-                    backgroundColor: theme.colors.neutral[50],
-                    borderBottom: `2px solid ${theme.colors.border.light}`,
-                  }}>
-                    <th style={tableHeaderStyle}>
-                      <button
-                        onClick={() => handleSort('timestamp')}
-                        style={{
-                          all: 'unset',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: theme.spacing.xs,
-                          width: '100%',
-                        }}
-                      >
-                        Timestamp
-                        {sortField === 'timestamp' && (
-                          <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
-                        )}
-                      </button>
-                    </th>
-                    <th style={tableHeaderStyle}>
-                      <button
-                        onClick={() => handleSort('eventType')}
-                        style={{
-                          all: 'unset',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: theme.spacing.xs,
-                          width: '100%',
-                        }}
-                      >
-                        Event Type
-                        {sortField === 'eventType' && (
-                          <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
-                        )}
-                      </button>
-                    </th>
-                    <th style={tableHeaderStyle}>
-                      <button
-                        onClick={() => handleSort('username')}
-                        style={{
-                          all: 'unset',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: theme.spacing.xs,
-                          width: '100%',
-                        }}
-                      >
-                        User
-                        {sortField === 'username' && (
-                          <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
-                        )}
-                      </button>
-                    </th>
-                    <th style={tableHeaderStyle}>
-                      <button
-                        onClick={() => handleSort('ip')}
-                        style={{
-                          all: 'unset',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: theme.spacing.xs,
-                          width: '100%',
-                        }}
-                      >
-                        IP Address
-                        {sortField === 'ip' && (
-                          <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
-                        )}
-                      </button>
-                    </th>
-                    <th style={tableHeaderStyle}>Status</th>
-                    <th style={tableHeaderStyle}>Message</th>
-                    <th style={{ ...tableHeaderStyle, width: '40px' }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {logs.map((log) => {
-                    const isExpanded = expandedRows.has(log.id);
-                    const eventColor = getEventColor(log.eventType);
-                    return (
-                      <React.Fragment key={log.id}>
-                        <tr
-                          style={{
-                            borderBottom: `1px solid ${theme.colors.border.light}`,
-                            cursor: 'pointer',
-                            backgroundColor: isExpanded ? theme.colors.neutral[50] : 'transparent',
-                          }}
-                          onClick={() => toggleRowExpansion(log.id)}
-                        >
-                          <td style={tableCellStyle}>
-                            {format(new Date(log.timestamp), 'MMM dd, yyyy HH:mm:ss')}
-                          </td>
-                          <td style={tableCellStyle}>
-                            <span style={{
-                              display: 'inline-block',
-                              padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
-                              borderRadius: theme.borderRadius.sm,
-                              fontSize: theme.typography.fontSize.sm,
-                              fontWeight: theme.typography.fontWeight.medium,
-                              backgroundColor: eventColor + '20',
-                              color: eventColor,
-                            }}>
-                              {log.eventType}
-                            </span>
-                          </td>
-                          <td style={tableCellStyle}>
-                            {log.username || log.userId || '-'}
-                          </td>
-                          <td style={{
-                            ...tableCellStyle,
-                            fontFamily: theme.typography.fontFamily.mono,
-                            fontSize: theme.typography.fontSize.sm,
-                          }}>
-                            {log.ip}
-                          </td>
-                          <td style={tableCellStyle}>
-                            <span style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: theme.spacing.xs,
-                            }}>
-                              <span style={{
-                                display: 'inline-block',
-                                width: '10px',
-                                height: '10px',
-                                borderRadius: '50%',
-                                backgroundColor: log.success ? theme.colors.success[500] : theme.colors.error[500],
-                              }} />
-                              {log.success ? 'Success' : 'Failed'}
-                            </span>
-                          </td>
-                          <td style={{
-                            ...tableCellStyle,
-                            maxWidth: '400px',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}>
-                            {log.message || '-'}
-                          </td>
-                          <td style={tableCellStyle}>
-                            {isExpanded ? '▼' : '▶'}
-                          </td>
-                        </tr>
-                        {isExpanded && (
-                          <tr style={{
-                            backgroundColor: theme.colors.neutral[50],
-                            borderBottom: `1px solid ${theme.colors.border.light}`,
-                          }}>
-                            <td colSpan={7} style={{
-                              padding: theme.spacing.lg,
-                              ...theme.typography.body,
-                              fontSize: theme.typography.fontSize.sm,
-                            }}>
-                              <div style={{
-                                display: 'grid',
-                                gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-                                gap: theme.spacing.md,
-                              }}>
-                                <div>
-                                  <strong>Request ID:</strong>
-                                  <div style={{ fontFamily: theme.typography.fontFamily.mono, marginTop: theme.spacing.xs }}>
-                                    {log.requestId}
-                                  </div>
-                                </div>
-                                {log.resource && (
-                                  <div>
-                                    <strong>Resource:</strong>
-                                    <div style={{ marginTop: theme.spacing.xs }}>{log.resource}</div>
-                                  </div>
-                                )}
-                                {log.action && (
-                                  <div>
-                                    <strong>Action:</strong>
-                                    <div style={{ marginTop: theme.spacing.xs }}>{log.action}</div>
-                                  </div>
-                                )}
-                                {log.userId && (
-                                  <div>
-                                    <strong>User ID:</strong>
-                                    <div style={{ fontFamily: theme.typography.fontFamily.mono, marginTop: theme.spacing.xs }}>
-                                      {log.userId}
-                                    </div>
-                                  </div>
-                                )}
-                                {log.metadata && Object.keys(log.metadata).length > 0 && (
-                                  <div style={{ gridColumn: '1 / -1' }}>
-                                    <strong>Metadata:</strong>
-                                    <pre style={{
-                                      marginTop: theme.spacing.xs,
-                                      padding: theme.spacing.md,
-                                      backgroundColor: theme.colors.background.secondary,
-                                      borderRadius: theme.borderRadius.md,
-                                      overflow: 'auto',
-                                      fontSize: theme.typography.fontSize.sm,
-                                      fontFamily: theme.typography.fontFamily.mono,
-                                    }}>
-                                      {JSON.stringify(log.metadata, null, 2)}
-                                    </pre>
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
+          <div className="alert alert--danger">
+            <div className="action-row">
+              <strong>Error:</strong> {error}
+              <Button variant="ghost" size="sm" onClick={() => fetchLogs()}>
+                Retry
+              </Button>
             </div>
+          </div>
+        )}
 
-            {/* Empty State */}
-            {logs.length === 0 && !loading && (
-              <div style={{
-                textAlign: 'center',
-                padding: theme.spacing['3xl'],
-                color: theme.colors.text.tertiary,
-              }}>
-                <div style={{
-                  fontSize: theme.typography.fontSize.xl,
-                  marginBottom: theme.spacing.sm,
-                }}>
-                  No audit logs found
-                </div>
-                {hasActiveFilters && (
-                  <div style={{
-                    fontSize: theme.typography.fontSize.sm,
-                    marginTop: theme.spacing.md,
-                  }}>
-                    Try adjusting your filters or{' '}
-                    <button
-                      onClick={clearFilters}
-                      style={{
-                        all: 'unset',
-                        color: theme.colors.primary[600],
-                        cursor: 'pointer',
-                        textDecoration: 'underline',
-                      }}
+        {loading && <div className="empty-state">Loading audit logs...</div>}
+
+        {!loading && !error && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHeaderCell>
+                  <button className="table-sort-button" onClick={() => handleSort('timestamp')}>
+                    Timestamp
+                    {sortField === 'timestamp' && <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>}
+                  </button>
+                </TableHeaderCell>
+                <TableHeaderCell>
+                  <button className="table-sort-button" onClick={() => handleSort('eventType')}>
+                    Event Type
+                    {sortField === 'eventType' && <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>}
+                  </button>
+                </TableHeaderCell>
+                <TableHeaderCell>
+                  <button className="table-sort-button" onClick={() => handleSort('username')}>
+                    User
+                    {sortField === 'username' && <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>}
+                  </button>
+                </TableHeaderCell>
+                <TableHeaderCell>
+                  <button className="table-sort-button" onClick={() => handleSort('ip')}>
+                    IP Address
+                    {sortField === 'ip' && <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>}
+                  </button>
+                </TableHeaderCell>
+                <TableHeaderCell>Status</TableHeaderCell>
+                <TableHeaderCell>Message</TableHeaderCell>
+                <TableHeaderCell></TableHeaderCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {logs.map((log) => {
+                const isExpanded = expandedRows.has(log.id);
+                const eventClass = `audit-event-badge ${getEventClass(log.eventType)}`;
+                return (
+                  <React.Fragment key={log.id}>
+                    <TableRow
+                      className={isExpanded ? 'data-table__row--expanded' : undefined}
+                      onClick={() => toggleRowExpansion(log.id)}
                     >
-                      clear all filters
-                    </button>
-                  </div>
-                )}
+                      <TableCell>{format(new Date(log.timestamp), 'MMM dd, yyyy HH:mm:ss')}</TableCell>
+                      <TableCell>
+                        <span className={eventClass}>{log.eventType}</span>
+                      </TableCell>
+                      <TableCell>{log.username || log.userId || '-'}</TableCell>
+                      <TableCell className="text-mono text-sm">{log.ip}</TableCell>
+                      <TableCell>
+                        <span className="status-indicator">
+                          <span className={`status-dot ${log.success ? 'status-dot--success' : 'status-dot--error'}`} />
+                          {log.success ? 'Success' : 'Failed'}
+                        </span>
+                      </TableCell>
+                      <TableCell className="table-cell-truncate">{log.message || '-'}</TableCell>
+                      <TableCell>{isExpanded ? '▼' : '▶'}</TableCell>
+                    </TableRow>
+                    {isExpanded && (
+                      <TableRow className="data-table__row--expanded">
+                        <TableCell colSpan={7}>
+                          <div className="detail-grid">
+                            <div>
+                              <strong>Request ID:</strong>
+                              <div className="text-mono text-sm">{log.requestId}</div>
+                            </div>
+                            {log.resource && (
+                              <div>
+                                <strong>Resource:</strong>
+                                <div>{log.resource}</div>
+                              </div>
+                            )}
+                            {log.action && (
+                              <div>
+                                <strong>Action:</strong>
+                                <div>{log.action}</div>
+                              </div>
+                            )}
+                            {log.userId && (
+                              <div>
+                                <strong>User ID:</strong>
+                                <div className="text-mono text-sm">{log.userId}</div>
+                              </div>
+                            )}
+                            {log.metadata && Object.keys(log.metadata).length > 0 && (
+                              <div className="flex-1">
+                                <strong>Metadata:</strong>
+                                <pre className="audit-metadata">
+                                  {JSON.stringify(log.metadata, null, 2)}
+                                </pre>
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+
+        {logs.length === 0 && !loading && !error && (
+          <Card className="empty-state">
+            <div className="section-title">No audit logs found</div>
+            {hasActiveFilters && (
+              <div className="section-subtitle">
+                Try adjusting your filters or{' '}
+                <button className="link-button" onClick={clearFilters}>
+                  clear all filters
+                </button>
               </div>
             )}
-          </div>
+          </Card>
         )}
 
-        {/* Pagination */}
         {!loading && !error && allLogs.length > 0 && (
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginTop: theme.spacing.lg,
-            padding: theme.spacing.md,
-            backgroundColor: theme.colors.background.primary,
-            borderRadius: theme.borderRadius.lg,
-            boxShadow: theme.shadows.sm,
-          }}>
-            <div style={{
-              ...theme.typography.body,
-              fontSize: theme.typography.fontSize.sm,
-              color: theme.colors.text.secondary,
-            }}>
-              Page {filters.page} of {totalPages}
-            </div>
-            <div style={{ display: 'flex', gap: theme.spacing.sm }}>
+          <Card className="audit-pagination">
+            <div className="section-subtitle">Page {filters.page} of {totalPages}</div>
+            <div className="action-row">
               <Button
                 variant="ghost"
                 size="sm"
@@ -1029,23 +636,9 @@ export function AuditLogs() {
                 Next →
               </Button>
             </div>
-          </div>
+          </Card>
         )}
       </div>
     </Layout>
   );
 }
-
-const tableHeaderStyle: React.CSSProperties = {
-  padding: theme.spacing.md,
-  textAlign: 'left',
-  fontSize: theme.typography.fontSize.sm,
-  fontWeight: theme.typography.fontWeight.semibold,
-  color: theme.colors.text.secondary,
-};
-
-const tableCellStyle: React.CSSProperties = {
-  padding: theme.spacing.md,
-  fontSize: theme.typography.fontSize.base,
-  color: theme.colors.text.primary,
-};

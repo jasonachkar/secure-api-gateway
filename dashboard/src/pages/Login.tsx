@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { adminApi } from '../api/admin';
 import { useAuth } from '../contexts/AuthContext';
+import { Button } from '../components/Button';
 
 export function Login() {
   const [username, setUsername] = useState('');
@@ -25,7 +26,6 @@ export function Login() {
       const response = await adminApi.login({ username, password });
       console.log('Login successful, response:', response);
       login(response.accessToken);
-      // Navigate to dashboard after successful login
       navigate('/', { replace: true });
     } catch (err: any) {
       console.error('Login error:', err);
@@ -36,12 +36,13 @@ export function Login() {
         statusText: err.response?.statusText,
         config: err.config,
       });
-      
-      const errorMessage = err.response?.data?.error?.message 
-        || err.response?.data?.message
-        || err.message 
-        || 'Login failed. Please check your credentials.';
-      
+
+      const errorMessage =
+        err.response?.data?.error?.message ||
+        err.response?.data?.message ||
+        err.message ||
+        'Login failed. Please check your credentials.';
+
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -49,115 +50,49 @@ export function Login() {
   };
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: '#f1f5f9',
-      fontFamily: 'system-ui, sans-serif'
-    }}>
-      <div style={{
-        width: '100%',
-        maxWidth: '400px',
-        padding: '20px'
-      }}>
-        <div style={{
-          backgroundColor: 'white',
-          padding: '40px',
-          borderRadius: '12px',
-          boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
-        }}>
-          <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '10px', textAlign: 'center' }}>
-            🔒 Security Dashboard
-          </h1>
-          <p style={{ color: '#64748b', marginBottom: '30px', textAlign: 'center', fontSize: '14px' }}>
-            Sign in to access the admin panel
-          </p>
+    <div className="auth-page">
+      <div className="auth-container">
+        <div className="auth-card">
+          <h1 className="auth-card__title">🔒 Security Dashboard</h1>
+          <p className="auth-card__subtitle">Sign in to access the admin panel</p>
 
-          <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>
-                Username
-              </label>
+          <form onSubmit={handleSubmit} className="page-stack">
+            <div className="form-field">
+              <label className="form-label">Username</label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  border: '1px solid #cbd5e1',
-                  borderRadius: '6px',
-                  fontSize: '14px'
-                }}
+                className="form-control"
                 placeholder="admin"
               />
             </div>
 
-            <div style={{ marginBottom: '24px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>
-                Password
-              </label>
+            <div className="form-field">
+              <label className="form-label">Password</label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  border: '1px solid #cbd5e1',
-                  borderRadius: '6px',
-                  fontSize: '14px'
-                }}
+                className="form-control"
                 placeholder="••••••••"
               />
             </div>
 
-            {error && (
-              <div style={{
-                backgroundColor: '#fee2e2',
-                color: '#991b1b',
-                padding: '12px',
-                borderRadius: '6px',
-                marginBottom: '20px',
-                fontSize: '14px'
-              }}>
-                {error}
-              </div>
-            )}
+            {error && <div className="alert alert--danger">{error}</div>}
 
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                width: '100%',
-                backgroundColor: loading ? '#94a3b8' : '#3b82f6',
-                color: 'white',
-                padding: '12px',
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '16px',
-                fontWeight: '600',
-                cursor: loading ? 'not-allowed' : 'pointer'
-              }}
-            >
+            <Button type="submit" disabled={loading} isLoading={loading} className="button-full">
               {loading ? 'Signing in...' : 'Sign In'}
-            </button>
+            </Button>
           </form>
 
-          <div style={{
-            marginTop: '20px',
-            padding: '12px',
-            backgroundColor: '#f1f5f9',
-            borderRadius: '6px',
-            fontSize: '12px',
-            color: '#64748b'
-          }}>
-            <strong>Demo credentials:</strong><br />
-            admin / Admin123!<br />
+          <div className="auth-help">
+            <strong>Demo credentials:</strong>
+            <br />
+            admin / Admin123!
+            <br />
             user / User123!
           </div>
         </div>

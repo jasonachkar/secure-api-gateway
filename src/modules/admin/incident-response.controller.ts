@@ -5,6 +5,7 @@
 
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { IncidentResponseService, type Incident, type IncidentStatistics } from './incident-response.service.js';
+import { env } from '../../config/index.js';
 
 export class IncidentResponseController {
   constructor(private incidentService: IncidentResponseService) {}
@@ -28,6 +29,11 @@ export class IncidentResponseController {
       tags: body.tags || [],
       metadata: body.metadata,
     });
+
+    (request as any).adminAuditContext = {
+      action: 'incident.create',
+      incidentId: incident.id,
+    };
 
     reply.code(201).send({ incident });
   }
@@ -58,6 +64,11 @@ export class IncidentResponseController {
     const params = request.params as any;
     const incident = await this.incidentService.getIncident(params.id);
 
+    (request as any).adminAuditContext = {
+      action: 'incident.view',
+      incidentId: params.id,
+    };
+
     if (!incident) {
       return reply.code(404).send({ error: 'Incident not found' });
     }
@@ -73,6 +84,11 @@ export class IncidentResponseController {
     const user = (request as any).user;
     const params = request.params as any;
     const body = request.body as any;
+
+    (request as any).adminAuditContext = {
+      action: 'incident.update_status',
+      incidentId: params.id,
+    };
 
     const incident = await this.incidentService.updateIncidentStatus(
       params.id,
@@ -96,6 +112,11 @@ export class IncidentResponseController {
     const params = request.params as any;
     const body = request.body as any;
 
+    (request as any).adminAuditContext = {
+      action: 'incident.assign',
+      incidentId: params.id,
+    };
+
     const incident = await this.incidentService.assignIncident(
       params.id,
       body.assignedTo,
@@ -117,6 +138,11 @@ export class IncidentResponseController {
     const user = (request as any).user;
     const params = request.params as any;
     const body = request.body as any;
+
+    (request as any).adminAuditContext = {
+      action: 'incident.add_note',
+      incidentId: params.id,
+    };
 
     const incident = await this.incidentService.addNote(
       params.id,
@@ -140,6 +166,11 @@ export class IncidentResponseController {
     const params = request.params as any;
     const body = request.body as any;
 
+    (request as any).adminAuditContext = {
+      action: 'incident.update',
+      incidentId: params.id,
+    };
+
     const incident = await this.incidentService.updateIncident(
       params.id,
       {
@@ -161,6 +192,29 @@ export class IncidentResponseController {
   }
 
   /**
+   * POST /admin/incidents/:id/playbook
+   * Run a playbook action (mocked)
+   */
+  async runPlaybookAction(request: FastifyRequest, reply: FastifyReply) {
+    const user = (request as any).user;
+    const params = request.params as any;
+    const body = request.body as any;
+
+    const incident = await this.incidentService.runPlaybookAction(
+      params.id,
+      body.action,
+      user.username,
+      body.target
+    );
+
+    if (!incident) {
+      return reply.code(404).send({ error: 'Incident not found' });
+    }
+
+    return reply.send({ incident });
+  }
+
+  /**
    * GET /admin/incidents/statistics
    * Get incident statistics
    */
@@ -170,10 +224,42 @@ export class IncidentResponseController {
   }
 
   /**
+   * POST /admin/incidents/:id/actions
+   * Execute a playbook action (mocked)
+   */
+  async executePlaybookAction(request: FastifyRequest, reply: FastifyReply) {
+    const user = (request as any).user;
+    const params = request.params as any;
+    const body = request.body as any;
+
+    const incident = await this.incidentService.executePlaybookAction(
+      params.id,
+      body.action,
+      user.username,
+      body.target
+    );
+
+    if (!incident) {
+      return reply.code(404).send({ error: 'Incident not found' });
+    }
+
+    return reply.send({ incident });
+  }
+
+  /**
    * POST /admin/incidents/seed-test-data
    * Seed test incidents for development/demo purposes
    */
   async seedTestIncidents(request: FastifyRequest, reply: FastifyReply) {
+    if (!env.DEMO_MODE) {
+      return reply.code(404).send({
+        error: {
+          code: 'DEMO_MODE_DISABLED',
+          message: 'Demo mode is disabled',
+        },
+      });
+    }
+
     const user = (request as any).user;
     
     try {
@@ -235,4 +321,3 @@ export class IncidentResponseController {
     }
   }
 }
-

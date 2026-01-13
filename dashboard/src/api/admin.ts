@@ -5,6 +5,7 @@
 import { apiClient } from './client';
 import type {
   MetricsSummary,
+  AdminAuditLogEntry,
   AuditLogEntry,
   SessionInfo,
   UserInfo,
@@ -18,9 +19,10 @@ import type {
   IncidentStatus,
   IncidentSeverity,
   IncidentType,
+  IncidentPlaybookAction,
   SecurityPosture,
   ComplianceMetrics,
-  IngestionSourceStatus,
+  IngestionStatus,
 } from '../types';
 
 export const adminApi = {
@@ -40,9 +42,9 @@ export const adminApi = {
     return data;
   },
 
-  getIngestionStatus: async (): Promise<{ sources: IngestionSourceStatus[] }> => {
-    const { data } = await apiClient.get('/admin/metrics/ingestion');
-    return data;
+  getIngestionStatus: async (): Promise<IngestionStatus> => {
+    const { data } = await apiClient.get('/admin/ingestion/status');
+    return data.status;
   },
 
   // Audit Logs
@@ -55,6 +57,19 @@ export const adminApi = {
     offset?: number;
   }): Promise<AuditLogEntry[]> => {
     const { data } = await apiClient.get('/admin/audit/logs', { params });
+    return data.logs;
+  },
+
+  getAdminActionLogs: async (params?: {
+    actorId?: string;
+    action?: string;
+    incidentId?: string;
+    startTime?: number;
+    endTime?: number;
+    limit?: number;
+    offset?: number;
+  }): Promise<AdminAuditLogEntry[]> => {
+    const { data } = await apiClient.get('/admin/audit/admin-actions', { params });
     return data.logs;
   },
 
@@ -81,6 +96,11 @@ export const adminApi = {
   // Health
   getHealth: async () => {
     const { data } = await apiClient.get('/admin/health');
+    return data;
+  },
+
+  getRuntimeConfig: async (): Promise<RuntimeConfig> => {
+    const { data } = await apiClient.get('/admin/config');
     return data;
   },
 
@@ -170,6 +190,11 @@ export const adminApi = {
 
   addIncidentNote: async (id: string, content: string): Promise<Incident> => {
     const { data } = await apiClient.post(`/admin/incidents/${id}/notes`, { content });
+    return data.incident;
+  },
+
+  runIncidentAction: async (id: string, action: string, target?: string): Promise<Incident> => {
+    const { data } = await apiClient.post(`/admin/incidents/${id}/actions`, { action, target });
     return data.incident;
   },
 

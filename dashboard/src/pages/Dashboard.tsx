@@ -12,10 +12,12 @@ import { ResponseTimeChart } from '../components/ResponseTimeChart';
 import { LiveEventFeed } from '../components/LiveEventFeed';
 import { DataSourcesCard } from '../components/DataSourcesCard';
 import { Button } from '../components/Button';
+import { Card } from '../components/Card';
+import { SectionHeader } from '../components/SectionHeader';
 import { useSSE } from '../hooks/useSSE';
 import { adminApi } from '../api/admin';
 import { theme } from '../styles/theme';
-import type { IngestionSourceStatus, SecurityPosture } from '../types';
+import type { IngestionStatus, SecurityPosture } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -60,9 +62,7 @@ export function Dashboard() {
   const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
   const [currentMetrics, setCurrentMetrics] = useState<RealtimeMetrics | null>(null);
   const [posture, setPosture] = useState<SecurityPosture | null>(null);
-  const [ingestionSources, setIngestionSources] = useState<IngestionSourceStatus[]>([]);
-  const [ingestionLoading, setIngestionLoading] = useState(true);
-  const [ingestionError, setIngestionError] = useState<string | null>(null);
+  const [ingestionStatus, setIngestionStatus] = useState<IngestionStatus | null>(null);
   const [infoBannerDismissed, setInfoBannerDismissed] = useState(() => {
     return localStorage.getItem('dashboard-info-banner-dismissed') === 'true';
   });
@@ -72,10 +72,24 @@ export function Dashboard() {
     enabled: true,
   });
 
+  const formatTimestamp = (value?: number) => {
+    if (!value) return 'No events yet';
+    return new Date(value).toLocaleString();
+  };
+
   // Load security posture on mount
   useEffect(() => {
-    adminApi.getSecurityPosture().then(setPosture).catch(() => {
-      // Silently fail - posture is optional
+    adminApi
+      .getSecurityPosture()
+      .then(setPosture)
+      .catch(() => {
+        // Silently fail - posture is optional
+      });
+  }, []);
+
+  useEffect(() => {
+    adminApi.getIngestionStatus().then(setIngestionStatus).catch(() => {
+      // Silently fail - ingestion status is optional
     });
   }, []);
 
@@ -111,8 +125,7 @@ export function Dashboard() {
   // Update history and events when new data arrives
   useEffect(() => {
     if (!data) return;
-    
-    // Skip connection messages and invalid data
+
     if (data.type === 'connected' || !data.requestsPerSecond) {
       return;
     }
@@ -120,37 +133,42 @@ export function Dashboard() {
     const metrics = data as unknown as RealtimeMetrics;
     setCurrentMetrics(metrics);
 
-    // Update request rate history
-    setRequestRateHistory(prev => {
-      const newHistory = [...prev, {
-        timestamp: metrics.timestamp || Date.now(),
-        requests: metrics.requestsPerSecond,
-      }];
+    setRequestRateHistory((prev) => {
+      const newHistory = [
+        ...prev,
+        {
+          timestamp: metrics.timestamp || Date.now(),
+          requests: metrics.requestsPerSecond,
+        },
+      ];
       return newHistory.slice(-MAX_HISTORY);
     });
 
-    // Update error rate history
-    setErrorRateHistory(prev => {
-      const newHistory = [...prev, {
-        timestamp: metrics.timestamp || Date.now(),
-        errors4xx: metrics.errors4xx || 0,
-        errors5xx: metrics.errors5xx || 0,
-      }];
+    setErrorRateHistory((prev) => {
+      const newHistory = [
+        ...prev,
+        {
+          timestamp: metrics.timestamp || Date.now(),
+          errors4xx: metrics.errors4xx || 0,
+          errors5xx: metrics.errors5xx || 0,
+        },
+      ];
       return newHistory.slice(-MAX_HISTORY);
     });
 
-    // Update response time history
-    setResponseTimeHistory(prev => {
-      const newHistory = [...prev, {
-        timestamp: metrics.timestamp || Date.now(),
-        p50: metrics.responseTimeStats.p50,
-        p95: metrics.responseTimeStats.p95,
-        p99: metrics.responseTimeStats.p99,
-      }];
+    setResponseTimeHistory((prev) => {
+      const newHistory = [
+        ...prev,
+        {
+          timestamp: metrics.timestamp || Date.now(),
+          p50: metrics.responseTimeStats.p50,
+          p95: metrics.responseTimeStats.p95,
+          p99: metrics.responseTimeStats.p99,
+        },
+      ];
       return newHistory.slice(-MAX_HISTORY);
     });
 
-    // Generate security events from metrics
     const events: SecurityEvent[] = [];
 
     if (metrics.authStats.failedLogins > 5) {
@@ -190,126 +208,60 @@ export function Dashboard() {
     }
 
     if (events.length > 0) {
-      setSecurityEvents(prev => [...prev, ...events].slice(-50));
+      setSecurityEvents((prev) => [...prev, ...events].slice(-50));
     }
   }, [data]);
 
+  const statusClass = isConnected ? 'status-pill--success' : 'status-pill--danger';
+
+  const gradeClass = posture
+    ? posture.grade === 'A'
+      ? 'posture-grade--A'
+      : posture.grade === 'B'
+        ? 'posture-grade--B'
+        : posture.grade === 'C'
+          ? 'posture-grade--C'
+          : 'posture-grade--D'
+    : '';
+
   return (
     <Layout>
-      <div>
-        {/* Header with connection status */}
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center', 
-          marginBottom: theme.spacing.xl 
-        }}>
-          <div>
-            <h1 style={{ 
-              ...theme.typography.h1,
-              fontSize: theme.typography.fontSize['3xl'],
-              marginBottom: theme.spacing.sm,
-            }}>
-              Security Monitoring
-            </h1>
-            <p style={{ 
-              ...theme.typography.body,
-              color: theme.colors.text.secondary,
-            }}>
-              Real-time security metrics and threat detection
-            </p>
-          </div>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: theme.spacing.sm,
-            padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-            backgroundColor: isConnected ? theme.colors.success[100] : theme.colors.error[100],
-            borderRadius: theme.borderRadius.md,
-            fontSize: theme.typography.fontSize.base,
-            fontWeight: theme.typography.fontWeight.medium,
-            color: isConnected ? theme.colors.success[800] : theme.colors.error[800],
-          }}>
-            <span style={{
-              width: '8px',
-              height: '8px',
-              backgroundColor: isConnected ? theme.colors.success[500] : theme.colors.error[500],
-              borderRadius: '50%',
-            }} />
-            {isConnected ? 'LIVE' : 'DISCONNECTED'}
-          </div>
-        </div>
+      <div className="page-stack">
+        <SectionHeader
+          title="Security Monitoring"
+          subtitle="Real-time security metrics and threat detection"
+          actions={
+            <div className={`status-pill ${statusClass}`}>
+              <span className="status-pill__dot" />
+              {isConnected ? 'LIVE' : 'DISCONNECTED'}
+            </div>
+          }
+        />
 
         {error && (
-          <div style={{
-            backgroundColor: theme.colors.error[50],
-            color: theme.colors.error[800],
-            padding: theme.spacing.md,
-            borderRadius: theme.borderRadius.lg,
-            marginBottom: theme.spacing.lg,
-            borderLeft: `4px solid ${theme.colors.error[500]}`,
-            boxShadow: theme.shadows.sm,
-          }}>
+          <div className="alert alert--danger">
             <strong>Connection Error:</strong> {error}
           </div>
         )}
 
-        {/* Info Banner */}
         {!infoBannerDismissed && (
-          <div style={{
-            backgroundColor: theme.colors.primary[50],
-            border: `1px solid ${theme.colors.primary[200]}`,
-            borderRadius: theme.borderRadius.lg,
-            padding: theme.spacing.md,
-            marginBottom: theme.spacing.lg,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            gap: theme.spacing.md,
-            boxShadow: theme.shadows.sm,
-          }}>
-            <div style={{ flex: 1 }}>
-              <div style={{
-                ...theme.typography.body,
-                fontWeight: theme.typography.fontWeight.medium,
-                color: theme.colors.primary[900],
-                marginBottom: theme.spacing.xs,
-              }}>
-                👋 New to this dashboard?
-              </div>
-              <div style={{
-                ...theme.typography.body,
-                fontSize: theme.typography.fontSize.sm,
-                color: theme.colors.primary[700],
-              }}>
-                This is a live demonstration of a production-grade API Gateway security monitoring dashboard. 
-                Learn more about what each section shows in the{' '}
-                <Link 
-                  to="/about" 
-                  style={{ 
-                    color: theme.colors.primary[600], 
-                    fontWeight: theme.typography.fontWeight.medium,
-                    textDecoration: 'underline',
-                  }}
-                >
+          <div className="alert alert--info info-banner">
+            <div className="flex-1">
+              <div className="info-banner__title">👋 New to this dashboard?</div>
+              <div className="info-banner__text">
+                This is a live demonstration of a production-grade API Gateway security monitoring dashboard. Learn
+                more about what each section shows in the{' '}
+                <Link to="/about" className="info-banner__link">
                   About page
-                </Link>.
+                </Link>
+                .
               </div>
             </div>
             <button
+              className="info-banner__close"
               onClick={() => {
                 setInfoBannerDismissed(true);
                 localStorage.setItem('dashboard-info-banner-dismissed', 'true');
-              }}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: theme.colors.primary[600],
-                cursor: 'pointer',
-                fontSize: theme.typography.fontSize.lg,
-                padding: theme.spacing.xs,
-                lineHeight: 1,
-                flexShrink: 0,
               }}
               aria-label="Dismiss banner"
             >
@@ -318,9 +270,8 @@ export function Dashboard() {
           </div>
         )}
 
-        {/* Security Posture Card */}
         {posture && (
-          <div style={{
+          <div style={{ 
             backgroundColor: theme.colors.background.primary,
             padding: theme.spacing.lg,
             borderRadius: theme.borderRadius.lg,
@@ -373,22 +324,112 @@ export function Dashboard() {
                 View Details
               </Button>
             </Link>
-          </div>
+          </Card>
+        )}
+
+        {ingestionStatus && (
+          <section style={{ marginBottom: theme.spacing.xl }}>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              marginBottom: theme.spacing.md 
+            }}>
+              <div>
+                <h2 style={{ ...theme.typography.h3 }}>Ingestion Status</h2>
+                <p style={{ ...theme.typography.small, color: theme.colors.text.secondary }}>
+                  Normalized event pipeline health and adapter readiness
+                </p>
+              </div>
+              <span style={{ 
+                padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+                borderRadius: theme.borderRadius.md,
+                backgroundColor: ingestionStatus.storage.redisConnected
+                  ? theme.colors.success[100]
+                  : theme.colors.error[100],
+                color: ingestionStatus.storage.redisConnected
+                  ? theme.colors.success[800]
+                  : theme.colors.error[800],
+                fontSize: theme.typography.fontSize.sm,
+                fontWeight: theme.typography.fontWeight.medium,
+              }}>
+                Redis {ingestionStatus.storage.redisConnected ? 'Connected' : 'Disconnected'}
+              </span>
+            </div>
+
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', 
+              gap: theme.spacing.lg, 
+              marginBottom: theme.spacing.lg 
+            }}>
+              <MetricCard
+                title="Normalized Events"
+                value={ingestionStatus.storage.totalEvents}
+                subtitle="Stored in Redis/Postgres"
+                color="blue"
+              />
+              <MetricCard
+                title="Last Event"
+                value={formatTimestamp(ingestionStatus.storage.lastEventAt)}
+                color="green"
+              />
+              <MetricCard
+                title="Postgres Storage"
+                value={ingestionStatus.storage.postgresConnected ? 'Connected' : 'Not Configured'}
+                color={ingestionStatus.storage.postgresConnected ? 'green' : 'yellow'}
+              />
+            </div>
+
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', 
+              gap: theme.spacing.md 
+            }}>
+              {ingestionStatus.adapters.map(adapter => (
+                <div key={adapter.provider} style={{ 
+                  backgroundColor: theme.colors.background.primary,
+                  padding: theme.spacing.md,
+                  borderRadius: theme.borderRadius.lg,
+                  boxShadow: theme.shadows.sm,
+                  border: `1px solid ${theme.colors.border.light}`,
+                }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between',
+                    marginBottom: theme.spacing.xs 
+                  }}>
+                    <div style={{ fontWeight: theme.typography.fontWeight.semibold }}>
+                      {adapter.name}
+                    </div>
+                    <span style={{ 
+                      padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+                      borderRadius: theme.borderRadius.md,
+                      backgroundColor: adapter.healthy ? theme.colors.success[100] : theme.colors.warning[100],
+                      color: adapter.healthy ? theme.colors.success[800] : theme.colors.warning[800],
+                      fontSize: theme.typography.fontSize.xs,
+                      fontWeight: theme.typography.fontWeight.medium,
+                    }}>
+                      {adapter.configured ? 'Configured' : 'Needs setup'}
+                    </span>
+                  </div>
+                  <div style={{ 
+                    ...theme.typography.small,
+                    color: theme.colors.text.secondary,
+                  }}>
+                    {adapter.detail || 'Status unavailable'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
         )}
 
         {/* Key Metrics Cards */}
         {currentMetrics && (
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
-            gap: theme.spacing.lg, 
-            marginBottom: theme.spacing.xl 
-          }}>
-            <MetricCard
-              title="Requests/sec"
-              value={currentMetrics.requestsPerSecond.toFixed(2)}
-              color="blue"
-            />
+          <div className="page-grid page-grid--cards">
+            <MetricCard title="Requests/sec" value={currentMetrics.requestsPerSecond.toFixed(2)} color="blue" />
             <MetricCard
               title="Error Rate"
               value={`${currentMetrics.errorRate.toFixed(2)}%`}
@@ -400,11 +441,7 @@ export function Dashboard() {
               subtitle="Last 5 min"
               color={currentMetrics.authStats.failedLogins > 10 ? 'red' : 'yellow'}
             />
-            <MetricCard
-              title="Active Sessions"
-              value={currentMetrics.authStats.activeSessions}
-              color="blue"
-            />
+            <MetricCard title="Active Sessions" value={currentMetrics.authStats.activeSessions} color="blue" />
             <MetricCard
               title="Rate Limit Violations"
               value={currentMetrics.rateLimitStats.violations}
@@ -419,22 +456,8 @@ export function Dashboard() {
           </div>
         )}
 
-        <div style={{ marginBottom: theme.spacing.xl }}>
-          <DataSourcesCard
-            sources={ingestionSources}
-            isLoading={ingestionLoading}
-            error={ingestionError}
-          />
-        </div>
-
-        {/* Charts and Live Feed Layout */}
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: '2fr 1fr', 
-          gap: theme.spacing.lg, 
-          marginBottom: theme.spacing.xl 
-        }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div className="dashboard-grid">
+          <div className="dashboard-grid__charts">
             <RequestRateChart data={requestRateHistory} title="Request Rate (Real-time)" />
             <ErrorRateChart data={errorRateHistory} title="Error Rate by Type" />
             {responseTimeHistory.length > 0 && (
@@ -444,30 +467,22 @@ export function Dashboard() {
           <LiveEventFeed events={securityEvents} maxEvents={15} />
         </div>
 
-        {/* Export Section */}
-        <section style={{ 
-          marginTop: theme.spacing.xl,
-          backgroundColor: theme.colors.background.primary,
-          padding: theme.spacing.lg,
-          borderRadius: theme.borderRadius.lg,
-          boxShadow: theme.shadows.md,
-        }}>
-          <h2 style={{ 
-            ...theme.typography.h3,
-            marginBottom: theme.spacing.md,
-          }}>
-            Export Data
-          </h2>
-          <div style={{ display: 'flex', gap: theme.spacing.md }}>
+        <Card className="page-stack">
+          <div className="section-title">Export Data</div>
+          <div className="action-row">
             <Button
               variant="primary"
               onClick={() => {
                 if (currentMetrics) {
-                  const dataStr = JSON.stringify({
-                    timestamp: new Date().toISOString(),
-                    metrics: currentMetrics,
-                    posture: posture,
-                  }, null, 2);
+                  const dataStr = JSON.stringify(
+                    {
+                      timestamp: new Date().toISOString(),
+                      metrics: currentMetrics,
+                      posture: posture,
+                    },
+                    null,
+                    2
+                  );
                   const blob = new Blob([dataStr], { type: 'application/json' });
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement('a');
@@ -487,9 +502,9 @@ export function Dashboard() {
                 if (securityEvents.length > 0) {
                   const csv = [
                     'Timestamp,Type,Severity,Message',
-                    ...securityEvents.map(e => 
-                      `${new Date(e.timestamp).toISOString()},${e.type},${e.severity},"${e.message}"`
-                    )
+                    ...securityEvents.map(
+                      (e) => `${new Date(e.timestamp).toISOString()},${e.type},${e.severity},"${e.message}"`
+                    ),
                   ].join('\n');
                   const blob = new Blob([csv], { type: 'text/csv' });
                   const url = URL.createObjectURL(blob);
@@ -505,7 +520,7 @@ export function Dashboard() {
               Export Events (CSV)
             </Button>
           </div>
-        </section>
+        </Card>
       </div>
     </Layout>
   );

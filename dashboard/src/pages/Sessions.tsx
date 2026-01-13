@@ -5,11 +5,15 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
+import { format } from 'date-fns';
 import { Layout } from '../components/Layout';
+import { Button } from '../components/Button';
+import { Badge } from '../components/Badge';
+import { Card } from '../components/Card';
+import { SectionHeader } from '../components/SectionHeader';
 import { adminApi } from '../api/admin';
 import { useAuth } from '../contexts/AuthContext';
 import type { SessionInfo } from '../types';
-import { format } from 'date-fns';
 
 export function Sessions() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
@@ -35,7 +39,6 @@ export function Sessions() {
   };
 
   const handleRevoke = async (jti: string) => {
-    // Detect if revoking own session
     const token = localStorage.getItem('accessToken');
     let isOwnSession = false;
 
@@ -60,11 +63,9 @@ export function Sessions() {
       await adminApi.revokeSession(jti);
 
       if (isOwnSession) {
-        // Logout and redirect to login page
         logout();
         navigate('/login', { replace: true });
       } else {
-        // Just refresh the sessions list
         await fetchSessions();
         alert('Session revoked successfully');
       }
@@ -75,163 +76,67 @@ export function Sessions() {
 
   return (
     <Layout>
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-          <div>
-            <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '10px' }}>
-              Active Sessions
-            </h1>
-            <p style={{ color: '#64748b' }}>
-              {sessions.length} active session{sessions.length !== 1 ? 's' : ''}
-            </p>
-          </div>
-          <button
-            onClick={fetchSessions}
-            style={{
-              backgroundColor: '#3b82f6',
-              color: 'white',
-              padding: '10px 16px',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '500'
-            }}
-          >
-            Refresh
-          </button>
-        </div>
+      <div className="page-stack">
+        <SectionHeader
+          title="Active Sessions"
+          subtitle={`${sessions.length} active session${sessions.length !== 1 ? 's' : ''}`}
+          actions={<Button onClick={fetchSessions}>Refresh</Button>}
+        />
 
-        {loading && (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
-            Loading sessions...
-          </div>
-        )}
+        {loading && <div className="empty-state">Loading sessions...</div>}
 
-        {error && (
-          <div style={{
-            backgroundColor: '#fee2e2',
-            color: '#991b1b',
-            padding: '16px',
-            borderRadius: '8px',
-            marginBottom: '20px'
-          }}>
-            {error}
-          </div>
-        )}
+        {error && <div className="alert alert--danger">{error}</div>}
 
         {!loading && !error && (
-          <div style={{ display: 'grid', gap: '15px' }}>
+          <div className="page-stack">
+            {sessions.length === 0 && <Card className="empty-state">No active sessions</Card>}
+
             {sessions.map((session) => (
-              <div
-                key={session.jti}
-                style={{
-                  backgroundColor: 'white',
-                  padding: '20px',
-                  borderRadius: '8px',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                  display: 'grid',
-                  gridTemplateColumns: '1fr auto',
-                  gap: '20px',
-                  alignItems: 'center'
-                }}
-              >
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
+              <Card key={session.jti} className="session-card">
+                <div className="session-card__meta-grid">
                   <div>
-                    <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
-                      User
-                    </div>
-                    <div style={{ fontSize: '16px', fontWeight: '600' }}>
-                      {session.username}
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
-                      ID: {session.userId}
-                    </div>
+                    <div className="threat-card__meta-label">User</div>
+                    <div className="section-title">{session.username}</div>
+                    <div className="text-xs text-muted">ID: {session.userId}</div>
                   </div>
 
                   <div>
-                    <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
-                      Roles
-                    </div>
-                    <div>
-                      {session.roles.map(role => (
-                        <span
-                          key={role}
-                          style={{
-                            display: 'inline-block',
-                            padding: '3px 8px',
-                            marginRight: '4px',
-                            backgroundColor: '#dbeafe',
-                            color: '#1e40af',
-                            fontSize: '12px',
-                            borderRadius: '4px',
-                            fontWeight: '500'
-                          }}
-                        >
+                    <div className="threat-card__meta-label">Roles</div>
+                    <div className="tag-group">
+                      {session.roles.map((role) => (
+                        <Badge key={role} variant="info">
                           {role}
-                        </span>
+                        </Badge>
                       ))}
                     </div>
                   </div>
 
                   <div>
-                    <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
-                      Created
-                    </div>
-                    <div style={{ fontSize: '14px' }}>
-                      {format(new Date(session.createdAt), 'MMM dd, HH:mm:ss')}
-                    </div>
+                    <div className="threat-card__meta-label">Created</div>
+                    <div className="text-sm">{format(new Date(session.createdAt), 'MMM dd, HH:mm:ss')}</div>
                   </div>
 
                   <div>
-                    <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
-                      Expires
-                    </div>
-                    <div style={{ fontSize: '14px' }}>
-                      {format(new Date(session.expiresAt), 'MMM dd, HH:mm:ss')}
-                    </div>
+                    <div className="threat-card__meta-label">Expires</div>
+                    <div className="text-sm">{format(new Date(session.expiresAt), 'MMM dd, HH:mm:ss')}</div>
                   </div>
 
                   <div>
-                    <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
-                      Session ID
-                    </div>
-                    <div style={{ fontSize: '12px', fontFamily: 'monospace', color: '#64748b' }}>
-                      {session.jti.substring(0, 16)}...
-                    </div>
+                    <div className="threat-card__meta-label">Session ID</div>
+                    <div className="text-xs text-mono text-muted">{session.jti.substring(0, 16)}...</div>
                   </div>
                 </div>
 
-                <button
+                <Button
+                  variant="danger"
+                  size="sm"
+                  className="button-nowrap"
                   onClick={() => handleRevoke(session.jti)}
-                  style={{
-                    backgroundColor: '#ef4444',
-                    color: 'white',
-                    padding: '10px 16px',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    whiteSpace: 'nowrap'
-                  }}
                 >
                   Revoke
-                </button>
-              </div>
+                </Button>
+              </Card>
             ))}
-
-            {sessions.length === 0 && (
-              <div style={{
-                backgroundColor: 'white',
-                padding: '40px',
-                borderRadius: '8px',
-                textAlign: 'center',
-                color: '#94a3b8'
-              }}>
-                No active sessions
-              </div>
-            )}
           </div>
         )}
       </div>

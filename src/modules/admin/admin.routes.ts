@@ -615,6 +615,38 @@ export async function registerAdminRoutes(
   );
 
   /**
+   * POST /admin/incidents/:id/actions
+   * Execute a playbook action (mocked)
+   */
+  app.post(
+    '/admin/incidents/:id/actions',
+    {
+      schema: {
+        description: 'Execute a playbook action for an incident (mocked)',
+        tags: ['Incident Response'],
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: {
+            id: { type: 'string' },
+          },
+        },
+        body: {
+          type: 'object',
+          required: ['action'],
+          properties: {
+            action: { type: 'string' },
+            target: { type: 'string' },
+          },
+        },
+      },
+      preHandler: adminAuth,
+    },
+    incidentController.executePlaybookAction.bind(incidentController)
+  );
+
+  /**
    * PATCH /admin/incidents/:id
    * Update incident details
    */

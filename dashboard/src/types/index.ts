@@ -139,6 +139,17 @@ export type IncidentType =
   | 'unauthorized_access'
   | 'other';
 
+export type IncidentTimelineEntryType = 'note' | 'status_change' | 'assignment' | 'action';
+
+export interface IncidentTimelineEntry {
+  id: string;
+  type: IncidentTimelineEntryType;
+  timestamp: number;
+  actor: string;
+  summary: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface Incident {
   id: string;
   title: string;
@@ -160,6 +171,7 @@ export interface Incident {
     author: string;
     content: string;
   }>;
+  timeline: IncidentTimelineEntry[];
   tags: string[];
   metadata?: Record<string, unknown>;
 }

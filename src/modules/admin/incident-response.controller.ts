@@ -170,6 +170,29 @@ export class IncidentResponseController {
   }
 
   /**
+   * POST /admin/incidents/:id/actions
+   * Execute a playbook action (mocked)
+   */
+  async executePlaybookAction(request: FastifyRequest, reply: FastifyReply) {
+    const user = (request as any).user;
+    const params = request.params as any;
+    const body = request.body as any;
+
+    const incident = await this.incidentService.executePlaybookAction(
+      params.id,
+      body.action,
+      user.username,
+      body.target
+    );
+
+    if (!incident) {
+      return reply.code(404).send({ error: 'Incident not found' });
+    }
+
+    return reply.send({ incident });
+  }
+
+  /**
    * POST /admin/incidents/seed-test-data
    * Seed test incidents for development/demo purposes
    */
@@ -235,4 +258,3 @@ export class IncidentResponseController {
     }
   }
 }
-

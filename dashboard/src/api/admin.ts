@@ -167,6 +167,11 @@ export const adminApi = {
     return data.incident;
   },
 
+  runIncidentAction: async (id: string, action: string, target?: string): Promise<Incident> => {
+    const { data } = await apiClient.post(`/admin/incidents/${id}/actions`, { action, target });
+    return data.incident;
+  },
+
   updateIncident: async (id: string, updates: Partial<Incident>): Promise<Incident> => {
     const { data } = await apiClient.patch(`/admin/incidents/${id}`, updates);
     return data.incident;

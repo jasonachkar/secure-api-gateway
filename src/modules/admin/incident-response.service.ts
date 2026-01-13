@@ -21,6 +21,29 @@ export type IncidentType =
   | 'malware'
   | 'unauthorized_access'
   | 'other';
+export type IncidentTimelineEntryType = 'created' | 'note' | 'status_change' | 'assignment' | 'action' | 'update';
+export type IncidentPlaybookAction = 'disable_user' | 'block_ip' | 'open_ticket';
+
+export interface IncidentTimelineEntry {
+  id: string;
+  timestamp: number;
+  type: IncidentTimelineEntryType;
+  author: string;
+  summary: string;
+  details?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export type IncidentTimelineEntryType = 'note' | 'status_change' | 'assignment' | 'action';
+
+export interface IncidentTimelineEntry {
+  id: string;
+  type: IncidentTimelineEntryType;
+  timestamp: number;
+  actor: string;
+  summary: string;
+  metadata?: Record<string, unknown>;
+}
 
 export interface Incident {
   id: string;
@@ -43,6 +66,7 @@ export interface Incident {
     author: string;
     content: string;
   }>;
+  timeline: IncidentTimelineEntry[];
   tags: string[];
   metadata?: Record<string, unknown>;
 }
@@ -81,6 +105,61 @@ export class IncidentResponseService {
 
   constructor(private redis: Redis) {}
 
+  private addTimelineEntry(
+    incident: Incident,
+    entry: Omit<IncidentTimelineEntry, 'id'>
+  ): IncidentTimelineEntry {
+    const timelineEntry: IncidentTimelineEntry = {
+      id: nanoid(),
+      ...entry,
+    };
+    incident.timeline.push(timelineEntry);
+    return timelineEntry;
+  }
+
+  private ensureTimeline(incident: Incident): boolean {
+    if (incident.timeline && incident.timeline.length > 0) {
+      return false;
+    }
+
+    incident.timeline = incident.timeline || [];
+    incident.timeline.push({
+      id: nanoid(),
+      timestamp: incident.createdAt,
+      type: 'created',
+      author: incident.reportedBy,
+      summary: 'Incident created',
+    });
+
+    for (const note of incident.notes || []) {
+      let type: IncidentTimelineEntryType = 'note';
+      let summary = 'Note added';
+
+      if (note.content.startsWith('Status changed to ')) {
+        type = 'status_change';
+        summary = note.content;
+      } else if (note.content.startsWith('Assigned to ')) {
+        type = 'assignment';
+        summary = note.content;
+      } else if (note.content === 'Incident details updated') {
+        type = 'update';
+        summary = note.content;
+      }
+
+      incident.timeline.push({
+        id: nanoid(),
+        timestamp: note.timestamp,
+        type,
+        author: note.author,
+        summary,
+        details: type === 'note' ? note.content : undefined,
+      });
+    }
+
+    incident.timeline.sort((a, b) => a.timestamp - b.timestamp);
+    return true;
+  }
+
   /**
    * Create a new incident
    */
@@ -95,6 +174,7 @@ export class IncidentResponseService {
     tags?: string[];
     metadata?: Record<string, unknown>;
   }): Promise<Incident> {
+    const now = Date.now();
     const incident: Incident = {
       id: nanoid(),
       title: params.title,
@@ -102,15 +182,35 @@ export class IncidentResponseService {
       type: params.type,
       severity: params.severity,
       status: 'open',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
       reportedBy: params.reportedBy,
       affectedIPs: params.affectedIPs || [],
       affectedUsers: params.affectedUsers || [],
       notes: [],
+      timeline: [
+        {
+          id: nanoid(),
+          type: 'note',
+          timestamp: now,
+          actor: params.reportedBy,
+          summary: 'Incident created',
+          metadata: {
+            severity: params.severity,
+            type: params.type,
+          },
+        },
+      ],
       tags: params.tags || [],
       metadata: params.metadata,
     };
+
+    this.addTimelineEntry(incident, {
+      timestamp: incident.createdAt,
+      type: 'created',
+      author: params.reportedBy,
+      summary: 'Incident created',
+    });
 
     const key = `${this.INCIDENT_KEY_PREFIX}${incident.id}`;
     await this.redis.setex(key, this.INCIDENT_RETENTION, JSON.stringify(incident));
@@ -127,7 +227,14 @@ export class IncidentResponseService {
   async getIncident(id: string): Promise<Incident | null> {
     const key = `${this.INCIDENT_KEY_PREFIX}${id}`;
     const data = await this.redis.get(key);
-    return data ? JSON.parse(data) : null;
+    if (!data) return null;
+    const incident = JSON.parse(data) as Incident;
+    const hadTimeline = Boolean(incident.timeline?.length);
+    const normalized = this.ensureTimeline(incident);
+    if (!hadTimeline && normalized.timeline?.length) {
+      await this.redis.setex(key, this.INCIDENT_RETENTION, JSON.stringify(normalized));
+    }
+    return normalized;
   }
 
   /**
@@ -164,7 +271,7 @@ export class IncidentResponseService {
           if (params?.severity && incident.severity !== params.severity) continue;
           if (params?.type && incident.type !== params.type) continue;
 
-          incidents.push(incident);
+          incidents.push(this.ensureTimeline(incident));
         }
       }
     }
@@ -184,6 +291,7 @@ export class IncidentResponseService {
     if (!incident) return null;
 
     const now = Date.now();
+    const previousStatus = incident.status;
     incident.status = status;
     incident.updatedAt = now;
 
@@ -192,11 +300,28 @@ export class IncidentResponseService {
       incident.resolutionTime = now - incident.createdAt;
     }
 
+    this.addTimelineEntry(incident, {
+      type: 'status_change',
+      timestamp: now,
+      actor: updatedBy,
+      summary: `Status changed to ${status}`,
+      metadata: {
+        status,
+      },
+    });
+
     // Add note about status change
     incident.notes.push({
       timestamp: now,
       author: updatedBy,
       content: `Status changed to ${status}`,
+    });
+    this.addTimelineEntry(incident, {
+      timestamp: now,
+      type: 'status_change',
+      author: updatedBy,
+      summary: `Status changed to ${status}`,
+      metadata: { previousStatus, newStatus: status },
     });
 
     const key = `${this.INCIDENT_KEY_PREFIX}${id}`;
@@ -223,10 +348,27 @@ export class IncidentResponseService {
       incident.responseTime = now - incident.createdAt;
     }
 
+    this.addTimelineEntry(incident, {
+      type: 'assignment',
+      timestamp: now,
+      actor: updatedBy,
+      summary: `Assigned to ${assignedTo}`,
+      metadata: {
+        assignedTo,
+      },
+    });
+
     incident.notes.push({
       timestamp: now,
       author: updatedBy,
       content: `Assigned to ${assignedTo}`,
+    });
+    this.addTimelineEntry(incident, {
+      timestamp: now,
+      type: 'assignment',
+      author: updatedBy,
+      summary: `Assigned to ${assignedTo}`,
+      metadata: { assignedTo },
     });
 
     const key = `${this.INCIDENT_KEY_PREFIX}${id}`;
@@ -242,12 +384,19 @@ export class IncidentResponseService {
     const incident = await this.getIncident(id);
     if (!incident) return null;
 
+    const now = Date.now();
     incident.notes.push({
-      timestamp: Date.now(),
+      timestamp: now,
       author,
       content,
     });
-    incident.updatedAt = Date.now();
+    incident.updatedAt = now;
+    this.addTimelineEntry(incident, {
+      type: 'note',
+      timestamp: now,
+      actor: author,
+      summary: content,
+    });
 
     const key = `${this.INCIDENT_KEY_PREFIX}${id}`;
     await this.redis.setex(key, this.INCIDENT_RETENTION, JSON.stringify(incident));
@@ -267,18 +416,137 @@ export class IncidentResponseService {
     if (!incident) return null;
 
     Object.assign(incident, updates);
-    incident.updatedAt = Date.now();
+    const now = Date.now();
+    incident.updatedAt = now;
 
     incident.notes.push({
-      timestamp: Date.now(),
+      timestamp: now,
       author: updatedBy,
       content: 'Incident details updated',
+    });
+    this.addTimelineEntry(incident, {
+      type: 'note',
+      timestamp: now,
+      actor: updatedBy,
+      summary: 'Incident details updated',
     });
 
     const key = `${this.INCIDENT_KEY_PREFIX}${id}`;
     await this.redis.setex(key, this.INCIDENT_RETENTION, JSON.stringify(incident));
 
     return incident;
+  }
+
+  /**
+   * Execute a playbook action (mocked)
+   */
+  async executePlaybookAction(
+    id: string,
+    action: string,
+    actor: string,
+    target?: string
+  ): Promise<Incident | null> {
+    const incident = await this.getIncident(id);
+    if (!incident) return null;
+
+    const now = Date.now();
+    const actionLabel = action
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+    const summary = `Playbook action: ${actionLabel}${target ? ` (${target})` : ''}`;
+
+    this.addTimelineEntry(incident, {
+      type: 'action',
+      timestamp: now,
+      actor,
+      summary,
+      metadata: {
+        action,
+        target,
+        status: 'completed',
+        result: 'mocked',
+      },
+    });
+
+    incident.updatedAt = now;
+
+    const key = `${this.INCIDENT_KEY_PREFIX}${id}`;
+    await this.redis.setex(key, this.INCIDENT_RETENTION, JSON.stringify(incident));
+
+    logger.info({ incidentId: id, action, actor, target }, 'Incident playbook action executed');
+
+    return incident;
+  }
+
+  private addTimelineEntry(
+    incident: Incident,
+    entry: Omit<IncidentTimelineEntry, 'id'>
+  ) {
+    if (!incident.timeline) {
+      incident.timeline = [];
+    }
+    incident.timeline.push({
+      id: nanoid(),
+      ...entry,
+    });
+  }
+
+  private ensureTimeline(incident: Incident): Incident {
+    if (incident.timeline && incident.timeline.length > 0) {
+      return incident;
+    }
+
+    const timeline: IncidentTimelineEntry[] = [];
+    if (incident.createdAt) {
+      timeline.push({
+        id: nanoid(),
+        type: 'note',
+        timestamp: incident.createdAt,
+        actor: incident.reportedBy || 'system',
+        summary: 'Incident created',
+      });
+    }
+
+    if (incident.notes?.length) {
+      incident.notes.forEach(note => {
+        const normalized = this.normalizeNoteToTimeline(note.content);
+        timeline.push({
+          id: nanoid(),
+          type: normalized.type,
+          timestamp: note.timestamp,
+          actor: note.author,
+          summary: note.content,
+          metadata: normalized.metadata,
+        });
+      });
+    }
+
+    incident.timeline = timeline.sort((a, b) => a.timestamp - b.timestamp);
+    return incident;
+  }
+
+  private normalizeNoteToTimeline(content: string): {
+    type: IncidentTimelineEntryType;
+    metadata?: Record<string, unknown>;
+  } {
+    if (content.startsWith('Status changed to ')) {
+      return {
+        type: 'status_change',
+        metadata: {
+          status: content.replace('Status changed to ', ''),
+        },
+      };
+    }
+    if (content.startsWith('Assigned to ')) {
+      return {
+        type: 'assignment',
+        metadata: {
+          assignedTo: content.replace('Assigned to ', ''),
+        },
+      };
+    }
+    return { type: 'note' };
   }
 
   /**
@@ -370,6 +638,59 @@ export class IncidentResponseService {
   }
 
   /**
+   * Run a playbook action (mocked for workflow visibility)
+   */
+  async runPlaybookAction(
+    id: string,
+    action: IncidentPlaybookAction,
+    updatedBy: string,
+    target?: string
+  ): Promise<Incident | null> {
+    const incident = await this.getIncident(id);
+    if (!incident) return null;
+
+    const now = Date.now();
+    const actionLabels: Record<IncidentPlaybookAction, string> = {
+      disable_user: 'Disable user',
+      block_ip: 'Block IP',
+      open_ticket: 'Open ticket',
+    };
+
+    let details = actionLabels[action];
+    if (target) {
+      details = `${details} (${target})`;
+    }
+
+    const metadata: Record<string, unknown> = {
+      action,
+      target,
+      status: 'completed',
+    };
+
+    if (action === 'open_ticket') {
+      metadata.ticketId = `INC-${Math.floor(1000 + Math.random() * 9000)}`;
+    }
+
+    this.addTimelineEntry(incident, {
+      timestamp: now,
+      type: 'action',
+      author: updatedBy,
+      summary: `Playbook action executed: ${actionLabels[action]}`,
+      details,
+      metadata,
+    });
+
+    incident.updatedAt = now;
+
+    const key = `${this.INCIDENT_KEY_PREFIX}${id}`;
+    await this.redis.setex(key, this.INCIDENT_RETENTION, JSON.stringify(incident));
+
+    logger.info({ incidentId: id, action, updatedBy }, 'Incident playbook action executed');
+
+    return incident;
+  }
+
+  /**
    * Auto-create incident from threat intelligence
    */
   async createIncidentFromThreat(
@@ -412,69 +733,5 @@ export class IncidentResponseService {
       affectedIPs: [threatInfo.ip],
       tags: ['auto-generated', 'threat-intelligence'],
     });
-  }
-
-  /**
-   * Auto-create incident from normalized ingestion event
-   */
-  async createIncidentFromNormalizedEvent(
-    event: NormalizedEvent,
-    reportedBy: string = 'system'
-  ): Promise<Incident | null> {
-    if (this.severityRank[event.severity] < this.severityRank.high) {
-      return null;
-    }
-
-    const type = this.mapEventTypeToIncident(event.event_type);
-    const severity = event.severity as IncidentSeverity;
-    const sourceLabel = event.source ? ` from ${event.source}` : '';
-
-    return this.createIncident({
-      title: `${severity.toUpperCase()}: ${event.event_type.replace(/_/g, ' ')}${sourceLabel}`,
-      description: `Normalized event detected.\n\nSource: ${event.source}\nTimestamp: ${new Date(event.timestamp).toISOString()}\nPayload: ${JSON.stringify(event.payload, null, 2)}`,
-      type,
-      severity,
-      reportedBy,
-      affectedIPs: this.extractAffectedIps(event.payload),
-      tags: ['auto-generated', 'normalized-event'],
-      metadata: {
-        eventId: event.id,
-        source: event.source,
-        eventType: event.event_type,
-      },
-    });
-  }
-
-  private mapEventTypeToIncident(eventType: string): IncidentType {
-    const normalized = eventType.toLowerCase();
-
-    if (normalized.includes('brute') || normalized.includes('auth.failed')) return 'brute_force';
-    if (normalized.includes('credential')) return 'credential_stuffing';
-    if (normalized.includes('rate_limit')) return 'rate_limit_abuse';
-    if (normalized.includes('lockout')) return 'account_lockout';
-    if (normalized.includes('ddos')) return 'ddos';
-    if (normalized.includes('malware')) return 'malware';
-    if (normalized.includes('breach')) return 'data_breach';
-    if (normalized.includes('unauthorized')) return 'unauthorized_access';
-
-    return 'suspicious_activity';
-  }
-
-  private extractAffectedIps(payload: Record<string, unknown>): string[] {
-    const ipCandidates = new Set<string>();
-    const possibleKeys = ['ip', 'ipAddress', 'sourceIp', 'clientIp'];
-
-    for (const key of possibleKeys) {
-      const value = payload[key];
-      if (typeof value === 'string') {
-        ipCandidates.add(value);
-      } else if (Array.isArray(value)) {
-        value.forEach(entry => {
-          if (typeof entry === 'string') ipCandidates.add(entry);
-        });
-      }
-    }
-
-    return Array.from(ipCandidates);
   }
 }

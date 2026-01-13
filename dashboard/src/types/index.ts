@@ -64,6 +64,19 @@ export interface AuditLogEntry {
   metadata?: Record<string, unknown>;
 }
 
+export interface AdminAuditLogEntry {
+  id: string;
+  timestamp: number;
+  actor: {
+    userId: string;
+    username: string;
+  };
+  action: string;
+  resource: string;
+  incidentId?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface SessionInfo {
   jti: string;
   userId: string;
@@ -159,6 +172,29 @@ export type IncidentType =
   | 'malware'
   | 'unauthorized_access'
   | 'other';
+export type IncidentTimelineEntryType = 'created' | 'note' | 'status_change' | 'assignment' | 'action' | 'update';
+export type IncidentPlaybookAction = 'disable_user' | 'block_ip' | 'open_ticket';
+
+export interface IncidentTimelineEntry {
+  id: string;
+  timestamp: number;
+  type: IncidentTimelineEntryType;
+  author: string;
+  summary: string;
+  details?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export type IncidentTimelineEntryType = 'note' | 'status_change' | 'assignment' | 'action';
+
+export interface IncidentTimelineEntry {
+  id: string;
+  type: IncidentTimelineEntryType;
+  timestamp: number;
+  actor: string;
+  summary: string;
+  metadata?: Record<string, unknown>;
+}
 
 export interface Incident {
   id: string;
@@ -181,6 +217,7 @@ export interface Incident {
     author: string;
     content: string;
   }>;
+  timeline: IncidentTimelineEntry[];
   tags: string[];
   metadata?: Record<string, unknown>;
 }

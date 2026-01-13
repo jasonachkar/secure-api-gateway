@@ -24,6 +24,7 @@ import type {
   ComplianceMetrics,
   IngestionStatus,
 } from '../types';
+import { normalizeIncident, normalizeIncidents } from '../utils/incident';
 
 export const adminApi = {
   // Auth
@@ -170,12 +171,12 @@ export const adminApi = {
     offset?: number;
   }): Promise<Incident[]> => {
     const { data } = await apiClient.get('/admin/incidents', { params });
-    return data.incidents;
+    return normalizeIncidents(data.incidents ?? []);
   },
 
   getIncident: async (id: string): Promise<Incident> => {
     const { data } = await apiClient.get(`/admin/incidents/${id}`);
-    return data.incident;
+    return normalizeIncident(data.incident);
   },
 
   updateIncidentStatus: async (id: string, status: IncidentStatus): Promise<Incident> => {

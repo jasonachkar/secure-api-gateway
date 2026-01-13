@@ -8,6 +8,9 @@ import { Link } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { Button } from '../components/Button';
 import { MetricCard } from '../components/MetricCard';
+import { Card } from '../components/Card';
+import { SectionHeader } from '../components/SectionHeader';
+import { Table, TableHeader, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/Table';
 import { adminApi } from '../api/admin';
 import { theme } from '../styles/theme';
 import type { AdminAuditLogEntry } from '../types';
@@ -82,7 +85,6 @@ export function AuditLogs() {
     } catch (err: any) {
       setError(err.message || 'Failed to fetch audit logs');
       setAllLogs([]);
-      setLogs([]);
     } finally {
       setLoading(false);
     }

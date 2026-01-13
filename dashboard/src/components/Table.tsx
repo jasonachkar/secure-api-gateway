@@ -4,32 +4,18 @@
  */
 
 import React from 'react';
-import { theme } from '../styles/theme';
 
 interface TableProps {
   children: React.ReactNode;
-  style?: React.CSSProperties;
+  className?: string;
 }
 
-export function Table({ children, style }: TableProps) {
+export function Table({ children, className }: TableProps) {
+  const classes = ['data-table', className].filter(Boolean).join(' ');
+
   return (
-    <div
-      style={{
-        backgroundColor: theme.colors.background.primary,
-        borderRadius: theme.borderRadius.lg,
-        boxShadow: theme.shadows.md,
-        overflow: 'hidden',
-        ...style,
-      }}
-    >
-      <table
-        style={{
-          width: '100%',
-          borderCollapse: 'collapse',
-        }}
-      >
-        {children}
-      </table>
+    <div className={classes}>
+      <table>{children}</table>
     </div>
   );
 }
@@ -39,16 +25,7 @@ interface TableHeaderProps {
 }
 
 export function TableHeader({ children }: TableHeaderProps) {
-  return (
-    <thead
-      style={{
-        backgroundColor: theme.colors.neutral[50],
-        borderBottom: `1px solid ${theme.colors.border.light}`,
-      }}
-    >
-      {children}
-    </thead>
-  );
+  return <thead>{children}</thead>;
 }
 
 interface TableBodyProps {
@@ -62,72 +39,47 @@ export function TableBody({ children }: TableBodyProps) {
 interface TableRowProps {
   children: React.ReactNode;
   onClick?: () => void;
-  style?: React.CSSProperties;
+  className?: string;
 }
 
-export function TableRow({ children, onClick, style }: TableRowProps) {
-  const [isHovered, setIsHovered] = React.useState(false);
+export function TableRow({ children, onClick, className }: TableRowProps) {
+  const classes = [
+    onClick ? 'data-table__row--clickable' : null,
+    className,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <tr
       onClick={onClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      style={{
-        borderBottom: `1px solid ${theme.colors.border.light}`,
-        backgroundColor: isHovered ? theme.colors.neutral[50] : 'transparent',
-        cursor: onClick ? 'pointer' : 'default',
-        transition: theme.transitions.fast,
-        ...style,
-      }}
+      className={classes}
     >
       {children}
     </tr>
   );
 }
 
-interface TableHeaderCellProps {
+interface TableHeaderCellProps extends React.ThHTMLAttributes<HTMLTableCellElement> {
   children: React.ReactNode;
-  style?: React.CSSProperties;
 }
 
-export function TableHeaderCell({ children, style }: TableHeaderCellProps) {
+export function TableHeaderCell({ children, className, ...props }: TableHeaderCellProps) {
   return (
-    <th
-      style={{
-        padding: theme.spacing.md,
-        textAlign: 'left',
-        fontSize: theme.typography.fontSize.sm,
-        fontWeight: theme.typography.fontWeight.semibold,
-        color: theme.colors.text.secondary,
-        textTransform: 'uppercase',
-        letterSpacing: '0.05em',
-        ...style,
-      }}
-    >
+    <th className={className} {...props}>
       {children}
     </th>
   );
 }
 
-interface TableCellProps {
+interface TableCellProps extends React.TdHTMLAttributes<HTMLTableCellElement> {
   children: React.ReactNode;
-  style?: React.CSSProperties;
 }
 
-export function TableCell({ children, style }: TableCellProps) {
+export function TableCell({ children, className, ...props }: TableCellProps) {
   return (
-    <td
-      style={{
-        padding: theme.spacing.md,
-        fontSize: theme.typography.fontSize.base,
-        color: theme.colors.text.primary,
-        ...style,
-      }}
-    >
+    <td className={className} {...props}>
       {children}
     </td>
   );
 }
-
-

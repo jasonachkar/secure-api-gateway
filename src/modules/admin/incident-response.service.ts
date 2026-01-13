@@ -20,6 +20,18 @@ export type IncidentType =
   | 'malware'
   | 'unauthorized_access'
   | 'other';
+export type IncidentTimelineEntryType = 'created' | 'note' | 'status_change' | 'assignment' | 'action' | 'update';
+export type IncidentPlaybookAction = 'disable_user' | 'block_ip' | 'open_ticket';
+
+export interface IncidentTimelineEntry {
+  id: string;
+  timestamp: number;
+  type: IncidentTimelineEntryType;
+  author: string;
+  summary: string;
+  details?: string;
+  metadata?: Record<string, unknown>;
+}
 
 export type IncidentTimelineEntryType = 'note' | 'status_change' | 'assignment' | 'action';
 
@@ -86,6 +98,61 @@ export class IncidentResponseService {
 
   constructor(private redis: Redis) {}
 
+  private addTimelineEntry(
+    incident: Incident,
+    entry: Omit<IncidentTimelineEntry, 'id'>
+  ): IncidentTimelineEntry {
+    const timelineEntry: IncidentTimelineEntry = {
+      id: nanoid(),
+      ...entry,
+    };
+    incident.timeline.push(timelineEntry);
+    return timelineEntry;
+  }
+
+  private ensureTimeline(incident: Incident): boolean {
+    if (incident.timeline && incident.timeline.length > 0) {
+      return false;
+    }
+
+    incident.timeline = incident.timeline || [];
+    incident.timeline.push({
+      id: nanoid(),
+      timestamp: incident.createdAt,
+      type: 'created',
+      author: incident.reportedBy,
+      summary: 'Incident created',
+    });
+
+    for (const note of incident.notes || []) {
+      let type: IncidentTimelineEntryType = 'note';
+      let summary = 'Note added';
+
+      if (note.content.startsWith('Status changed to ')) {
+        type = 'status_change';
+        summary = note.content;
+      } else if (note.content.startsWith('Assigned to ')) {
+        type = 'assignment';
+        summary = note.content;
+      } else if (note.content === 'Incident details updated') {
+        type = 'update';
+        summary = note.content;
+      }
+
+      incident.timeline.push({
+        id: nanoid(),
+        timestamp: note.timestamp,
+        type,
+        author: note.author,
+        summary,
+        details: type === 'note' ? note.content : undefined,
+      });
+    }
+
+    incident.timeline.sort((a, b) => a.timestamp - b.timestamp);
+    return true;
+  }
+
   /**
    * Create a new incident
    */
@@ -130,6 +197,13 @@ export class IncidentResponseService {
       tags: params.tags || [],
       metadata: params.metadata,
     };
+
+    this.addTimelineEntry(incident, {
+      timestamp: incident.createdAt,
+      type: 'created',
+      author: params.reportedBy,
+      summary: 'Incident created',
+    });
 
     const key = `${this.INCIDENT_KEY_PREFIX}${incident.id}`;
     await this.redis.setex(key, this.INCIDENT_RETENTION, JSON.stringify(incident));
@@ -210,6 +284,7 @@ export class IncidentResponseService {
     if (!incident) return null;
 
     const now = Date.now();
+    const previousStatus = incident.status;
     incident.status = status;
     incident.updatedAt = now;
 
@@ -233,6 +308,13 @@ export class IncidentResponseService {
       timestamp: now,
       author: updatedBy,
       content: `Status changed to ${status}`,
+    });
+    this.addTimelineEntry(incident, {
+      timestamp: now,
+      type: 'status_change',
+      author: updatedBy,
+      summary: `Status changed to ${status}`,
+      metadata: { previousStatus, newStatus: status },
     });
 
     const key = `${this.INCIDENT_KEY_PREFIX}${id}`;
@@ -273,6 +355,13 @@ export class IncidentResponseService {
       timestamp: now,
       author: updatedBy,
       content: `Assigned to ${assignedTo}`,
+    });
+    this.addTimelineEntry(incident, {
+      timestamp: now,
+      type: 'assignment',
+      author: updatedBy,
+      summary: `Assigned to ${assignedTo}`,
+      metadata: { assignedTo },
     });
 
     const key = `${this.INCIDENT_KEY_PREFIX}${id}`;
@@ -539,6 +628,59 @@ export class IncidentResponseService {
       .sort((a, b) => a.date.localeCompare(b.date));
 
     return stats;
+  }
+
+  /**
+   * Run a playbook action (mocked for workflow visibility)
+   */
+  async runPlaybookAction(
+    id: string,
+    action: IncidentPlaybookAction,
+    updatedBy: string,
+    target?: string
+  ): Promise<Incident | null> {
+    const incident = await this.getIncident(id);
+    if (!incident) return null;
+
+    const now = Date.now();
+    const actionLabels: Record<IncidentPlaybookAction, string> = {
+      disable_user: 'Disable user',
+      block_ip: 'Block IP',
+      open_ticket: 'Open ticket',
+    };
+
+    let details = actionLabels[action];
+    if (target) {
+      details = `${details} (${target})`;
+    }
+
+    const metadata: Record<string, unknown> = {
+      action,
+      target,
+      status: 'completed',
+    };
+
+    if (action === 'open_ticket') {
+      metadata.ticketId = `INC-${Math.floor(1000 + Math.random() * 9000)}`;
+    }
+
+    this.addTimelineEntry(incident, {
+      timestamp: now,
+      type: 'action',
+      author: updatedBy,
+      summary: `Playbook action executed: ${actionLabels[action]}`,
+      details,
+      metadata,
+    });
+
+    incident.updatedAt = now;
+
+    const key = `${this.INCIDENT_KEY_PREFIX}${id}`;
+    await this.redis.setex(key, this.INCIDENT_RETENTION, JSON.stringify(incident));
+
+    logger.info({ incidentId: id, action, updatedBy }, 'Incident playbook action executed');
+
+    return incident;
   }
 
   /**

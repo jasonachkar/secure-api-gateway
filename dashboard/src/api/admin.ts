@@ -19,6 +19,7 @@ import type {
   IncidentStatus,
   IncidentSeverity,
   IncidentType,
+  IncidentPlaybookAction,
   SecurityPosture,
   ComplianceMetrics,
 } from '../types';

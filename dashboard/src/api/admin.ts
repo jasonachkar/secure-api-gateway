@@ -20,6 +20,7 @@ import type {
   IncidentType,
   SecurityPosture,
   ComplianceMetrics,
+  IngestionSourceStatus,
 } from '../types';
 
 export const adminApi = {
@@ -36,6 +37,11 @@ export const adminApi = {
   // Metrics
   getMetricsSummary: async (): Promise<MetricsSummary> => {
     const { data } = await apiClient.get('/admin/metrics/summary');
+    return data;
+  },
+
+  getIngestionStatus: async (): Promise<{ sources: IngestionSourceStatus[] }> => {
+    const { data } = await apiClient.get('/admin/metrics/ingestion');
     return data;
   },
 

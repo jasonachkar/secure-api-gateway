@@ -165,6 +165,13 @@ export class MetricsSeederService {
         await this.threatIntelService.recordEvent(ip, 'suspicious');
       }
 
+      // Simulate ingestion activity from external sources
+      if (Math.random() < 0.7) {
+        const sourceIds = this.metricsService.getIngestionSourceIds();
+        const sourceId = sourceIds[Math.floor(Math.random() * sourceIds.length)];
+        await this.metricsService.recordIngestionEvent(sourceId, now);
+      }
+
       // Occasionally trigger a high-threat scenario to generate incidents
       // This helps demonstrate auto-incident creation
       if (Math.random() < 0.01) { // 1% chance
@@ -200,4 +207,3 @@ export class MetricsSeederService {
     return ips;
   }
 }
-

@@ -10,11 +10,12 @@ import { RequestRateChart } from '../components/RequestRateChart';
 import { ErrorRateChart } from '../components/ErrorRateChart';
 import { ResponseTimeChart } from '../components/ResponseTimeChart';
 import { LiveEventFeed } from '../components/LiveEventFeed';
+import { DataSourcesCard } from '../components/DataSourcesCard';
 import { Button } from '../components/Button';
 import { useSSE } from '../hooks/useSSE';
 import { adminApi } from '../api/admin';
 import { theme } from '../styles/theme';
-import type { SecurityPosture } from '../types';
+import type { IngestionSourceStatus, SecurityPosture } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -59,6 +60,9 @@ export function Dashboard() {
   const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
   const [currentMetrics, setCurrentMetrics] = useState<RealtimeMetrics | null>(null);
   const [posture, setPosture] = useState<SecurityPosture | null>(null);
+  const [ingestionSources, setIngestionSources] = useState<IngestionSourceStatus[]>([]);
+  const [ingestionLoading, setIngestionLoading] = useState(true);
+  const [ingestionError, setIngestionError] = useState<string | null>(null);
   const [infoBannerDismissed, setInfoBannerDismissed] = useState(() => {
     return localStorage.getItem('dashboard-info-banner-dismissed') === 'true';
   });
@@ -73,6 +77,35 @@ export function Dashboard() {
     adminApi.getSecurityPosture().then(setPosture).catch(() => {
       // Silently fail - posture is optional
     });
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadIngestionStatus = async () => {
+      try {
+        setIngestionLoading(true);
+        const response = await adminApi.getIngestionStatus();
+        if (!isMounted) return;
+        setIngestionSources(response.sources);
+        setIngestionError(null);
+      } catch (ingestionErr) {
+        if (!isMounted) return;
+        setIngestionError('Unable to load ingestion status.');
+      } finally {
+        if (isMounted) {
+          setIngestionLoading(false);
+        }
+      }
+    };
+
+    loadIngestionStatus();
+    const interval = setInterval(loadIngestionStatus, 15000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   // Update history and events when new data arrives
@@ -385,6 +418,14 @@ export function Dashboard() {
             />
           </div>
         )}
+
+        <div style={{ marginBottom: theme.spacing.xl }}>
+          <DataSourcesCard
+            sources={ingestionSources}
+            isLoading={ingestionLoading}
+            error={ingestionError}
+          />
+        </div>
 
         {/* Charts and Live Feed Layout */}
         <div style={{ 

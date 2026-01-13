@@ -5,7 +5,7 @@
 
 import Redis from 'ioredis';
 import { logger } from '../../lib/logger.js';
-import type { MetricsSummary, RealtimeMetrics } from './admin.schemas.js';
+import type { IngestionSourceStatus, MetricsSummary, RealtimeMetrics } from './admin.schemas.js';
 
 /**
  * Metrics service for collecting real-time API gateway metrics
@@ -13,6 +13,35 @@ import type { MetricsSummary, RealtimeMetrics } from './admin.schemas.js';
 export class MetricsService {
   private readonly METRICS_PREFIX = 'metrics';
   private readonly RETENTION_SECONDS = 900; // 15 minutes
+  private readonly INGESTION_LAST_EVENT_TTL_SECONDS = 86400; // 24 hours
+  private readonly INGESTION_STALE_MS = 5 * 60 * 1000; // 5 minutes
+  private readonly ingestionSources = [
+    {
+      id: 'cloudwatch',
+      name: 'CloudWatch Logs',
+      description: 'AWS CloudWatch log streams',
+    },
+    {
+      id: 'waf',
+      name: 'AWS WAF Logs',
+      description: 'Layer 7 firewall events',
+    },
+    {
+      id: 'github',
+      name: 'GitHub Audit',
+      description: 'Org audit events & token usage',
+    },
+    {
+      id: 'okta',
+      name: 'Okta System Logs',
+      description: 'Identity events and MFA signals',
+    },
+    {
+      id: 's3',
+      name: 'S3 Access Logs',
+      description: 'Storage access and object activity',
+    },
+  ];
 
   constructor(private redis: Redis) {}
 
@@ -59,6 +88,67 @@ export class MetricsService {
     } catch (error) {
       logger.error({ error }, 'Failed to record request metrics');
     }
+  }
+
+  /**
+   * Record ingestion activity for a named source
+   */
+  async recordIngestionEvent(sourceId: string, timestamp: number = Date.now()): Promise<void> {
+    const source = this.ingestionSources.find(entry => entry.id === sourceId);
+    if (!source) {
+      logger.warn({ sourceId }, 'Unknown ingestion source');
+      return;
+    }
+
+    try {
+      const key = `${this.METRICS_PREFIX}:ingestion:${sourceId}:last_event`;
+      await this.redis.set(key, timestamp.toString(), 'EX', this.INGESTION_LAST_EVENT_TTL_SECONDS);
+    } catch (error) {
+      logger.error({ error, sourceId }, 'Failed to record ingestion event');
+    }
+  }
+
+  /**
+   * List known ingestion sources
+   */
+  getIngestionSourceIds(): string[] {
+    return this.ingestionSources.map(source => source.id);
+  }
+
+  /**
+   * Get ingestion status for all sources
+   */
+  async getIngestionStatus(): Promise<{ sources: IngestionSourceStatus[] }> {
+    const now = Date.now();
+    const pipeline = this.redis.pipeline();
+
+    this.ingestionSources.forEach(source => {
+      pipeline.get(`${this.METRICS_PREFIX}:ingestion:${source.id}:last_event`);
+    });
+
+    const results = await pipeline.exec();
+
+    const sources = this.ingestionSources.map((source, index) => {
+      const entry = results?.[index];
+      const lastEventAt = entry && entry[1] ? parseInt(entry[1] as string, 10) : null;
+      const isFresh = lastEventAt ? now - lastEventAt <= this.INGESTION_STALE_MS : false;
+      const status: IngestionSourceStatus['status'] = lastEventAt
+        ? isFresh
+          ? 'connected'
+          : 'delayed'
+        : 'disconnected';
+
+      return {
+        id: source.id,
+        name: source.name,
+        description: source.description,
+        status,
+        connected: status === 'connected',
+        lastEventAt,
+      };
+    });
+
+    return { sources };
   }
 
   /**

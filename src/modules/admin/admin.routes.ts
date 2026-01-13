@@ -93,6 +93,23 @@ export async function registerAdminRoutes(
   );
 
   /**
+   * GET /admin/metrics/ingestion
+   * Get ingestion status for connected data sources
+   */
+  app.get(
+    '/admin/metrics/ingestion',
+    {
+      schema: {
+        description: 'Get ingestion status for connected data sources',
+        tags: ['Admin'],
+        security: [{ bearerAuth: [] }],
+      },
+      preHandler: adminAuth,
+    },
+    controller.getIngestionStatus.bind(controller)
+  );
+
+  /**
    * OPTIONS /admin/metrics/realtime
    * Handle CORS preflight for SSE endpoint
    */

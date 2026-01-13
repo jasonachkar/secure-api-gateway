@@ -59,6 +59,17 @@ export interface RealtimeMetrics {
   };
 }
 
+export type IngestionConnectionStatus = 'connected' | 'delayed' | 'disconnected';
+
+export interface IngestionSourceStatus {
+  id: string;
+  name: string;
+  description: string;
+  status: IngestionConnectionStatus;
+  connected: boolean;
+  lastEventAt: number | null;
+}
+
 /**
  * Active session info
  */

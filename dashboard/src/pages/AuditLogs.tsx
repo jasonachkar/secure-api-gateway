@@ -1,10 +1,10 @@
 /**
- * Enhanced Audit Logs page
- * Comprehensive audit log viewing with filtering, pagination, export, and statistics
+ * Admin Audit Logs page
+ * Displays administrative actions with incident links
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { format } from 'date-fns';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { Button } from '../components/Button';
 import { MetricCard } from '../components/MetricCard';
@@ -12,36 +12,19 @@ import { Card } from '../components/Card';
 import { SectionHeader } from '../components/SectionHeader';
 import { Table, TableHeader, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/Table';
 import { adminApi } from '../api/admin';
-import type { AuditLogEntry } from '../types';
+import { theme } from '../styles/theme';
+import type { AdminAuditLogEntry } from '../types';
+import { format } from 'date-fns';
 
 interface AuditLogFilters {
-  eventType?: string;
-  userId?: string;
-  username?: string;
-  ip?: string;
+  actorId?: string;
+  action?: string;
+  incidentId?: string;
   startTime?: number;
   endTime?: number;
-  success?: boolean;
-  search?: string;
   page: number;
   pageSize: number;
 }
-
-type SortField = 'timestamp' | 'eventType' | 'username' | 'ip';
-type SortDirection = 'asc' | 'desc';
-
-const EVENT_TYPES = [
-  'LOGIN_SUCCESS',
-  'LOGIN_FAILURE',
-  'LOGOUT',
-  'TOKEN_REFRESH',
-  'TOKEN_REVOKED',
-  'PERMISSION_DENIED',
-  'RATE_LIMIT_EXCEEDED',
-  'ACCOUNT_LOCKED',
-  'SSRF_BLOCKED',
-  'VALIDATION_ERROR',
-];
 
 const DATE_PRESETS = [
   { label: 'Last 24 hours', hours: 24 },
@@ -50,45 +33,30 @@ const DATE_PRESETS = [
 ];
 
 export function AuditLogs() {
-  const [logs, setLogs] = useState<AuditLogEntry[]>([]);
-  const [allLogs, setAllLogs] = useState<AuditLogEntry[]>([]);
+  const [logs, setLogs] = useState<AdminAuditLogEntry[]>([]);
+  const [allLogs, setAllLogs] = useState<AdminAuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filters, setFilters] = useState<AuditLogFilters>({
     page: 1,
     pageSize: 50,
   });
-  const [sortField, setSortField] = useState<SortField>('timestamp');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
-  const [autoRefresh, setAutoRefresh] = useState(false);
-  const [autoRefreshInterval, setAutoRefreshInterval] = useState(30);
 
-  const stats = React.useMemo(() => {
+  const stats = useMemo(() => {
     const total = allLogs.length;
-    const successCount = allLogs.filter((log) => log.success).length;
-    const failedCount = total - successCount;
-    const eventTypeCounts: Record<string, number> = {};
-
-    allLogs.forEach((log) => {
-      eventTypeCounts[log.eventType] = (eventTypeCounts[log.eventType] || 0) + 1;
-    });
-
-    const topEventType = Object.entries(eventTypeCounts)
-      .sort(([, a], [, b]) => b - a)[0]?.[0] || 'N/A';
-
-    const uniqueUsers = new Set(allLogs.filter((log) => log.username).map((log) => log.username)).size;
-    const uniqueIPs = new Set(allLogs.map((log) => log.ip)).size;
+    const incidentLogs = allLogs.filter((log) => log.incidentId).length;
+    const uniqueActors = new Set(allLogs.map((log) => log.actor.userId)).size;
+    const actions = allLogs.reduce<Record<string, number>>((acc, log) => {
+      acc[log.action] = (acc[log.action] || 0) + 1;
+      return acc;
+    }, {});
+    const topAction = Object.entries(actions).sort(([, a], [, b]) => b - a)[0]?.[0] || 'N/A';
 
     return {
       total,
-      successCount,
-      failedCount,
-      successRate: total > 0 ? Math.round((successCount / total) * 100) : 0,
-      eventTypeCounts,
-      topEventType,
-      uniqueUsers,
-      uniqueIPs,
+      incidentLogs,
+      uniqueActors,
+      topAction,
     };
   }, [allLogs]);
 
@@ -102,45 +70,18 @@ export function AuditLogs() {
         offset: 0,
       };
 
-      if (filters.eventType) params.eventType = filters.eventType;
-      if (filters.userId) params.userId = filters.userId;
+      if (filters.actorId) params.actorId = filters.actorId;
+      if (filters.action) params.action = filters.action;
+      if (filters.incidentId) params.incidentId = filters.incidentId;
       if (filters.startTime) params.startTime = filters.startTime;
       if (filters.endTime) params.endTime = filters.endTime;
 
-      const data = await adminApi.getAuditLogs(params);
+      const data = await adminApi.getAdminActionLogs(params);
+      setAllLogs(data);
 
-      let filtered = data;
-
-      if (filters.username) {
-        filtered = filtered.filter(
-          (log) =>
-            log.username?.toLowerCase().includes(filters.username!.toLowerCase()) ||
-            log.userId?.toLowerCase().includes(filters.username!.toLowerCase())
-        );
-      }
-
-      if (filters.ip) {
-        filtered = filtered.filter((log) => log.ip?.includes(filters.ip!));
-      }
-
-      if (filters.success !== undefined) {
-        filtered = filtered.filter((log) => log.success === filters.success);
-      }
-
-      if (filters.search) {
-        const searchTerm = filters.search.toLowerCase();
-        filtered = filtered.filter(
-          (log) =>
-            log.eventType?.toLowerCase().includes(searchTerm) ||
-            log.message?.toLowerCase().includes(searchTerm) ||
-            log.username?.toLowerCase().includes(searchTerm) ||
-            log.userId?.toLowerCase().includes(searchTerm) ||
-            log.ip?.toLowerCase().includes(searchTerm) ||
-            log.requestId?.toLowerCase().includes(searchTerm)
-        );
-      }
-
-      setAllLogs(filtered);
+      const start = (filters.page - 1) * filters.pageSize;
+      const end = start + filters.pageSize;
+      setLogs(data.slice(start, end));
     } catch (err: any) {
       setError(err.message || 'Failed to fetch audit logs');
       setAllLogs([]);
@@ -153,53 +94,10 @@ export function AuditLogs() {
     fetchLogs();
   }, [fetchLogs]);
 
-  useEffect(() => {
-    if (!autoRefresh) return;
-
-    const interval = setInterval(() => {
-      fetchLogs();
-    }, autoRefreshInterval * 1000);
-
-    return () => clearInterval(interval);
-  }, [autoRefresh, autoRefreshInterval, fetchLogs]);
-
-  useEffect(() => {
-    const sortedLogs = [...allLogs].sort((a, b) => {
-      let aValue: any = a[sortField];
-      let bValue: any = b[sortField];
-
-      if (sortField === 'timestamp') {
-        aValue = new Date(a.timestamp).getTime();
-        bValue = new Date(b.timestamp).getTime();
-      } else {
-        aValue = String(aValue || '').toLowerCase();
-        bValue = String(bValue || '').toLowerCase();
-      }
-
-      if (sortDirection === 'asc') {
-        return aValue > bValue ? 1 : -1;
-      }
-      return aValue < bValue ? 1 : -1;
-    });
-
-    const start = (filters.page - 1) * filters.pageSize;
-    const end = start + filters.pageSize;
-    setLogs(sortedLogs.slice(start, end));
-  }, [allLogs, sortField, sortDirection, filters.page, filters.pageSize]);
-
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortField(field);
-      setSortDirection('desc');
-    }
-  };
-
-  const handleFilterChange = (field: keyof AuditLogFilters, value: any) => {
+  const handleFilterChange = (key: keyof AuditLogFilters, value: any) => {
     setFilters((prev) => ({
       ...prev,
-      [field]: value,
+      [key]: value,
       page: 1,
     }));
   };
@@ -222,422 +120,261 @@ export function AuditLogs() {
     });
   };
 
-  const toggleRowExpansion = (id: string) => {
-    setExpandedRows((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
-
-  const exportToCSV = () => {
-    const headers = ['Timestamp', 'Event Type', 'User', 'IP Address', 'Status', 'Message', 'Request ID', 'Resource', 'Action'];
-    const rows = allLogs.map((log) => [
-      format(new Date(log.timestamp), 'yyyy-MM-dd HH:mm:ss'),
-      log.eventType,
-      log.username || log.userId || '',
-      log.ip,
-      log.success ? 'Success' : 'Failed',
-      log.message || '',
-      log.requestId || '',
-      log.resource || '',
-      log.action || '',
-    ]);
-
-    const csv = [
-      headers.join(','),
-      ...rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')),
-    ].join('\n');
-
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `audit-logs-${format(new Date(), 'yyyy-MM-dd-HHmmss')}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const exportToJSON = () => {
-    const json = JSON.stringify(allLogs, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `audit-logs-${format(new Date(), 'yyyy-MM-dd-HHmmss')}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   const totalPages = Math.ceil(allLogs.length / filters.pageSize);
   const startIndex = (filters.page - 1) * filters.pageSize + 1;
   const endIndex = Math.min(filters.page * filters.pageSize, allLogs.length);
 
-  const getEventClass = (eventType: string) => {
-    if (eventType.includes('SUCCESS')) return 'audit-event--success';
-    if (eventType.includes('FAILURE') || eventType.includes('DENIED')) return 'audit-event--error';
-    if (eventType.includes('LOCKED') || eventType.includes('EXCEEDED')) return 'audit-event--warning';
-    return 'audit-event--info';
-  };
-
-  const hasActiveFilters = !!(
-    filters.eventType ||
-    filters.username ||
-    filters.ip ||
-    filters.startTime ||
-    filters.endTime ||
-    filters.success !== undefined ||
-    filters.search
-  );
-
   return (
     <Layout>
-      <div className="page-stack">
-        <SectionHeader
-          title="Audit Logs"
-          subtitle="Security event history and access logs"
-          actions={
-            <div className="action-row">
-              <Button variant="ghost" onClick={() => fetchLogs()} disabled={loading}>
-                🔄 Refresh
-              </Button>
-              <div className="checkbox-row">
-                <input
-                  type="checkbox"
-                  id="auto-refresh"
-                  checked={autoRefresh}
-                  onChange={(e) => setAutoRefresh(e.target.checked)}
-                  className="checkbox-input"
-                />
-                <label htmlFor="auto-refresh" className="form-label">
-                  Auto-refresh
-                </label>
-                {autoRefresh && (
-                  <select
-                    value={autoRefreshInterval}
-                    onChange={(e) => setAutoRefreshInterval(Number(e.target.value))}
-                    className="form-control"
-                  >
-                    <option value={10}>10s</option>
-                    <option value={30}>30s</option>
-                    <option value={60}>60s</option>
-                  </select>
-                )}
-              </div>
-            </div>
-          }
-        />
-
-        <div className="page-grid page-grid--cards">
-          <MetricCard title="Total Logs" value={stats.total.toLocaleString()} color="blue" />
-          <MetricCard
-            title="Success Rate"
-            value={`${stats.successRate}%`}
-            subtitle={`${stats.successCount} success, ${stats.failedCount} failed`}
-            color={stats.successRate >= 90 ? 'green' : stats.successRate >= 70 ? 'yellow' : 'red'}
-          />
-          <MetricCard
-            title="Top Event Type"
-            value={stats.topEventType}
-            subtitle={`${stats.eventTypeCounts[stats.topEventType] || 0} occurrences`}
-            color="blue"
-          />
-          <MetricCard title="Unique Users" value={stats.uniqueUsers.toString()} color="blue" />
-          <MetricCard title="Unique IPs" value={stats.uniqueIPs.toString()} color="blue" />
+      <div>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: theme.spacing.lg,
+          }}
+        >
+          <div>
+            <h1
+              style={{
+                ...theme.typography.h1,
+                fontSize: theme.typography.fontSize['3xl'],
+                marginBottom: theme.spacing.sm,
+              }}
+            >
+              Audit Logs
+            </h1>
+            <p
+              style={{
+                ...theme.typography.body,
+                color: theme.colors.text.secondary,
+              }}
+            >
+              Administrative action history across the platform
+            </p>
+          </div>
+          <Button variant="ghost" onClick={() => fetchLogs()} disabled={loading}>
+            🔄 Refresh
+          </Button>
         </div>
 
-        <Card className="page-stack">
-          <div className="card-header">
-            <div className="section-title">Filters</div>
-            {hasActiveFilters && (
-              <Button variant="ghost" size="sm" onClick={clearFilters}>
-                Clear All
-              </Button>
-            )}
-          </div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: theme.spacing.lg,
+            marginBottom: theme.spacing.xl,
+          }}
+        >
+          <MetricCard title="Total Actions" value={stats.total.toLocaleString()} color="blue" />
+          <MetricCard
+            title="Incident Actions"
+            value={stats.incidentLogs.toLocaleString()}
+            color="purple"
+          />
+          <MetricCard title="Unique Actors" value={stats.uniqueActors.toString()} color="green" />
+          <MetricCard title="Top Action" value={stats.topAction} color="blue" />
+        </div>
 
-          <div className="form-field">
-            <label className="form-label">Search</label>
+        <div
+          style={{
+            background: theme.colors.background.card,
+            borderRadius: theme.borderRadius.lg,
+            padding: theme.spacing.lg,
+            marginBottom: theme.spacing.lg,
+            border: `1px solid ${theme.colors.border.light}`,
+          }}
+        >
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: theme.spacing.md,
+              marginBottom: theme.spacing.md,
+            }}
+          >
             <input
               type="text"
-              placeholder="Search across all fields..."
-              value={filters.search || ''}
-              onChange={(e) => handleFilterChange('search', e.target.value || undefined)}
-              className="form-control"
+              placeholder="Actor ID"
+              value={filters.actorId || ''}
+              onChange={(e) => handleFilterChange('actorId', e.target.value)}
+              style={{
+                padding: theme.spacing.sm,
+                border: `1px solid ${theme.colors.border.medium}`,
+                borderRadius: theme.borderRadius.sm,
+              }}
+            />
+            <input
+              type="text"
+              placeholder="Action (e.g. incident.update)"
+              value={filters.action || ''}
+              onChange={(e) => handleFilterChange('action', e.target.value)}
+              style={{
+                padding: theme.spacing.sm,
+                border: `1px solid ${theme.colors.border.medium}`,
+                borderRadius: theme.borderRadius.sm,
+              }}
+            />
+            <input
+              type="text"
+              placeholder="Incident ID"
+              value={filters.incidentId || ''}
+              onChange={(e) => handleFilterChange('incidentId', e.target.value)}
+              style={{
+                padding: theme.spacing.sm,
+                border: `1px solid ${theme.colors.border.medium}`,
+                borderRadius: theme.borderRadius.sm,
+              }}
             />
           </div>
 
-          <div className="form-grid">
-            <div>
-              <label className="form-label">Event Type</label>
-              <select
-                value={filters.eventType || ''}
-                onChange={(e) => handleFilterChange('eventType', e.target.value || undefined)}
-                className="form-control"
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: theme.spacing.sm,
+              alignItems: 'center',
+            }}
+          >
+            {DATE_PRESETS.map((preset) => (
+              <Button
+                key={preset.label}
+                variant="secondary"
+                onClick={() => handleDatePreset(preset.hours)}
               >
-                <option value="">All Events</option>
-                {EVENT_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="form-label">User (username/ID)</label>
-              <input
-                type="text"
-                placeholder="Filter by user..."
-                value={filters.username || ''}
-                onChange={(e) => handleFilterChange('username', e.target.value || undefined)}
-                className="form-control"
-              />
-            </div>
-
-            <div>
-              <label className="form-label">IP Address</label>
-              <input
-                type="text"
-                placeholder="Filter by IP..."
-                value={filters.ip || ''}
-                onChange={(e) => handleFilterChange('ip', e.target.value || undefined)}
-                className="form-control text-mono"
-              />
-            </div>
-
-            <div>
-              <label className="form-label">Status</label>
-              <select
-                value={filters.success === undefined ? '' : filters.success ? 'success' : 'failed'}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  handleFilterChange('success', value === '' ? undefined : value === 'success');
-                }}
-                className="form-control"
-              >
-                <option value="">All</option>
-                <option value="success">Success</option>
-                <option value="failed">Failed</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="form-label">Date Range</label>
-            <div className="action-row">
-              {DATE_PRESETS.map((preset) => (
-                <Button key={preset.hours} variant="ghost" size="sm" onClick={() => handleDatePreset(preset.hours)}>
-                  {preset.label}
-                </Button>
-              ))}
-              <Button variant="ghost" size="sm" onClick={() => handleFilterChange('startTime', undefined)}>
-                Clear Date
+                {preset.label}
               </Button>
-            </div>
-            {filters.startTime && (
-              <div className="helper-text">
-                {format(new Date(filters.startTime), 'MMM dd, yyyy HH:mm')} -{' '}
-                {filters.endTime ? format(new Date(filters.endTime), 'MMM dd, yyyy HH:mm') : 'Now'}
-              </div>
-            )}
-          </div>
-        </Card>
-
-        <div className="card-header">
-          <div className="section-subtitle">
-            Showing {startIndex}-{endIndex} of {allLogs.length.toLocaleString()} logs
-            {hasActiveFilters && ' (filtered)'}
-          </div>
-          <div className="action-row">
-            <Button variant="secondary" size="sm" onClick={exportToCSV} disabled={allLogs.length === 0}>
-              📥 Export CSV
-            </Button>
-            <Button variant="secondary" size="sm" onClick={exportToJSON} disabled={allLogs.length === 0}>
-              📥 Export JSON
+            ))}
+            <Button variant="ghost" onClick={clearFilters}>
+              Clear Filters
             </Button>
           </div>
         </div>
 
-        {error && (
-          <div className="alert alert--danger">
-            <div className="action-row">
-              <strong>Error:</strong> {error}
-              <Button variant="ghost" size="sm" onClick={() => fetchLogs()}>
-                Retry
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {loading && <div className="empty-state">Loading audit logs...</div>}
-
-        {!loading && !error && (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHeaderCell>
-                  <button className="table-sort-button" onClick={() => handleSort('timestamp')}>
-                    Timestamp
-                    {sortField === 'timestamp' && <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>}
-                  </button>
-                </TableHeaderCell>
-                <TableHeaderCell>
-                  <button className="table-sort-button" onClick={() => handleSort('eventType')}>
-                    Event Type
-                    {sortField === 'eventType' && <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>}
-                  </button>
-                </TableHeaderCell>
-                <TableHeaderCell>
-                  <button className="table-sort-button" onClick={() => handleSort('username')}>
-                    User
-                    {sortField === 'username' && <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>}
-                  </button>
-                </TableHeaderCell>
-                <TableHeaderCell>
-                  <button className="table-sort-button" onClick={() => handleSort('ip')}>
-                    IP Address
-                    {sortField === 'ip' && <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>}
-                  </button>
-                </TableHeaderCell>
-                <TableHeaderCell>Status</TableHeaderCell>
-                <TableHeaderCell>Message</TableHeaderCell>
-                <TableHeaderCell></TableHeaderCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {logs.map((log) => {
-                const isExpanded = expandedRows.has(log.id);
-                const eventClass = `audit-event-badge ${getEventClass(log.eventType)}`;
-                return (
-                  <React.Fragment key={log.id}>
-                    <TableRow
-                      className={isExpanded ? 'data-table__row--expanded' : undefined}
-                      onClick={() => toggleRowExpansion(log.id)}
+        <div
+          style={{
+            background: theme.colors.background.card,
+            borderRadius: theme.borderRadius.lg,
+            border: `1px solid ${theme.colors.border.light}`,
+            overflow: 'hidden',
+          }}
+        >
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: theme.colors.background.secondary }}>
+                  {['Timestamp', 'Actor', 'Action', 'Incident'].map((header) => (
+                    <th
+                      key={header}
+                      style={{
+                        textAlign: 'left',
+                        padding: theme.spacing.md,
+                        fontSize: theme.typography.fontSize.sm,
+                        color: theme.colors.text.secondary,
+                        borderBottom: `1px solid ${theme.colors.border.light}`,
+                      }}
                     >
-                      <TableCell>{format(new Date(log.timestamp), 'MMM dd, yyyy HH:mm:ss')}</TableCell>
-                      <TableCell>
-                        <span className={eventClass}>{log.eventType}</span>
-                      </TableCell>
-                      <TableCell>{log.username || log.userId || '-'}</TableCell>
-                      <TableCell className="text-mono text-sm">{log.ip}</TableCell>
-                      <TableCell>
-                        <span className="status-indicator">
-                          <span className={`status-dot ${log.success ? 'status-dot--success' : 'status-dot--error'}`} />
-                          {log.success ? 'Success' : 'Failed'}
-                        </span>
-                      </TableCell>
-                      <TableCell className="table-cell-truncate">{log.message || '-'}</TableCell>
-                      <TableCell>{isExpanded ? '▼' : '▶'}</TableCell>
-                    </TableRow>
-                    {isExpanded && (
-                      <TableRow className="data-table__row--expanded">
-                        <TableCell colSpan={7}>
-                          <div className="detail-grid">
-                            <div>
-                              <strong>Request ID:</strong>
-                              <div className="text-mono text-sm">{log.requestId}</div>
-                            </div>
-                            {log.resource && (
-                              <div>
-                                <strong>Resource:</strong>
-                                <div>{log.resource}</div>
-                              </div>
-                            )}
-                            {log.action && (
-                              <div>
-                                <strong>Action:</strong>
-                                <div>{log.action}</div>
-                              </div>
-                            )}
-                            {log.userId && (
-                              <div>
-                                <strong>User ID:</strong>
-                                <div className="text-mono text-sm">{log.userId}</div>
-                              </div>
-                            )}
-                            {log.metadata && Object.keys(log.metadata).length > 0 && (
-                              <div className="flex-1">
-                                <strong>Metadata:</strong>
-                                <pre className="audit-metadata">
-                                  {JSON.stringify(log.metadata, null, 2)}
-                                </pre>
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </React.Fragment>
-                );
-              })}
-            </TableBody>
-          </Table>
-        )}
+                      {header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td
+                      colSpan={4}
+                      style={{ padding: theme.spacing.xl, textAlign: 'center' }}
+                    >
+                      Loading audit logs...
+                    </td>
+                  </tr>
+                ) : error ? (
+                  <tr>
+                    <td
+                      colSpan={4}
+                      style={{ padding: theme.spacing.xl, textAlign: 'center' }}
+                    >
+                      {error}
+                    </td>
+                  </tr>
+                ) : logs.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={4}
+                      style={{ padding: theme.spacing.xl, textAlign: 'center' }}
+                    >
+                      No audit entries found.
+                    </td>
+                  </tr>
+                ) : (
+                  logs.map((log) => (
+                    <tr key={log.id} style={{ borderBottom: `1px solid ${theme.colors.border.light}` }}>
+                      <td style={{ padding: theme.spacing.md }}>
+                        {format(new Date(log.timestamp), 'MMM dd, yyyy HH:mm:ss')}
+                      </td>
+                      <td style={{ padding: theme.spacing.md }}>
+                        <div style={{ fontWeight: 600 }}>{log.actor.username}</div>
+                        <div style={{ color: theme.colors.text.secondary, fontSize: theme.typography.fontSize.sm }}>
+                          {log.actor.userId}
+                        </div>
+                      </td>
+                      <td style={{ padding: theme.spacing.md }}>
+                        <div style={{ fontWeight: 600 }}>{log.action}</div>
+                        <div style={{ color: theme.colors.text.secondary, fontSize: theme.typography.fontSize.sm }}>
+                          {log.resource}
+                        </div>
+                      </td>
+                      <td style={{ padding: theme.spacing.md }}>
+                        {log.incidentId ? (
+                          <Link
+                            to={`/incidents?incidentId=${encodeURIComponent(log.incidentId)}`}
+                            style={{ color: theme.colors.primary[500], textDecoration: 'none' }}
+                          >
+                            {log.incidentId}
+                          </Link>
+                        ) : (
+                          <span style={{ color: theme.colors.text.secondary }}>—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
 
-        {logs.length === 0 && !loading && !error && (
-          <Card className="empty-state">
-            <div className="section-title">No audit logs found</div>
-            {hasActiveFilters && (
-              <div className="section-subtitle">
-                Try adjusting your filters or{' '}
-                <button className="link-button" onClick={clearFilters}>
-                  clear all filters
-                </button>
-              </div>
-            )}
-          </Card>
-        )}
-
-        {!loading && !error && allLogs.length > 0 && (
-          <Card className="audit-pagination">
-            <div className="section-subtitle">Page {filters.page} of {totalPages}</div>
-            <div className="action-row">
+          <div
+            style={{
+              padding: theme.spacing.md,
+              borderTop: `1px solid ${theme.colors.border.light}`,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
+          >
+            <div style={{ color: theme.colors.text.secondary, fontSize: theme.typography.fontSize.sm }}>
+              Showing {startIndex}-{endIndex} of {allLogs.length}
+            </div>
+            <div style={{ display: 'flex', gap: theme.spacing.sm }}>
               <Button
-                variant="ghost"
-                size="sm"
+                variant="secondary"
                 onClick={() => handleFilterChange('page', Math.max(1, filters.page - 1))}
                 disabled={filters.page === 1}
               >
-                ← Previous
+                Previous
               </Button>
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                let pageNum: number;
-                if (totalPages <= 5) {
-                  pageNum = i + 1;
-                } else if (filters.page <= 3) {
-                  pageNum = i + 1;
-                } else if (filters.page >= totalPages - 2) {
-                  pageNum = totalPages - 4 + i;
-                } else {
-                  pageNum = filters.page - 2 + i;
-                }
-                return (
-                  <Button
-                    key={pageNum}
-                    variant={filters.page === pageNum ? 'primary' : 'ghost'}
-                    size="sm"
-                    onClick={() => handleFilterChange('page', pageNum)}
-                  >
-                    {pageNum}
-                  </Button>
-                );
-              })}
               <Button
-                variant="ghost"
-                size="sm"
+                variant="secondary"
                 onClick={() => handleFilterChange('page', Math.min(totalPages, filters.page + 1))}
-                disabled={filters.page === totalPages}
+                disabled={filters.page >= totalPages}
               >
-                Next →
+                Next
               </Button>
             </div>
-          </Card>
-        )}
+          </div>
+        </div>
       </div>
     </Layout>
   );

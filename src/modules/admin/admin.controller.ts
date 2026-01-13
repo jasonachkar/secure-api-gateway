@@ -6,7 +6,13 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { AdminService } from './admin.service.js';
 import { MetricsService } from './metrics.service.js';
-import type { AuditLogQuery, SessionRevokeParams, UserUnlockParams } from './admin.schemas.js';
+import type {
+  AdminAuditLogQuery,
+  AuditLogQuery,
+  SessionRevokeParams,
+  UserUnlockParams,
+} from './admin.schemas.js';
+import { AdminAuditLogService } from './audit-log.service.js';
 
 /**
  * Admin controller
@@ -14,7 +20,8 @@ import type { AuditLogQuery, SessionRevokeParams, UserUnlockParams } from './adm
 export class AdminController {
   constructor(
     private adminService: AdminService,
-    private metricsService: MetricsService
+    private metricsService: MetricsService,
+    private adminAuditLogService: AdminAuditLogService
   ) {}
 
   /**
@@ -133,6 +140,18 @@ export class AdminController {
   }
 
   /**
+   * GET /admin/audit/admin-actions
+   * Query admin action logs
+   */
+  async getAdminActionLogs(
+    request: FastifyRequest<{ Querystring: AdminAuditLogQuery }>,
+    reply: FastifyReply
+  ) {
+    const logs = await this.adminAuditLogService.query(request.query);
+    return { logs };
+  }
+
+  /**
    * GET /admin/sessions/active
    * Get all active sessions
    */
@@ -185,6 +204,16 @@ export class AdminController {
       uptime: summary.systemHealth.uptime,
       redis: summary.systemHealth.redisConnected ? 'connected' : 'disconnected',
       timestamp: Date.now(),
+    };
+  }
+
+  /**
+   * GET /admin/config
+   * Get runtime configuration flags
+   */
+  async getConfig(request: FastifyRequest, reply: FastifyReply) {
+    return {
+      demoMode: env.DEMO_MODE,
     };
   }
 }

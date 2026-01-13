@@ -16,10 +16,16 @@ import { ComplianceService } from './compliance.service.js';
 import { ComplianceController } from './compliance.controller.js';
 import { MetricsSeederService } from './metrics-seeder.service.js';
 import { AuditService } from '../audit/audit.service.js';
+import { AdminAuditLogService } from './audit-log.service.js';
 import { requireAuth, verifyToken } from '../../middleware/auth.js';
-import { requireRole } from '../../middleware/rbac.js';
+import { requireAnyRole, requireRole } from '../../middleware/rbac.js';
 import { validate } from '../../middleware/validation.js';
-import { auditLogQuerySchema, sessionRevokeSchema, userUnlockSchema } from './admin.schemas.js';
+import {
+  adminAuditLogQuerySchema,
+  auditLogQuerySchema,
+  sessionRevokeSchema,
+  userUnlockSchema,
+} from './admin.schemas.js';
 import { UnauthorizedError } from '../../lib/errors.js';
 
 /**
@@ -60,9 +66,10 @@ export async function registerAdminRoutes(
   const metricsService = new MetricsService(redis);
   const adminService = new AdminService(redis, auditService);
   const incidentService = new IncidentResponseService(redis);
+  const adminAuditLogService = new AdminAuditLogService(redis);
   // Pass incident service to threat intel for auto-incident creation
   const threatIntelService = new ThreatIntelService(redis, incidentService);
-  const controller = new AdminController(adminService, metricsService);
+  const controller = new AdminController(adminService, metricsService, adminAuditLogService);
   const threatController = new ThreatIntelController(threatIntelService);
   const incidentController = new IncidentResponseController(incidentService);
   const complianceService = new ComplianceService(redis, metricsService, threatIntelService, adminService);
@@ -72,8 +79,47 @@ export async function registerAdminRoutes(
   const metricsSeeder = new MetricsSeederService(redis, metricsService, threatIntelService);
   metricsSeeder.start();
 
+  await adminAuditLogService.initialize();
+
   // All admin routes require admin role
   const adminAuth = [requireAuth, requireRole('admin')];
+  const metricsAuth = [requireAuth, requireAnyRole(['admin', 'security_analyst'])];
+  const incidentAuth = [requireAuth, requireAnyRole(['admin', 'incident_responder'])];
+
+  app.addHook('onResponse', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!request.url.startsWith('/admin')) {
+      return;
+    }
+
+    const user = (request as any).user;
+    if (!user) {
+      return;
+    }
+
+    const context = (request as any).adminAuditContext as
+      | {
+          action?: string;
+          incidentId?: string;
+        }
+      | undefined;
+
+    const action = context?.action ?? `${request.method} ${request.routerPath ?? request.url}`;
+    const incidentId =
+      context?.incidentId ?? (typeof request.params === 'object' ? (request.params as any).id : undefined);
+
+    await adminAuditLogService.log({
+      actor: {
+        userId: user.userId,
+        username: user.username,
+      },
+      action,
+      resource: request.routerPath ?? request.url,
+      incidentId,
+      metadata: {
+        statusCode: reply.statusCode,
+      },
+    });
+  });
 
   /**
    * GET /admin/metrics/summary
@@ -87,7 +133,7 @@ export async function registerAdminRoutes(
         tags: ['Admin'],
         security: [{ bearerAuth: [] }],
       },
-      preHandler: adminAuth,
+      preHandler: metricsAuth,
     },
     controller.getMetricsSummary.bind(controller)
   );
@@ -124,7 +170,7 @@ export async function registerAdminRoutes(
           },
         },
       },
-      preHandler: [requireAuthSSE, requireRole('admin')],
+      preHandler: [requireAuthSSE, requireAnyRole(['admin', 'security_analyst'])],
     },
     controller.streamRealtimeMetrics.bind(controller)
   );
@@ -155,6 +201,35 @@ export async function registerAdminRoutes(
       preHandler: [...adminAuth, validate(auditLogQuerySchema, 'query')],
     },
     controller.getAuditLogs.bind(controller)
+  );
+
+  /**
+   * GET /admin/audit/admin-actions
+   * Query admin action logs
+   */
+  app.get(
+    '/admin/audit/admin-actions',
+    {
+      schema: {
+        description: 'Query admin action logs',
+        tags: ['Admin'],
+        security: [{ bearerAuth: [] }],
+        querystring: {
+          type: 'object',
+          properties: {
+            actorId: { type: 'string' },
+            action: { type: 'string' },
+            incidentId: { type: 'string' },
+            startTime: { type: 'number' },
+            endTime: { type: 'number' },
+            limit: { type: 'number', minimum: 1, maximum: 1000, default: 100 },
+            offset: { type: 'number', minimum: 0, default: 0 },
+          },
+        },
+      },
+      preHandler: [...adminAuth, validate(adminAuditLogQuerySchema, 'query')],
+    },
+    controller.getAdminActionLogs.bind(controller)
   );
 
   /**
@@ -465,7 +540,7 @@ export async function registerAdminRoutes(
           },
         },
       },
-      preHandler: adminAuth,
+      preHandler: incidentAuth,
     },
     incidentController.createIncident.bind(incidentController)
   );
@@ -492,7 +567,7 @@ export async function registerAdminRoutes(
           },
         },
       },
-      preHandler: adminAuth,
+      preHandler: incidentAuth,
     },
     incidentController.getIncidents.bind(incidentController)
   );
@@ -516,7 +591,7 @@ export async function registerAdminRoutes(
           },
         },
       },
-      preHandler: adminAuth,
+      preHandler: incidentAuth,
     },
     incidentController.getIncident.bind(incidentController)
   );
@@ -547,7 +622,7 @@ export async function registerAdminRoutes(
           },
         },
       },
-      preHandler: adminAuth,
+      preHandler: incidentAuth,
     },
     incidentController.updateStatus.bind(incidentController)
   );
@@ -578,7 +653,7 @@ export async function registerAdminRoutes(
           },
         },
       },
-      preHandler: adminAuth,
+      preHandler: incidentAuth,
     },
     incidentController.assignIncident.bind(incidentController)
   );
@@ -609,9 +684,41 @@ export async function registerAdminRoutes(
           },
         },
       },
-      preHandler: adminAuth,
+      preHandler: incidentAuth,
     },
     incidentController.addNote.bind(incidentController)
+  );
+
+  /**
+   * POST /admin/incidents/:id/actions
+   * Execute a playbook action (mocked)
+   */
+  app.post(
+    '/admin/incidents/:id/actions',
+    {
+      schema: {
+        description: 'Execute a playbook action for an incident (mocked)',
+        tags: ['Incident Response'],
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: {
+            id: { type: 'string' },
+          },
+        },
+        body: {
+          type: 'object',
+          required: ['action'],
+          properties: {
+            action: { type: 'string' },
+            target: { type: 'string' },
+          },
+        },
+      },
+      preHandler: adminAuth,
+    },
+    incidentController.executePlaybookAction.bind(incidentController)
   );
 
   /**
@@ -644,7 +751,7 @@ export async function registerAdminRoutes(
           },
         },
       },
-      preHandler: adminAuth,
+      preHandler: incidentAuth,
     },
     incidentController.updateIncident.bind(incidentController)
   );
@@ -693,7 +800,7 @@ export async function registerAdminRoutes(
         tags: ['Incident Response'],
         security: [{ bearerAuth: [] }],
       },
-      preHandler: adminAuth,
+      preHandler: incidentAuth,
     },
     incidentController.getStatistics.bind(incidentController)
   );
@@ -710,7 +817,7 @@ export async function registerAdminRoutes(
         tags: ['Incident Response'],
         security: [{ bearerAuth: [] }],
       },
-      preHandler: adminAuth,
+      preHandler: incidentAuth,
     },
     incidentController.seedTestIncidents.bind(incidentController)
   );

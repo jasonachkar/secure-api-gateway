@@ -5,6 +5,7 @@
 import { apiClient } from './client';
 import type {
   MetricsSummary,
+  AdminAuditLogEntry,
   AuditLogEntry,
   SessionInfo,
   UserInfo,
@@ -50,6 +51,19 @@ export const adminApi = {
     offset?: number;
   }): Promise<AuditLogEntry[]> => {
     const { data } = await apiClient.get('/admin/audit/logs', { params });
+    return data.logs;
+  },
+
+  getAdminActionLogs: async (params?: {
+    actorId?: string;
+    action?: string;
+    incidentId?: string;
+    startTime?: number;
+    endTime?: number;
+    limit?: number;
+    offset?: number;
+  }): Promise<AdminAuditLogEntry[]> => {
+    const { data } = await apiClient.get('/admin/audit/admin-actions', { params });
     return data.logs;
   },
 
@@ -168,8 +182,8 @@ export const adminApi = {
     return data.incident;
   },
 
-  runIncidentPlaybookAction: async (id: string, action: IncidentPlaybookAction, target?: string): Promise<Incident> => {
-    const { data } = await apiClient.post(`/admin/incidents/${id}/playbook`, { action, target });
+  runIncidentAction: async (id: string, action: string, target?: string): Promise<Incident> => {
+    const { data } = await apiClient.post(`/admin/incidents/${id}/actions`, { action, target });
     return data.incident;
   },
 

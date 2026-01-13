@@ -4,20 +4,12 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { MetricCard } from '../components/MetricCard';
 import { adminApi } from '../api/admin';
-import type {
-  Incident,
-  IncidentStatistics,
-  IncidentStatus,
-  IncidentSeverity,
-  IncidentType,
-  IncidentTimelineEntry,
-  IncidentTimelineEntryType,
-  IncidentPlaybookAction,
-} from '../types';
-import { format } from 'date-fns';
+import type { Incident, IncidentStatistics, IncidentStatus, IncidentSeverity, IncidentType, IncidentTimelineEntry, IncidentTimelineEntryType } from '../types';
+import { format, formatDistanceToNow } from 'date-fns';
 
 const severityColors: Record<IncidentSeverity, { bg: string; text: string; badge: string }> = {
   critical: { bg: '#fee2e2', text: '#991b1b', badge: '#dc2626' },
@@ -34,7 +26,87 @@ const statusColors: Record<IncidentStatus, { bg: string; text: string }> = {
   closed: { bg: '#e5e7eb', text: '#374151' },
 };
 
+const timelineTypeStyles: Record<IncidentTimelineEntryType, { label: string; bg: string; text: string; border: string }> = {
+  note: { label: 'Note', bg: '#e0f2fe', text: '#0369a1', border: '#7dd3fc' },
+  status_change: { label: 'Status', bg: '#fef9c3', text: '#92400e', border: '#facc15' },
+  assignment: { label: 'Assignment', bg: '#ede9fe', text: '#6d28d9', border: '#c4b5fd' },
+  action: { label: 'Action', bg: '#dcfce7', text: '#166534', border: '#86efac' },
+};
+
+const playbookActions = [
+  {
+    key: 'disable_user',
+    label: 'Disable user',
+    description: 'Suspend account access and revoke active sessions.',
+    promptLabel: 'User or email',
+  },
+  {
+    key: 'block_ip',
+    label: 'Block IP',
+    description: 'Add the IP address to the block list.',
+    promptLabel: 'IP address',
+  },
+  {
+    key: 'open_ticket',
+    label: 'Open ticket',
+    description: 'Create a follow-up ticket in the tracking system.',
+    promptLabel: 'Ticket reference',
+  },
+];
+
+const normalizeNoteToTimeline = (content: string): { type: IncidentTimelineEntryType; metadata?: Record<string, unknown> } => {
+  if (content.startsWith('Status changed to ')) {
+    return {
+      type: 'status_change',
+      metadata: {
+        status: content.replace('Status changed to ', ''),
+      },
+    };
+  }
+  if (content.startsWith('Assigned to ')) {
+    return {
+      type: 'assignment',
+      metadata: {
+        assignedTo: content.replace('Assigned to ', ''),
+      },
+    };
+  }
+  return { type: 'note' };
+};
+
+const buildTimelineEntries = (incident: Incident): IncidentTimelineEntry[] => {
+  if (incident.timeline?.length) {
+    return [...incident.timeline].sort((a, b) => a.timestamp - b.timestamp);
+  }
+
+  const fallback: IncidentTimelineEntry[] = [
+    {
+      id: `created-${incident.id}`,
+      type: 'note',
+      timestamp: incident.createdAt,
+      actor: incident.reportedBy || 'system',
+      summary: 'Incident created',
+    },
+  ];
+
+  incident.notes.forEach((note, idx) => {
+    const normalized = normalizeNoteToTimeline(note.content);
+    fallback.push({
+      id: `note-${incident.id}-${idx}`,
+      type: normalized.type,
+      timestamp: note.timestamp,
+      actor: note.author,
+      summary: note.content,
+      metadata: normalized.metadata,
+    });
+  });
+
+  return fallback.sort((a, b) => a.timestamp - b.timestamp);
+};
+
 export function Incidents() {
+  const [searchParams] = useSearchParams();
+  const incidentIdParam = searchParams.get('incidentId');
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [statistics, setStatistics] = useState<IncidentStatistics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -43,11 +115,22 @@ export function Incidents() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState<IncidentStatus | 'all'>('all');
   const [filterSeverity, setFilterSeverity] = useState<IncidentSeverity | 'all'>('all');
-  const [playbookActionLoading, setPlaybookActionLoading] = useState<string | null>(null);
+  const [actionInProgress, setActionInProgress] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
   }, [filterStatus, filterSeverity]);
+
+  useEffect(() => {
+    if (!incidentIdParam || incidents.length === 0) {
+      return;
+    }
+
+    const incident = incidents.find((item) => item.id === incidentIdParam);
+    if (incident) {
+      setSelectedIncident(incident);
+    }
+  }, [incidentIdParam, incidents]);
 
   const fetchData = async () => {
     try {
@@ -114,29 +197,22 @@ export function Incidents() {
     }
   };
 
-  const handlePlaybookAction = async (id: string, action: IncidentPlaybookAction) => {
-    let target: string | undefined;
-
-    if (action === 'disable_user') {
-      target = prompt('Disable which user (username)?') || undefined;
-    } else if (action === 'block_ip') {
-      target = prompt('Block which IP address?') || undefined;
-    } else if (action === 'open_ticket') {
-      target = prompt('Ticket summary or system reference?') || undefined;
-    }
+  const handlePlaybookAction = async (id: string, action: typeof playbookActions[number]) => {
+    const target = action.promptLabel ? prompt(`${action.promptLabel}:`) : '';
+    if (action.promptLabel && !target) return;
 
     try {
-      setPlaybookActionLoading(action);
-      await adminApi.runIncidentPlaybookAction(id, action, target);
+      setActionInProgress(action.key);
+      await adminApi.runIncidentAction(id, action.key, target || undefined);
       await fetchData();
       if (selectedIncident?.id === id) {
         const updated = await adminApi.getIncident(id);
         setSelectedIncident(updated);
       }
     } catch (err: any) {
-      alert('Failed to run playbook action: ' + err.message);
+      alert('Failed to execute playbook action: ' + err.message);
     } finally {
-      setPlaybookActionLoading(null);
+      setActionInProgress(null);
     }
   };
 
@@ -147,78 +223,7 @@ export function Incidents() {
     return `${Math.round(ms / 86400000)}d`;
   };
 
-  const buildTimelineFallback = (incident: Incident): IncidentTimelineEntry[] => {
-    const entries: IncidentTimelineEntry[] = [
-      {
-        id: `created-${incident.id}`,
-        timestamp: incident.createdAt,
-        type: 'created',
-        author: incident.reportedBy,
-        summary: 'Incident created',
-      },
-    ];
-
-    incident.notes.forEach((note, idx) => {
-      let type: IncidentTimelineEntryType = 'note';
-      let summary = 'Note added';
-
-      if (note.content.startsWith('Status changed to ')) {
-        type = 'status_change';
-        summary = note.content;
-      } else if (note.content.startsWith('Assigned to ')) {
-        type = 'assignment';
-        summary = note.content;
-      } else if (note.content === 'Incident details updated') {
-        type = 'update';
-        summary = note.content;
-      }
-
-      entries.push({
-        id: `${incident.id}-${idx}`,
-        timestamp: note.timestamp,
-        type,
-        author: note.author,
-        summary,
-        details: type === 'note' ? note.content : undefined,
-      });
-    });
-
-    return entries.sort((a, b) => a.timestamp - b.timestamp);
-  };
-
-  const getTimelineEntries = (incident: Incident): IncidentTimelineEntry[] => {
-    if (incident.timeline && incident.timeline.length > 0) {
-      return [...incident.timeline].sort((a, b) => a.timestamp - b.timestamp);
-    }
-    return buildTimelineFallback(incident);
-  };
-
-  const formatTimelineLabel = (type: IncidentTimelineEntryType): string => {
-    switch (type) {
-      case 'created':
-        return 'Created';
-      case 'note':
-        return 'Note';
-      case 'status_change':
-        return 'Status';
-      case 'assignment':
-        return 'Assignment';
-      case 'action':
-        return 'Playbook';
-      case 'update':
-        return 'Update';
-      default:
-        return 'Update';
-    }
-  };
-
-  const playbookActions: Array<{ action: IncidentPlaybookAction; label: string; description: string }> = [
-    { action: 'disable_user', label: 'Disable user', description: 'Suspend the affected user account.' },
-    { action: 'block_ip', label: 'Block IP', description: 'Block malicious IP at the edge.' },
-    { action: 'open_ticket', label: 'Open ticket', description: 'Create an incident ticket for tracking.' },
-  ];
-
-  const timelineEntries = selectedIncident ? getTimelineEntries(selectedIncident) : [];
+  const timelineEntries = selectedIncident ? buildTimelineEntries(selectedIncident) : [];
 
   return (
     <Layout>
@@ -589,78 +594,92 @@ export function Incidents() {
 
               <div style={{ marginBottom: '20px' }}>
                 <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>Playbook Actions</h3>
-                <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
-                  {playbookActions.map((playbook) => (
-                    <button
-                      key={playbook.action}
-                      onClick={() => handlePlaybookAction(selectedIncident.id, playbook.action)}
-                      disabled={playbookActionLoading === playbook.action}
+                <div style={{ display: 'grid', gap: '10px' }}>
+                  {playbookActions.map((action) => (
+                    <div
+                      key={action.key}
                       style={{
-                        padding: '12px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '12px 14px',
                         borderRadius: '8px',
                         border: '1px solid #e2e8f0',
-                        backgroundColor: playbookActionLoading === playbook.action ? '#e2e8f0' : '#f8fafc',
-                        cursor: playbookActionLoading === playbook.action ? 'not-allowed' : 'pointer',
-                        textAlign: 'left',
+                        backgroundColor: '#f8fafc',
                       }}
                     >
-                      <div style={{ fontWeight: '600', marginBottom: '4px' }}>{playbook.label}</div>
-                      <div style={{ fontSize: '12px', color: '#64748b' }}>{playbook.description}</div>
-                    </button>
+                      <div>
+                        <div style={{ fontWeight: '600', marginBottom: '4px' }}>{action.label}</div>
+                        <div style={{ color: '#64748b', fontSize: '13px' }}>{action.description}</div>
+                      </div>
+                      <button
+                        onClick={() => handlePlaybookAction(selectedIncident.id, action)}
+                        disabled={actionInProgress === action.key}
+                        style={{
+                          backgroundColor: actionInProgress === action.key ? '#94a3b8' : '#0f172a',
+                          color: 'white',
+                          padding: '8px 14px',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: actionInProgress === action.key ? 'wait' : 'pointer',
+                          fontSize: '12px',
+                          fontWeight: '600',
+                        }}
+                      >
+                        {actionInProgress === action.key ? 'Running...' : 'Run'}
+                      </button>
+                    </div>
                   ))}
                 </div>
               </div>
 
               <div style={{ marginBottom: '20px' }}>
                 <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>Timeline</h3>
-                <div style={{ maxHeight: '240px', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ maxHeight: '260px', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   {timelineEntries.length === 0 ? (
-                    <div style={{ color: '#94a3b8', fontSize: '14px' }}>No timeline entries yet</div>
+                    <div style={{ color: '#94a3b8', fontSize: '14px' }}>No timeline events yet</div>
                   ) : (
-                    timelineEntries.map((entry) => (
-                      <div
-                        key={entry.id}
-                        style={{
-                          padding: '12px',
-                          backgroundColor: '#f8fafc',
-                          borderRadius: '6px',
-                          fontSize: '14px',
-                          border: '1px solid #e2e8f0',
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{
-                              fontSize: '11px',
-                              textTransform: 'uppercase',
-                              letterSpacing: '0.04em',
-                              padding: '2px 6px',
-                              borderRadius: '999px',
-                              backgroundColor: '#e2e8f0',
-                              color: '#475569',
-                              fontWeight: '600',
-                            }}>
-                              {formatTimelineLabel(entry.type)}
+                    timelineEntries.map((entry) => {
+                      const style = timelineTypeStyles[entry.type];
+                      return (
+                        <div
+                          key={entry.id}
+                          style={{
+                            padding: '12px',
+                            borderRadius: '8px',
+                            border: `1px solid ${style.border}`,
+                            backgroundColor: 'white',
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span
+                                style={{
+                                  padding: '2px 8px',
+                                  borderRadius: '999px',
+                                  backgroundColor: style.bg,
+                                  color: style.text,
+                                  fontSize: '11px',
+                                  fontWeight: '600',
+                                }}
+                              >
+                                {style.label}
+                              </span>
+                              <span style={{ fontWeight: '600', fontSize: '14px' }}>{entry.summary}</span>
+                            </div>
+                            <span style={{ color: '#64748b', fontSize: '12px' }}>
+                              {format(new Date(entry.timestamp), 'MMM dd, HH:mm')} · {formatDistanceToNow(new Date(entry.timestamp), { addSuffix: true })}
                             </span>
-                            <span style={{ fontWeight: '600' }}>{entry.author}</span>
                           </div>
-                          <span style={{ color: '#64748b', fontSize: '12px' }}>
-                            {format(new Date(entry.timestamp), 'MMM dd, HH:mm')}
-                          </span>
-                        </div>
-                        <div style={{ color: '#1f2937', fontWeight: '600', marginBottom: entry.details ? '4px' : 0 }}>
-                          {entry.summary}
-                        </div>
-                        {entry.details && (
-                          <div style={{ color: '#475569' }}>{entry.details}</div>
-                        )}
-                        {entry.metadata?.ticketId && (
-                          <div style={{ color: '#475569', fontSize: '12px', marginTop: '4px' }}>
-                            Ticket ID: <strong>{String(entry.metadata.ticketId)}</strong>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: '12px' }}>
+                            <span>Actor: <strong style={{ color: '#0f172a' }}>{entry.actor}</strong></span>
+                            {entry.type === 'action' && (
+                              <span style={{ color: '#16a34a', fontWeight: '600' }}>Audit logged</span>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    ))
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </div>

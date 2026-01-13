@@ -33,6 +33,17 @@ export interface IncidentTimelineEntry {
   metadata?: Record<string, unknown>;
 }
 
+export type IncidentTimelineEntryType = 'note' | 'status_change' | 'assignment' | 'action';
+
+export interface IncidentTimelineEntry {
+  id: string;
+  type: IncidentTimelineEntryType;
+  timestamp: number;
+  actor: string;
+  summary: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface Incident {
   id: string;
   title: string;
@@ -156,6 +167,7 @@ export class IncidentResponseService {
     tags?: string[];
     metadata?: Record<string, unknown>;
   }): Promise<Incident> {
+    const now = Date.now();
     const incident: Incident = {
       id: nanoid(),
       title: params.title,
@@ -163,13 +175,25 @@ export class IncidentResponseService {
       type: params.type,
       severity: params.severity,
       status: 'open',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
       reportedBy: params.reportedBy,
       affectedIPs: params.affectedIPs || [],
       affectedUsers: params.affectedUsers || [],
       notes: [],
-      timeline: [],
+      timeline: [
+        {
+          id: nanoid(),
+          type: 'note',
+          timestamp: now,
+          actor: params.reportedBy,
+          summary: 'Incident created',
+          metadata: {
+            severity: params.severity,
+            type: params.type,
+          },
+        },
+      ],
       tags: params.tags || [],
       metadata: params.metadata,
     };
@@ -197,13 +221,13 @@ export class IncidentResponseService {
     const key = `${this.INCIDENT_KEY_PREFIX}${id}`;
     const data = await this.redis.get(key);
     if (!data) return null;
-
     const incident = JSON.parse(data) as Incident;
-    const timelineUpdated = this.ensureTimeline(incident);
-    if (timelineUpdated) {
-      await this.redis.setex(key, this.INCIDENT_RETENTION, JSON.stringify(incident));
+    const hadTimeline = Boolean(incident.timeline?.length);
+    const normalized = this.ensureTimeline(incident);
+    if (!hadTimeline && normalized.timeline?.length) {
+      await this.redis.setex(key, this.INCIDENT_RETENTION, JSON.stringify(normalized));
     }
-    return incident;
+    return normalized;
   }
 
   /**
@@ -240,15 +264,7 @@ export class IncidentResponseService {
           if (params?.severity && incident.severity !== params.severity) continue;
           if (params?.type && incident.type !== params.type) continue;
 
-          const timelineUpdated = this.ensureTimeline(incident);
-          if (timelineUpdated) {
-            await this.redis.setex(
-              `${this.INCIDENT_KEY_PREFIX}${incident.id}`,
-              this.INCIDENT_RETENTION,
-              JSON.stringify(incident)
-            );
-          }
-          incidents.push(incident);
+          incidents.push(this.ensureTimeline(incident));
         }
       }
     }
@@ -276,6 +292,16 @@ export class IncidentResponseService {
       incident.resolvedAt = now;
       incident.resolutionTime = now - incident.createdAt;
     }
+
+    this.addTimelineEntry(incident, {
+      type: 'status_change',
+      timestamp: now,
+      actor: updatedBy,
+      summary: `Status changed to ${status}`,
+      metadata: {
+        status,
+      },
+    });
 
     // Add note about status change
     incident.notes.push({
@@ -315,6 +341,16 @@ export class IncidentResponseService {
       incident.responseTime = now - incident.createdAt;
     }
 
+    this.addTimelineEntry(incident, {
+      type: 'assignment',
+      timestamp: now,
+      actor: updatedBy,
+      summary: `Assigned to ${assignedTo}`,
+      metadata: {
+        assignedTo,
+      },
+    });
+
     incident.notes.push({
       timestamp: now,
       author: updatedBy,
@@ -341,18 +377,18 @@ export class IncidentResponseService {
     const incident = await this.getIncident(id);
     if (!incident) return null;
 
+    const now = Date.now();
     incident.notes.push({
-      timestamp: Date.now(),
+      timestamp: now,
       author,
       content,
     });
-    incident.updatedAt = Date.now();
+    incident.updatedAt = now;
     this.addTimelineEntry(incident, {
-      timestamp: incident.updatedAt,
       type: 'note',
-      author,
-      summary: 'Note added',
-      details: content,
+      timestamp: now,
+      actor: author,
+      summary: content,
     });
 
     const key = `${this.INCIDENT_KEY_PREFIX}${id}`;
@@ -373,17 +409,18 @@ export class IncidentResponseService {
     if (!incident) return null;
 
     Object.assign(incident, updates);
-    incident.updatedAt = Date.now();
+    const now = Date.now();
+    incident.updatedAt = now;
 
     incident.notes.push({
-      timestamp: Date.now(),
+      timestamp: now,
       author: updatedBy,
       content: 'Incident details updated',
     });
     this.addTimelineEntry(incident, {
-      timestamp: incident.updatedAt,
-      type: 'update',
-      author: updatedBy,
+      type: 'note',
+      timestamp: now,
+      actor: updatedBy,
       summary: 'Incident details updated',
     });
 
@@ -391,6 +428,118 @@ export class IncidentResponseService {
     await this.redis.setex(key, this.INCIDENT_RETENTION, JSON.stringify(incident));
 
     return incident;
+  }
+
+  /**
+   * Execute a playbook action (mocked)
+   */
+  async executePlaybookAction(
+    id: string,
+    action: string,
+    actor: string,
+    target?: string
+  ): Promise<Incident | null> {
+    const incident = await this.getIncident(id);
+    if (!incident) return null;
+
+    const now = Date.now();
+    const actionLabel = action
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+    const summary = `Playbook action: ${actionLabel}${target ? ` (${target})` : ''}`;
+
+    this.addTimelineEntry(incident, {
+      type: 'action',
+      timestamp: now,
+      actor,
+      summary,
+      metadata: {
+        action,
+        target,
+        status: 'completed',
+        result: 'mocked',
+      },
+    });
+
+    incident.updatedAt = now;
+
+    const key = `${this.INCIDENT_KEY_PREFIX}${id}`;
+    await this.redis.setex(key, this.INCIDENT_RETENTION, JSON.stringify(incident));
+
+    logger.info({ incidentId: id, action, actor, target }, 'Incident playbook action executed');
+
+    return incident;
+  }
+
+  private addTimelineEntry(
+    incident: Incident,
+    entry: Omit<IncidentTimelineEntry, 'id'>
+  ) {
+    if (!incident.timeline) {
+      incident.timeline = [];
+    }
+    incident.timeline.push({
+      id: nanoid(),
+      ...entry,
+    });
+  }
+
+  private ensureTimeline(incident: Incident): Incident {
+    if (incident.timeline && incident.timeline.length > 0) {
+      return incident;
+    }
+
+    const timeline: IncidentTimelineEntry[] = [];
+    if (incident.createdAt) {
+      timeline.push({
+        id: nanoid(),
+        type: 'note',
+        timestamp: incident.createdAt,
+        actor: incident.reportedBy || 'system',
+        summary: 'Incident created',
+      });
+    }
+
+    if (incident.notes?.length) {
+      incident.notes.forEach(note => {
+        const normalized = this.normalizeNoteToTimeline(note.content);
+        timeline.push({
+          id: nanoid(),
+          type: normalized.type,
+          timestamp: note.timestamp,
+          actor: note.author,
+          summary: note.content,
+          metadata: normalized.metadata,
+        });
+      });
+    }
+
+    incident.timeline = timeline.sort((a, b) => a.timestamp - b.timestamp);
+    return incident;
+  }
+
+  private normalizeNoteToTimeline(content: string): {
+    type: IncidentTimelineEntryType;
+    metadata?: Record<string, unknown>;
+  } {
+    if (content.startsWith('Status changed to ')) {
+      return {
+        type: 'status_change',
+        metadata: {
+          status: content.replace('Status changed to ', ''),
+        },
+      };
+    }
+    if (content.startsWith('Assigned to ')) {
+      return {
+        type: 'assignment',
+        metadata: {
+          assignedTo: content.replace('Assigned to ', ''),
+        },
+      };
+    }
+    return { type: 'note' };
   }
 
   /**

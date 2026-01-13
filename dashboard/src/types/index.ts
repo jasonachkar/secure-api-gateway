@@ -43,6 +43,19 @@ export interface AuditLogEntry {
   metadata?: Record<string, unknown>;
 }
 
+export interface AdminAuditLogEntry {
+  id: string;
+  timestamp: number;
+  actor: {
+    userId: string;
+    username: string;
+  };
+  action: string;
+  resource: string;
+  incidentId?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface SessionInfo {
   jti: string;
   userId: string;
@@ -151,6 +164,17 @@ export interface IncidentTimelineEntry {
   metadata?: Record<string, unknown>;
 }
 
+export type IncidentTimelineEntryType = 'note' | 'status_change' | 'assignment' | 'action';
+
+export interface IncidentTimelineEntry {
+  id: string;
+  type: IncidentTimelineEntryType;
+  timestamp: number;
+  actor: string;
+  summary: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface Incident {
   id: string;
   title: string;
@@ -172,7 +196,7 @@ export interface Incident {
     author: string;
     content: string;
   }>;
-  timeline?: IncidentTimelineEntry[];
+  timeline: IncidentTimelineEntry[];
   tags: string[];
   metadata?: Record<string, unknown>;
 }

@@ -5,6 +5,7 @@
 
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { IncidentResponseService, type Incident, type IncidentStatistics } from './incident-response.service.js';
+import { env } from '../../config/index.js';
 
 export class IncidentResponseController {
   constructor(private incidentService: IncidentResponseService) {}
@@ -174,6 +175,15 @@ export class IncidentResponseController {
    * Seed test incidents for development/demo purposes
    */
   async seedTestIncidents(request: FastifyRequest, reply: FastifyReply) {
+    if (!env.DEMO_MODE) {
+      return reply.code(404).send({
+        error: {
+          code: 'DEMO_MODE_DISABLED',
+          message: 'Demo mode is disabled',
+        },
+      });
+    }
+
     const user = (request as any).user;
     
     try {
@@ -235,4 +245,3 @@ export class IncidentResponseController {
     }
   }
 }
-

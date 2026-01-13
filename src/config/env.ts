@@ -79,6 +79,11 @@ const envSchema = z.object({
     .transform((val) => val === 'true')
     .pipe(z.boolean())
     .default('true'),
+  DEMO_MODE: z
+    .string()
+    .transform((val) => val === 'true')
+    .pipe(z.boolean())
+    .default('false'),
 
   // Request Limits
   BODY_LIMIT: z.coerce.number().int().min(1024).default(1048576), // 1MB default

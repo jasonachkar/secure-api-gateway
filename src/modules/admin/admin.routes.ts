@@ -21,6 +21,7 @@ import { requireRole } from '../../middleware/rbac.js';
 import { validate } from '../../middleware/validation.js';
 import { auditLogQuerySchema, sessionRevokeSchema, userUnlockSchema } from './admin.schemas.js';
 import { UnauthorizedError } from '../../lib/errors.js';
+import { env } from '../../config/index.js';
 
 /**
  * SSE authentication middleware
@@ -254,6 +255,23 @@ export async function registerAdminRoutes(
       preHandler: adminAuth,
     },
     controller.getHealth.bind(controller)
+  );
+
+  /**
+   * GET /admin/config
+   * Get runtime configuration flags
+   */
+  app.get(
+    '/admin/config',
+    {
+      schema: {
+        description: 'Get runtime configuration flags',
+        tags: ['Admin'],
+        security: [{ bearerAuth: [] }],
+      },
+      preHandler: adminAuth,
+    },
+    controller.getConfig.bind(controller)
   );
 
   // ======================
@@ -670,18 +688,20 @@ export async function registerAdminRoutes(
    * POST /admin/incidents/seed-test-data
    * Seed test incidents for development/demo (admin only)
    */
-  app.post(
-    '/admin/incidents/seed-test-data',
-    {
-      schema: {
-        description: 'Create sample incidents for testing/demo purposes',
-        tags: ['Incident Response'],
-        security: [{ bearerAuth: [] }],
+  if (env.DEMO_MODE) {
+    app.post(
+      '/admin/incidents/seed-test-data',
+      {
+        schema: {
+          description: 'Create sample incidents for testing/demo purposes',
+          tags: ['Incident Response'],
+          security: [{ bearerAuth: [] }],
+        },
+        preHandler: adminAuth,
       },
-      preHandler: adminAuth,
-    },
-    incidentController.seedTestIncidents.bind(incidentController)
-  );
+      incidentController.seedTestIncidents.bind(incidentController)
+    );
+  }
 
   // ======================
   // Compliance Routes

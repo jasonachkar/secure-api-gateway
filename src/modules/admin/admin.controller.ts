@@ -6,6 +6,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { AdminService } from './admin.service.js';
 import { MetricsService } from './metrics.service.js';
+import { env } from '../../config/index.js';
 import type { AuditLogQuery, SessionRevokeParams, UserUnlockParams } from './admin.schemas.js';
 
 /**
@@ -185,6 +186,16 @@ export class AdminController {
       uptime: summary.systemHealth.uptime,
       redis: summary.systemHealth.redisConnected ? 'connected' : 'disconnected',
       timestamp: Date.now(),
+    };
+  }
+
+  /**
+   * GET /admin/config
+   * Get runtime configuration flags
+   */
+  async getConfig(request: FastifyRequest, reply: FastifyReply) {
+    return {
+      demoMode: env.DEMO_MODE,
     };
   }
 }

@@ -76,6 +76,10 @@ export interface LoginResponse {
   tokenType: string;
 }
 
+export interface RuntimeConfig {
+  demoMode: boolean;
+}
+
 // Threat Intelligence Types
 
 export type ThreatLevel = 'low' | 'medium' | 'high' | 'critical';

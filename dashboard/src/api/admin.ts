@@ -20,6 +20,7 @@ import type {
   IncidentType,
   SecurityPosture,
   ComplianceMetrics,
+  RuntimeConfig,
 } from '../types';
 
 export const adminApi = {
@@ -75,6 +76,11 @@ export const adminApi = {
   // Health
   getHealth: async () => {
     const { data } = await apiClient.get('/admin/health');
+    return data;
+  },
+
+  getRuntimeConfig: async (): Promise<RuntimeConfig> => {
+    const { data } = await apiClient.get('/admin/config');
     return data;
   },
 

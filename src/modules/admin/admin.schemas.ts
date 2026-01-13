@@ -102,6 +102,21 @@ export const auditLogQuerySchema = z.object({
 export type AuditLogQuery = z.infer<typeof auditLogQuerySchema>;
 
 /**
+ * Admin action audit log query params schema
+ */
+export const adminAuditLogQuerySchema = z.object({
+  actorId: z.string().optional(),
+  action: z.string().optional(),
+  incidentId: z.string().optional(),
+  startTime: z.coerce.number().optional(),
+  endTime: z.coerce.number().optional(),
+  limit: z.coerce.number().min(1).max(1000).default(100),
+  offset: z.coerce.number().min(0).default(0),
+});
+
+export type AdminAuditLogQuery = z.infer<typeof adminAuditLogQuerySchema>;
+
+/**
  * Session revoke params
  */
 export const sessionRevokeSchema = z.object({

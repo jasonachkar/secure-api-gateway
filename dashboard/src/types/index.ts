@@ -28,6 +28,27 @@ export interface MetricsSummary {
   };
 }
 
+export interface IngestionAdapterStatus {
+  name: string;
+  provider: 'cloudwatch' | 'gcp_logging' | 'azure_sentinel';
+  healthy: boolean;
+  configured: boolean;
+  lastSyncAt?: number;
+  detail?: string;
+}
+
+export interface IngestionStorageStatus {
+  redisConnected: boolean;
+  postgresConnected: boolean;
+  totalEvents: number;
+  lastEventAt?: number;
+}
+
+export interface IngestionStatus {
+  adapters: IngestionAdapterStatus[];
+  storage: IngestionStorageStatus;
+}
+
 export interface AuditLogEntry {
   id: string;
   timestamp: number;

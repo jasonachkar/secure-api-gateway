@@ -6,6 +6,7 @@
 import Redis from 'ioredis';
 import { nanoid } from 'nanoid';
 import { logger } from '../../lib/logger.js';
+import type { NormalizedEvent, NormalizedEventSeverity } from '../ingestion/normalized-event.types.js';
 
 export type IncidentStatus = 'open' | 'investigating' | 'contained' | 'resolved' | 'closed';
 export type IncidentSeverity = 'low' | 'medium' | 'high' | 'critical';
@@ -95,6 +96,12 @@ export class IncidentResponseService {
   private readonly INCIDENT_KEY_PREFIX = 'incident:';
   private readonly INCIDENT_INDEX_KEY = 'incidents:index';
   private readonly INCIDENT_RETENTION = 90 * 24 * 60 * 60 * 1000; // 90 days
+  private readonly severityRank: Record<NormalizedEventSeverity, number> = {
+    low: 0,
+    medium: 1,
+    high: 2,
+    critical: 3,
+  };
 
   constructor(private redis: Redis) {}
 

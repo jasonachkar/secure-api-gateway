@@ -27,6 +27,8 @@ import {
   userUnlockSchema,
 } from './admin.schemas.js';
 import { UnauthorizedError } from '../../lib/errors.js';
+import { env } from '../../config/index.js';
+import type { PostgresClient } from '../ingestion/normalized-event.store.js';
 
 /**
  * SSE authentication middleware
@@ -53,6 +55,11 @@ async function requireAuthSSE(request: FastifyRequest, reply: FastifyReply) {
   }
 }
 
+async function createPostgresClient(): Promise<PostgresClient> {
+  const { Pool } = await import('pg');
+  return new Pool({ connectionString: env.POSTGRES_URL });
+}
+
 /**
  * Register admin routes
  * All routes require authentication + admin role
@@ -74,6 +81,16 @@ export async function registerAdminRoutes(
   const incidentController = new IncidentResponseController(incidentService);
   const complianceService = new ComplianceService(redis, metricsService, threatIntelService, adminService);
   const complianceController = new ComplianceController(complianceService);
+  const postgresPool = env.POSTGRES_URL ? await createPostgresClient() : undefined;
+  const ingestionService = new IngestionService(redis, incidentService, postgresPool);
+  await ingestionService.initialize();
+  const ingestionController = new IngestionController(ingestionService);
+
+  if (postgresPool) {
+    app.addHook('onClose', async () => {
+      await postgresPool.end?.();
+    });
+  }
 
   // Start metrics seeder to generate realistic data
   const metricsSeeder = new MetricsSeederService(redis, metricsService, threatIntelService);
@@ -136,6 +153,23 @@ export async function registerAdminRoutes(
       preHandler: metricsAuth,
     },
     controller.getMetricsSummary.bind(controller)
+  );
+
+  /**
+   * GET /admin/ingestion/status
+   * Get ingestion adapter + storage status
+   */
+  app.get(
+    '/admin/ingestion/status',
+    {
+      schema: {
+        description: 'Get ingestion adapter status and storage health',
+        tags: ['Admin'],
+        security: [{ bearerAuth: [] }],
+      },
+      preHandler: adminAuth,
+    },
+    ingestionController.getStatus.bind(ingestionController)
   );
 
   /**

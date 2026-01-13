@@ -34,6 +34,9 @@ const envSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
   REDIS_DB: z.coerce.number().int().min(0).max(15).default(0),
 
+  // Postgres (optional for ingestion storage)
+  POSTGRES_URL: z.string().optional(),
+
   // JWT
   JWT_ALGORITHM: z.enum(['RS256', 'HS256']).default('RS256'),
   JWT_PRIVATE_KEY: z.string().optional(), // File path for RS256
@@ -79,6 +82,11 @@ const envSchema = z.object({
     .transform((val) => val === 'true')
     .pipe(z.boolean())
     .default('true'),
+
+  // Ingestion Adapters
+  CLOUDWATCH_LOG_GROUP: z.string().optional(),
+  GCP_LOGGING_PROJECT: z.string().optional(),
+  AZURE_SENTINEL_WORKSPACE: z.string().optional(),
 
   // Request Limits
   BODY_LIMIT: z.coerce.number().int().min(1024).default(1048576), // 1MB default

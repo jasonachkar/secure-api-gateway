@@ -6,6 +6,7 @@
 import Redis from 'ioredis';
 import { nanoid } from 'nanoid';
 import { logger } from '../../lib/logger.js';
+import type { NormalizedEvent, NormalizedEventSeverity } from '../ingestion/normalized-event.types.js';
 
 export type IncidentStatus = 'open' | 'investigating' | 'contained' | 'resolved' | 'closed';
 export type IncidentSeverity = 'low' | 'medium' | 'high' | 'critical';
@@ -71,6 +72,12 @@ export class IncidentResponseService {
   private readonly INCIDENT_KEY_PREFIX = 'incident:';
   private readonly INCIDENT_INDEX_KEY = 'incidents:index';
   private readonly INCIDENT_RETENTION = 90 * 24 * 60 * 60 * 1000; // 90 days
+  private readonly severityRank: Record<NormalizedEventSeverity, number> = {
+    low: 0,
+    medium: 1,
+    high: 2,
+    critical: 3,
+  };
 
   constructor(private redis: Redis) {}
 
@@ -406,5 +413,68 @@ export class IncidentResponseService {
       tags: ['auto-generated', 'threat-intelligence'],
     });
   }
-}
 
+  /**
+   * Auto-create incident from normalized ingestion event
+   */
+  async createIncidentFromNormalizedEvent(
+    event: NormalizedEvent,
+    reportedBy: string = 'system'
+  ): Promise<Incident | null> {
+    if (this.severityRank[event.severity] < this.severityRank.high) {
+      return null;
+    }
+
+    const type = this.mapEventTypeToIncident(event.event_type);
+    const severity = event.severity as IncidentSeverity;
+    const sourceLabel = event.source ? ` from ${event.source}` : '';
+
+    return this.createIncident({
+      title: `${severity.toUpperCase()}: ${event.event_type.replace(/_/g, ' ')}${sourceLabel}`,
+      description: `Normalized event detected.\n\nSource: ${event.source}\nTimestamp: ${new Date(event.timestamp).toISOString()}\nPayload: ${JSON.stringify(event.payload, null, 2)}`,
+      type,
+      severity,
+      reportedBy,
+      affectedIPs: this.extractAffectedIps(event.payload),
+      tags: ['auto-generated', 'normalized-event'],
+      metadata: {
+        eventId: event.id,
+        source: event.source,
+        eventType: event.event_type,
+      },
+    });
+  }
+
+  private mapEventTypeToIncident(eventType: string): IncidentType {
+    const normalized = eventType.toLowerCase();
+
+    if (normalized.includes('brute') || normalized.includes('auth.failed')) return 'brute_force';
+    if (normalized.includes('credential')) return 'credential_stuffing';
+    if (normalized.includes('rate_limit')) return 'rate_limit_abuse';
+    if (normalized.includes('lockout')) return 'account_lockout';
+    if (normalized.includes('ddos')) return 'ddos';
+    if (normalized.includes('malware')) return 'malware';
+    if (normalized.includes('breach')) return 'data_breach';
+    if (normalized.includes('unauthorized')) return 'unauthorized_access';
+
+    return 'suspicious_activity';
+  }
+
+  private extractAffectedIps(payload: Record<string, unknown>): string[] {
+    const ipCandidates = new Set<string>();
+    const possibleKeys = ['ip', 'ipAddress', 'sourceIp', 'clientIp'];
+
+    for (const key of possibleKeys) {
+      const value = payload[key];
+      if (typeof value === 'string') {
+        ipCandidates.add(value);
+      } else if (Array.isArray(value)) {
+        value.forEach(entry => {
+          if (typeof entry === 'string') ipCandidates.add(entry);
+        });
+      }
+    }
+
+    return Array.from(ipCandidates);
+  }
+}

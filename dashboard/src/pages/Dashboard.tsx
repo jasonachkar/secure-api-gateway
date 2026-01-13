@@ -14,7 +14,7 @@ import { Button } from '../components/Button';
 import { useSSE } from '../hooks/useSSE';
 import { adminApi } from '../api/admin';
 import { theme } from '../styles/theme';
-import type { SecurityPosture } from '../types';
+import type { IngestionStatus, SecurityPosture } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -59,6 +59,7 @@ export function Dashboard() {
   const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
   const [currentMetrics, setCurrentMetrics] = useState<RealtimeMetrics | null>(null);
   const [posture, setPosture] = useState<SecurityPosture | null>(null);
+  const [ingestionStatus, setIngestionStatus] = useState<IngestionStatus | null>(null);
   const [infoBannerDismissed, setInfoBannerDismissed] = useState(() => {
     return localStorage.getItem('dashboard-info-banner-dismissed') === 'true';
   });
@@ -68,10 +69,21 @@ export function Dashboard() {
     enabled: true,
   });
 
+  const formatTimestamp = (value?: number) => {
+    if (!value) return 'No events yet';
+    return new Date(value).toLocaleString();
+  };
+
   // Load security posture on mount
   useEffect(() => {
     adminApi.getSecurityPosture().then(setPosture).catch(() => {
       // Silently fail - posture is optional
+    });
+  }, []);
+
+  useEffect(() => {
+    adminApi.getIngestionStatus().then(setIngestionStatus).catch(() => {
+      // Silently fail - ingestion status is optional
     });
   }, []);
 
@@ -287,7 +299,7 @@ export function Dashboard() {
 
         {/* Security Posture Card */}
         {posture && (
-          <div style={{
+          <div style={{ 
             backgroundColor: theme.colors.background.primary,
             padding: theme.spacing.lg,
             borderRadius: theme.borderRadius.lg,
@@ -341,6 +353,105 @@ export function Dashboard() {
               </Button>
             </Link>
           </div>
+        )}
+
+        {ingestionStatus && (
+          <section style={{ marginBottom: theme.spacing.xl }}>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              marginBottom: theme.spacing.md 
+            }}>
+              <div>
+                <h2 style={{ ...theme.typography.h3 }}>Ingestion Status</h2>
+                <p style={{ ...theme.typography.small, color: theme.colors.text.secondary }}>
+                  Normalized event pipeline health and adapter readiness
+                </p>
+              </div>
+              <span style={{ 
+                padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+                borderRadius: theme.borderRadius.md,
+                backgroundColor: ingestionStatus.storage.redisConnected
+                  ? theme.colors.success[100]
+                  : theme.colors.error[100],
+                color: ingestionStatus.storage.redisConnected
+                  ? theme.colors.success[800]
+                  : theme.colors.error[800],
+                fontSize: theme.typography.fontSize.sm,
+                fontWeight: theme.typography.fontWeight.medium,
+              }}>
+                Redis {ingestionStatus.storage.redisConnected ? 'Connected' : 'Disconnected'}
+              </span>
+            </div>
+
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', 
+              gap: theme.spacing.lg, 
+              marginBottom: theme.spacing.lg 
+            }}>
+              <MetricCard
+                title="Normalized Events"
+                value={ingestionStatus.storage.totalEvents}
+                subtitle="Stored in Redis/Postgres"
+                color="blue"
+              />
+              <MetricCard
+                title="Last Event"
+                value={formatTimestamp(ingestionStatus.storage.lastEventAt)}
+                color="green"
+              />
+              <MetricCard
+                title="Postgres Storage"
+                value={ingestionStatus.storage.postgresConnected ? 'Connected' : 'Not Configured'}
+                color={ingestionStatus.storage.postgresConnected ? 'green' : 'yellow'}
+              />
+            </div>
+
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', 
+              gap: theme.spacing.md 
+            }}>
+              {ingestionStatus.adapters.map(adapter => (
+                <div key={adapter.provider} style={{ 
+                  backgroundColor: theme.colors.background.primary,
+                  padding: theme.spacing.md,
+                  borderRadius: theme.borderRadius.lg,
+                  boxShadow: theme.shadows.sm,
+                  border: `1px solid ${theme.colors.border.light}`,
+                }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between',
+                    marginBottom: theme.spacing.xs 
+                  }}>
+                    <div style={{ fontWeight: theme.typography.fontWeight.semibold }}>
+                      {adapter.name}
+                    </div>
+                    <span style={{ 
+                      padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+                      borderRadius: theme.borderRadius.md,
+                      backgroundColor: adapter.healthy ? theme.colors.success[100] : theme.colors.warning[100],
+                      color: adapter.healthy ? theme.colors.success[800] : theme.colors.warning[800],
+                      fontSize: theme.typography.fontSize.xs,
+                      fontWeight: theme.typography.fontWeight.medium,
+                    }}>
+                      {adapter.configured ? 'Configured' : 'Needs setup'}
+                    </span>
+                  </div>
+                  <div style={{ 
+                    ...theme.typography.small,
+                    color: theme.colors.text.secondary,
+                  }}>
+                    {adapter.detail || 'Status unavailable'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
         )}
 
         {/* Key Metrics Cards */}

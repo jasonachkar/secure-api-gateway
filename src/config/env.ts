@@ -82,6 +82,11 @@ const envSchema = z.object({
     .transform((val) => val === 'true')
     .pipe(z.boolean())
     .default('true'),
+  DEMO_MODE: z
+    .string()
+    .transform((val) => val === 'true')
+    .pipe(z.boolean())
+    .default('false'),
 
   // Ingestion Adapters
   CLOUDWATCH_LOG_GROUP: z.string().optional(),

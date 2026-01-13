@@ -29,6 +29,33 @@ export function Layout({ children }: LayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout } = useAuth();
+  const [demoMode, setDemoMode] = React.useState(false);
+  const [demoModeLoaded, setDemoModeLoaded] = React.useState(false);
+
+  React.useEffect(() => {
+    let isMounted = true;
+
+    const loadConfig = async () => {
+      try {
+        const config = await adminApi.getRuntimeConfig();
+        if (isMounted) {
+          setDemoMode(config.demoMode);
+        }
+      } catch (error) {
+        console.error('Failed to load runtime config:', error);
+      } finally {
+        if (isMounted) {
+          setDemoModeLoaded(true);
+        }
+      }
+    };
+
+    loadConfig();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -99,6 +126,32 @@ export function Layout({ children }: LayoutProps) {
           paddingTop: theme.spacing.lg,
           borderTop: `1px solid ${theme.colors.neutral[700]}`,
         }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: theme.spacing.sm,
+            marginBottom: theme.spacing.md,
+            borderRadius: theme.borderRadius.md,
+            backgroundColor: theme.colors.neutral[700],
+            fontSize: theme.typography.fontSize.sm,
+          }}>
+            <span style={{ fontWeight: theme.typography.fontWeight.medium }}>
+              Demo Mode
+            </span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+              <input
+                type="checkbox"
+                checked={demoMode}
+                disabled
+                aria-label="Demo mode enabled"
+                style={{ accentColor: theme.colors.warning[400] }}
+              />
+              <span>
+                {demoModeLoaded ? (demoMode ? 'On' : 'Off') : '...'}
+              </span>
+            </label>
+          </div>
           <Button
             variant="danger"
             size="md"
@@ -120,6 +173,29 @@ export function Layout({ children }: LayoutProps) {
         overflowX: 'hidden',
       }}>
         <div style={{ maxWidth: '1600px', margin: '0 auto' }}>
+          {demoMode && (
+            <div style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              marginBottom: theme.spacing.md,
+            }}>
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: theme.spacing.xs,
+                padding: `${theme.spacing.xs} ${theme.spacing.md}`,
+                backgroundColor: theme.colors.warning[100],
+                color: theme.colors.warning[800],
+                border: `1px solid ${theme.colors.warning[300]}`,
+                borderRadius: theme.borderRadius.full,
+                fontSize: theme.typography.fontSize.sm,
+                fontWeight: theme.typography.fontWeight.semibold,
+                letterSpacing: '0.2px',
+              }}>
+                Demo Data
+              </span>
+            </div>
+          )}
           {children}
         </div>
       </main>

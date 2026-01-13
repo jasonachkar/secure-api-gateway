@@ -206,4 +206,14 @@ export class AdminController {
       timestamp: Date.now(),
     };
   }
+
+  /**
+   * GET /admin/config
+   * Get runtime configuration flags
+   */
+  async getConfig(request: FastifyRequest, reply: FastifyReply) {
+    return {
+      demoMode: env.DEMO_MODE,
+    };
+  }
 }

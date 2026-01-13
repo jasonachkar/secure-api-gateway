@@ -99,6 +99,11 @@ export const adminApi = {
     return data;
   },
 
+  getRuntimeConfig: async (): Promise<RuntimeConfig> => {
+    const { data } = await apiClient.get('/admin/config');
+    return data;
+  },
+
   // Threat Intelligence
   getAllThreats: async (limit?: number): Promise<IPThreatInfo[]> => {
     const { data } = await apiClient.get('/admin/threats', { params: { limit } });

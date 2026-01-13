@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { MetricCard } from '../components/MetricCard';
 import { adminApi } from '../api/admin';
@@ -104,6 +105,8 @@ const buildTimelineEntries = (incident: Incident): IncidentTimelineEntry[] => {
 };
 
 export function Incidents() {
+  const [searchParams] = useSearchParams();
+  const incidentIdParam = searchParams.get('incidentId');
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [statistics, setStatistics] = useState<IncidentStatistics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -117,6 +120,17 @@ export function Incidents() {
   useEffect(() => {
     fetchData();
   }, [filterStatus, filterSeverity]);
+
+  useEffect(() => {
+    if (!incidentIdParam || incidents.length === 0) {
+      return;
+    }
+
+    const incident = incidents.find((item) => item.id === incidentIdParam);
+    if (incident) {
+      setSelectedIncident(incident);
+    }
+  }, [incidentIdParam, incidents]);
 
   const fetchData = async () => {
     try {

@@ -43,6 +43,19 @@ export interface AuditLogEntry {
   metadata?: Record<string, unknown>;
 }
 
+export interface AdminAuditLogEntry {
+  id: string;
+  timestamp: number;
+  actor: {
+    userId: string;
+    username: string;
+  };
+  action: string;
+  resource: string;
+  incidentId?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface SessionInfo {
   jti: string;
   userId: string;

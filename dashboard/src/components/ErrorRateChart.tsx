@@ -43,15 +43,15 @@ export function ErrorRateChart({ data, title = 'Error Rate', isLoading = false }
         <AreaChart data={chartData}>
           <defs>
             <linearGradient id="color4xx" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor={theme.colors.warning[500]} stopOpacity={0.8}/>
-              <stop offset="95%" stopColor={theme.colors.warning[500]} stopOpacity={0.1}/>
+              <stop offset="5%" stopColor="var(--color-warning-500)" stopOpacity={0.8}/>
+              <stop offset="95%" stopColor="var(--color-warning-500)" stopOpacity={0.1}/>
             </linearGradient>
             <linearGradient id="color5xx" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor={theme.colors.error[500]} stopOpacity={0.8}/>
-              <stop offset="95%" stopColor={theme.colors.error[500]} stopOpacity={0.1}/>
+              <stop offset="5%" stopColor="var(--color-error-500)" stopOpacity={0.8}/>
+              <stop offset="95%" stopColor="var(--color-error-500)" stopOpacity={0.1}/>
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke={theme.colors.border.light} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
           <XAxis
             dataKey="time"
             stroke={theme.colors.text.tertiary}
@@ -72,7 +72,7 @@ export function ErrorRateChart({ data, title = 'Error Rate', isLoading = false }
           <Area
             type="monotone"
             dataKey="4xx Errors"
-            stroke={theme.colors.warning[500]}
+            stroke="var(--color-warning-500)"
             strokeWidth={2}
             fill="url(#color4xx)"
             animationDuration={300}
@@ -80,7 +80,7 @@ export function ErrorRateChart({ data, title = 'Error Rate', isLoading = false }
           <Area
             type="monotone"
             dataKey="5xx Errors"
-            stroke={theme.colors.error[500]}
+            stroke="var(--color-error-500)"
             strokeWidth={2}
             fill="url(#color5xx)"
             animationDuration={300}

@@ -394,7 +394,7 @@ export function Incidents() {
                 </div>
                 <button className="modal__close" onClick={() => setSelectedIncident(null)}>
                   ×
-                </button>
+                </Button>
               </div>
 
               <div className="page-stack">

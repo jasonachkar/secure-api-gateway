@@ -3,7 +3,7 @@
  * Shows real-time security events with improved design and animations
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type CSSProperties } from 'react';
 import { format } from 'date-fns';
 
 interface SecurityEvent {
@@ -77,6 +77,7 @@ export function LiveEventFeed({ events, maxEvents = 10 }: LiveEventFeedProps) {
                     <div className="live-feed__item-text">
                       {event.message}
                     </div>
+                    <div className="live-feed__message">{event.message}</div>
                     {event.username && (
                       <div className="live-feed__item-detail">
                         User: {event.username} ({event.userId})

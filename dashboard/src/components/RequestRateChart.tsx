@@ -39,7 +39,7 @@ export function RequestRateChart({ data, title = 'Request Rate', isLoading = fal
       <h3 className="chart-card__title">{title}</h3>
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" stroke={theme.colors.border.light} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
           <XAxis
             dataKey="time"
             stroke={theme.colors.text.tertiary}
@@ -60,7 +60,7 @@ export function RequestRateChart({ data, title = 'Request Rate', isLoading = fal
           <Line
             type="monotone"
             dataKey="requests"
-            stroke={theme.colors.primary[500]}
+            stroke="var(--color-primary-500)"
             strokeWidth={2}
             dot={false}
             name="Requests"

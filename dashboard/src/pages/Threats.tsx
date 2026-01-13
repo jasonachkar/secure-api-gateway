@@ -132,6 +132,7 @@ export function Threats() {
                               {pattern.severity.toUpperCase()}
                             </Badge>
                           </div>
+                          <p className="threat-pattern__description">{pattern.description}</p>
                         </div>
                         <div className="section-subtitle">{pattern.description}</div>
                         <div className="incident-meta">
@@ -270,22 +271,22 @@ export function Threats() {
             </div>
 
             {statistics.topCountries.length > 0 && (
-              <div className="page-stack">
-                <div className="section-title">Threats by Country</div>
+              <section className="section-block">
+                <SectionHeader title="Threats by Country" />
                 <Card>
-                  <div className="page-stack">
+                  <div className="country-list">
                     {statistics.topCountries.map((country, index) => (
-                      <div key={country.country} className="country-row">
-                        <div className="threat-card__identity">
-                          <span className="country-rank">{index + 1}</span>
-                          <span className="font-semibold">{country.country}</span>
+                      <div key={country.country} className="country-item">
+                        <div className="inline-row">
+                          <span className="rank-pill">{index + 1}</span>
+                          <span className="country-name">{country.country}</span>
                         </div>
-                        <span className="country-count">{country.count} threats</span>
+                        <Badge tone="primary">{country.count} threats</Badge>
                       </div>
                     ))}
                   </div>
                 </Card>
-              </div>
+              </section>
             )}
           </div>
         )}

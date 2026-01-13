@@ -43,7 +43,7 @@ export function ResponseTimeChart({ data, title = 'Response Time Percentiles', i
       <h3 className="chart-card__title">{title}</h3>
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" stroke={theme.colors.border.light} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
           <XAxis 
             dataKey="time" 
             stroke={theme.colors.text.tertiary} 
@@ -64,7 +64,7 @@ export function ResponseTimeChart({ data, title = 'Response Time Percentiles', i
           <Line
             type="monotone"
             dataKey="P50 (Median)"
-            stroke={theme.colors.primary[500]}
+            stroke="var(--color-primary-500)"
             strokeWidth={2}
             dot={false}
             name="P50 (Median)"
@@ -73,7 +73,7 @@ export function ResponseTimeChart({ data, title = 'Response Time Percentiles', i
           <Line
             type="monotone"
             dataKey="P95"
-            stroke={theme.colors.warning[500]}
+            stroke="var(--color-warning-500)"
             strokeWidth={2}
             dot={false}
             name="P95"
@@ -82,7 +82,7 @@ export function ResponseTimeChart({ data, title = 'Response Time Percentiles', i
           <Line
             type="monotone"
             dataKey="P99"
-            stroke={theme.colors.error[500]}
+            stroke="var(--color-error-500)"
             strokeWidth={2}
             dot={false}
             name="P99"

@@ -2,7 +2,7 @@
  * Main dashboard page with metrics
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { MetricCard } from '../components/MetricCard';
@@ -266,8 +266,8 @@ export function Dashboard() {
               aria-label="Dismiss banner"
             >
               ×
-            </button>
-          </div>
+            </Button>
+          </Card>
         )}
 
         {posture && (
@@ -296,26 +296,10 @@ export function Dashboard() {
             }}>
               {posture.grade}
             </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ 
-                ...theme.typography.body,
-                color: theme.colors.text.tertiary, 
-                marginBottom: theme.spacing.xs 
-              }}>
-                Security Posture Score
-              </div>
-              <div style={{ 
-                fontSize: theme.typography.fontSize['4xl'], 
-                fontWeight: theme.typography.fontWeight.bold, 
-                color: theme.colors.text.primary 
-              }}>
-                {posture.overallScore}/100
-              </div>
-              <div style={{ 
-                ...theme.typography.small,
-                color: theme.colors.text.tertiary, 
-                marginTop: theme.spacing.xs 
-              }}>
+            <div className="posture-summary__content">
+              <div className="posture-summary__label">Security Posture Score</div>
+              <div className="posture-summary__value">{posture.overallScore}/100</div>
+              <div className="posture-summary__meta">
                 {posture.recommendations.length > 0 && `${posture.recommendations.length} recommendation(s)`}
               </div>
             </div>

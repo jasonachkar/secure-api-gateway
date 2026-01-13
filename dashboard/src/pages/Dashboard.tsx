@@ -10,6 +10,7 @@ import { RequestRateChart } from '../components/RequestRateChart';
 import { ErrorRateChart } from '../components/ErrorRateChart';
 import { ResponseTimeChart } from '../components/ResponseTimeChart';
 import { LiveEventFeed } from '../components/LiveEventFeed';
+import { DataSourcesCard } from '../components/DataSourcesCard';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { SectionHeader } from '../components/SectionHeader';
@@ -90,6 +91,35 @@ export function Dashboard() {
     adminApi.getIngestionStatus().then(setIngestionStatus).catch(() => {
       // Silently fail - ingestion status is optional
     });
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadIngestionStatus = async () => {
+      try {
+        setIngestionLoading(true);
+        const response = await adminApi.getIngestionStatus();
+        if (!isMounted) return;
+        setIngestionSources(response.sources);
+        setIngestionError(null);
+      } catch (ingestionErr) {
+        if (!isMounted) return;
+        setIngestionError('Unable to load ingestion status.');
+      } finally {
+        if (isMounted) {
+          setIngestionLoading(false);
+        }
+      }
+    };
+
+    loadIngestionStatus();
+    const interval = setInterval(loadIngestionStatus, 15000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   // Update history and events when new data arrives

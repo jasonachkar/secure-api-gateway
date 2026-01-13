@@ -34,6 +34,14 @@ export class AdminController {
   }
 
   /**
+   * GET /admin/metrics/ingestion
+   * Get ingestion status for connected data sources
+   */
+  async getIngestionStatus(request: FastifyRequest, reply: FastifyReply) {
+    return this.metricsService.getIngestionStatus();
+  }
+
+  /**
    * GET /admin/metrics/realtime
    * SSE stream of real-time metrics
    */

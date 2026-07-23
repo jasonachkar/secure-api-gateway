@@ -9,6 +9,7 @@ import { AuthService } from './auth.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { loginSchema, type LoginRequest } from './auth.schemas.js';
 import { validate } from '../../middleware/validation.js';
+import { optionalAuth } from '../../middleware/auth.js';
 import { createRateLimiter } from '../../middleware/rateLimit.js';
 import { env } from '../../config/index.js';
 import Redis from 'ioredis';
@@ -25,8 +26,9 @@ export async function registerAuthRoutes(app: FastifyInstance, redis: Redis, aud
 
   // Stricter rate limit for auth endpoints (prevent brute force)
   const authRateLimit = createRateLimiter(
-    env.RATE_LIMIT_AUTH_MAX,
-    env.RATE_LIMIT_AUTH_WINDOW
+    redis,
+    env.rateLimit.authMax,
+    env.rateLimit.authWindowMs
   );
 
   /**
@@ -117,6 +119,10 @@ export async function registerAuthRoutes(app: FastifyInstance, redis: Redis, aud
           },
         },
       },
+      // Best-effort: attach the user if a still-valid access token is
+      // present so its jti can be revoked too, but don't require one -
+      // logout must also work once the access token has already expired
+      preHandler: [optionalAuth],
     },
     controller.logout.bind(controller)
   );

@@ -26,6 +26,8 @@ services:
       - RATE_LIMIT_AUTH_WINDOW=60000
       - RATE_LIMIT_USER_MAX=200
       - RATE_LIMIT_USER_WINDOW=60000
+      - RATE_LIMIT_APIKEY_MAX=500
+      - RATE_LIMIT_APIKEY_WINDOW=60000
       - CORS_ORIGIN=http://localhost:3000,http://localhost:5173
       - COOKIE_SECRET=dev-cookie-secret-min-32-chars-long-change-me-xxxxx
       - BCRYPT_ROUNDS=10
@@ -35,6 +37,12 @@ services:
       - UPSTREAM_TIMEOUT=5000
       - UPSTREAM_RETRY_ATTEMPTS=2
       - ALLOWED_UPSTREAM_HOSTS=mock-service,api.example.com
+      # mock-service resolves to a private Docker-network IP; without this the SSRF
+      # private-IP check (correctly) blocks it. Never set true outside local dev - see
+      # docs/THREAT_MODEL.md.
+      - SSRF_ALLOW_PRIVATE_IPS=true
+      - CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
+      - CIRCUIT_BREAKER_COOLDOWN_MS=30000
       - ENABLE_SWAGGER=true
       - BODY_LIMIT=1048576
       - REQUEST_TIMEOUT=30000

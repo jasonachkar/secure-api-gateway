@@ -9,6 +9,7 @@ import { AuditService } from '../audit/audit.service.js';
 import { AuditEventType } from '../audit/audit.types.js';
 import { LoginRequest } from './auth.schemas.js';
 import { getClientIp, getRequestId } from '../../lib/requestContext.js';
+import { verifyToken } from '../../middleware/auth.js';
 import { env } from '../../config/index.js';
 import { UnauthorizedError, AccountLockedError, InvalidCredentialsError } from '../../lib/errors.js';
 
@@ -52,7 +53,7 @@ export class AuthController {
       // Set refresh token as httpOnly cookie
       reply.setCookie('refreshToken', refreshToken, {
         httpOnly: true,
-        secure: env.isProduction, // HTTPS only in production
+        secure: env.server.isProduction, // HTTPS only in production
         sameSite: 'strict',
         path: '/auth/refresh', // Only send to refresh endpoint
         maxAge: 60 * 60 * 24 * 7, // 7 days
@@ -128,7 +129,7 @@ export class AuthController {
       // Set new refresh token cookie (rotation)
       reply.setCookie('refreshToken', newRefreshToken, {
         httpOnly: true,
-        secure: env.isProduction,
+        secure: env.server.isProduction,
         sameSite: 'strict',
         path: '/auth/refresh',
         maxAge: 60 * 60 * 24 * 7,
@@ -145,7 +146,6 @@ export class AuthController {
       let userId: string | undefined;
       let username: string | undefined;
       try {
-        const { verifyToken } = await import('../../middleware/auth.js');
         const payload = verifyToken(refreshToken);
         userId = payload.sub;
         username = payload.username;
@@ -179,6 +179,12 @@ export class AuthController {
 
     if (refreshToken) {
       await this.authService.logout(refreshToken);
+    }
+
+    // Also revoke the access token in hand (if any) so it can't be reused
+    // for the remainder of its 15-minute lifetime after logout
+    if (user?.jti) {
+      await this.authService.revokeAccessToken(user.jti);
     }
 
     // Log logout

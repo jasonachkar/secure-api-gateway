@@ -9,7 +9,6 @@ import { AuditService } from '../audit/audit.service.js';
 import { logger } from '../../lib/logger.js';
 import type { SessionInfo, UserInfo, AuditLogQuery } from './admin.schemas.js';
 import type { AuditLogEntry } from '../audit/audit.types.js';
-import type { RefreshTokenMetadata } from '../../types/index.js';
 import { env } from '../../config/index.js';
 
 /**
@@ -127,7 +126,7 @@ export class AdminService {
         const lockoutKey = `${this.lockoutPrefix}:${user.username}`;
         const attempts = await this.redis.get(lockoutKey);
         const attemptCount = attempts ? parseInt(attempts, 10) : 0;
-        const isLocked = attemptCount >= env.MAX_LOGIN_ATTEMPTS;
+        const isLocked = attemptCount >= env.auth.maxLoginAttempts;
 
         let expiresAt: number | undefined;
         if (isLocked) {

@@ -61,3 +61,17 @@ secrets/
 
 # Redis dumps
 dump.rdb
+
+# Terraform
+terraform/.schema-probe/
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+# Real backend/tfvars files (copied from the tracked .example templates) - never commit
+# real state backend config or environment-specific variable values
+terraform/backend.tf
+terraform/environments/*.tfvars
+!terraform/environments/*.tfvars.example

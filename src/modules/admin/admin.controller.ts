@@ -13,6 +13,7 @@ import type {
   UserUnlockParams,
 } from './admin.schemas.js';
 import { AdminAuditLogService } from './audit-log.service.js';
+import { env } from '../../config/index.js';
 
 /**
  * Admin controller
@@ -221,7 +222,7 @@ export class AdminController {
    */
   async getConfig(request: FastifyRequest, reply: FastifyReply) {
     return {
-      demoMode: env.DEMO_MODE,
+      demoMode: env.features.demoMode,
     };
   }
 }

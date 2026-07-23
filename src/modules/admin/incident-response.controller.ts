@@ -4,7 +4,7 @@
  */
 
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { IncidentResponseService, type Incident, type IncidentStatistics } from './incident-response.service.js';
+import { IncidentResponseService } from './incident-response.service.js';
 import { env } from '../../config/index.js';
 
 export class IncidentResponseController {
@@ -251,7 +251,7 @@ export class IncidentResponseController {
    * Seed test incidents for development/demo purposes
    */
   async seedTestIncidents(request: FastifyRequest, reply: FastifyReply) {
-    if (!env.DEMO_MODE) {
+    if (!env.features.demoMode) {
       return reply.code(404).send({
         error: {
           code: 'DEMO_MODE_DISABLED',
@@ -307,12 +307,12 @@ export class IncidentResponseController {
         createdIncidents.push(created);
       }
 
-      reply.code(201).send({
+      return reply.code(201).send({
         message: `Created ${createdIncidents.length} test incidents`,
         incidents: createdIncidents,
       });
     } catch (error: any) {
-      reply.code(500).send({
+      return reply.code(500).send({
         error: {
           code: 'INTERNAL_ERROR',
           message: error.message || 'Failed to seed test incidents',

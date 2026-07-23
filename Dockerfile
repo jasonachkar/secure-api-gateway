@@ -1,5 +1,6 @@
 # Multi-stage build for production-optimized image
-# Optimized for Fly.io deployment
+# Deployment target: Azure Container Apps (see terraform/modules/container-app).
+# Listens on $PORT (default 3000); the Terraform module's ingress target_port must match.
 FROM node:20-alpine AS builder
 
 # Set working directory
@@ -53,15 +54,16 @@ RUN mkdir -p /app/logs /app/keys && \
 # Switch to non-root user
 USER nodejs
 
-# Expose port (Fly.io will map this)
+# Expose port (matches the Container Apps ingress target_port)
 EXPOSE 3000
 
-# Health check for Fly.io monitoring
-# Fly.io uses this to determine if the app is healthy
+# Container-level health check. Azure Container Apps uses its own HTTP probes
+# (configured in terraform/modules/container-app) against the same /healthz and
+# /readyz endpoints; this HEALTHCHECK covers plain `docker run`/docker-compose use.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
     CMD node -e "require('http').get('http://localhost:3000/healthz', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
-# Use dumb-init to handle signals properly (important for Fly.io graceful shutdowns)
+# Use dumb-init to handle signals properly (important for graceful shutdowns/rollouts)
 ENTRYPOINT ["dumb-init", "--"]
 
 # Start application

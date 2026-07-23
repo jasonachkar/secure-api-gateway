@@ -18,6 +18,9 @@ module.exports = {
   },
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+    // Source uses NodeNext ESM-style relative imports ("./foo.js"); map them back
+    // to the .ts sources so ts-jest's CommonJS transform can resolve them.
+    '^(\\.{1,2}/.*)\\.js$': '$1',
   },
   setupFilesAfterEnv: ['<rootDir>/test/setup.ts'],
   testTimeout: 10000,

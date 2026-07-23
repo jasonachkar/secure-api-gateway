@@ -31,7 +31,7 @@ export async function registerSecurityHeaders(app: FastifyInstance) {
 
     // HTTP Strict Transport Security (HSTS)
     // Force HTTPS for 1 year in production
-    hsts: env.isProduction
+    hsts: env.server.isProduction
       ? {
           maxAge: 31536000, // 1 year
           includeSubDomains: true,

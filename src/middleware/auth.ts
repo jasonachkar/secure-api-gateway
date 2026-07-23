@@ -4,7 +4,7 @@
  */
 
 import { FastifyRequest, FastifyReply } from 'fastify';
-import jwt, { type Algorithm, type SignOptions, type Secret } from 'jsonwebtoken';
+import jwt, { type SignOptions, type Secret } from 'jsonwebtoken';
 import { env } from '../config/index.js';
 import {
   UnauthorizedError,
@@ -46,10 +46,10 @@ function extractToken(request: FastifyRequest): string | null {
 export function verifyToken(token: string): JWTPayload {
   try {
     // Choose verification key based on algorithm
-    const secret = env.jwt.algorithm === 'RS256' ? env.jwt.publicKey! : env.jwt.secret!;
+    const secret = env.auth.jwt.algorithm === 'RS256' ? env.auth.jwt.publicKey! : env.auth.jwt.secret!;
 
     const decoded = jwt.verify(token, secret, {
-      algorithms: [env.jwt.algorithm],
+      algorithms: [env.auth.jwt.algorithm],
     }) as JWTPayload;
 
     return decoded;
@@ -81,13 +81,13 @@ export function generateAccessToken(user: Omit<AuthUser, 'jti'>, jti: string): s
   };
 
   // Choose signing key based on algorithm
-  const secret = (env.jwt.algorithm === 'RS256'
-    ? env.jwt.privateKey!
-    : env.jwt.secret!) as Secret;
-  const expiresIn = env.jwt.accessTokenExpiresIn as SignOptions['expiresIn'];
+  const secret = (env.auth.jwt.algorithm === 'RS256'
+    ? env.auth.jwt.privateKey!
+    : env.auth.jwt.secret!) as Secret;
+  const expiresIn = env.auth.jwt.accessTokenExpiresIn as SignOptions['expiresIn'];
 
   return jwt.sign(payload, secret, {
-    algorithm: env.jwt.algorithm,
+    algorithm: env.auth.jwt.algorithm,
     expiresIn,
   } as jwt.SignOptions);
 }
@@ -108,13 +108,13 @@ export function generateRefreshToken(user: Omit<AuthUser, 'jti'>, jti: string): 
     type: 'refresh',
   };
 
-  const secret = (env.jwt.algorithm === 'RS256'
-    ? env.jwt.privateKey!
-    : env.jwt.secret!) as Secret;
-  const expiresIn = env.jwt.refreshTokenExpiresIn as SignOptions['expiresIn'];
+  const secret = (env.auth.jwt.algorithm === 'RS256'
+    ? env.auth.jwt.privateKey!
+    : env.auth.jwt.secret!) as Secret;
+  const expiresIn = env.auth.jwt.refreshTokenExpiresIn as SignOptions['expiresIn'];
 
   return jwt.sign(payload, secret, {
-    algorithm: env.jwt.algorithm,
+    algorithm: env.auth.jwt.algorithm,
     expiresIn,
   } as jwt.SignOptions);
 }
@@ -139,8 +139,13 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply) 
     throw new TokenInvalidError('Invalid token type');
   }
 
-  // TODO: Check if token is revoked (implement token revocation store)
-  // For now, we rely on expiration only
+  // Check if token was explicitly revoked (logout, or reuse-detection blacklisting
+  // its whole token family) - short-lived access tokens otherwise rely on expiry alone
+  const tokenStore = request.server.tokenStore;
+  if (tokenStore && (await tokenStore.isRevoked(payload.jti))) {
+    logger.warn({ jti: payload.jti }, 'Attempted to use revoked access token');
+    throw new TokenRevokedError();
+  }
 
   // Attach user to request
   const user: AuthUser = {

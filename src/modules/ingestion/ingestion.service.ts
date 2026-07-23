@@ -27,9 +27,9 @@ export class IngestionService {
   ) {
     this.store = new NormalizedEventStore(redis, postgres);
     this.adapters = [
-      new CloudWatchAdapter(Boolean(env.CLOUDWATCH_LOG_GROUP)),
-      new GcpLoggingAdapter(Boolean(env.GCP_LOGGING_PROJECT)),
-      new AzureSentinelAdapter(Boolean(env.AZURE_SENTINEL_WORKSPACE)),
+      new CloudWatchAdapter(Boolean(env.ingestion.cloudwatchLogGroup)),
+      new GcpLoggingAdapter(Boolean(env.ingestion.gcpLoggingProject)),
+      new AzureSentinelAdapter(Boolean(env.ingestion.azureSentinelWorkspace)),
     ];
   }
 

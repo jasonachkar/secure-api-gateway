@@ -16,6 +16,10 @@ export enum AuditEventType {
   ACCOUNT_LOCKED = 'ACCOUNT_LOCKED',
   SSRF_BLOCKED = 'SSRF_BLOCKED',
   VALIDATION_ERROR = 'VALIDATION_ERROR',
+  APIKEY_CREATED = 'APIKEY_CREATED',
+  APIKEY_REVOKED = 'APIKEY_REVOKED',
+  APIKEY_USED = 'APIKEY_USED',
+  APIKEY_INVALID = 'APIKEY_INVALID',
 }
 
 /**
@@ -34,4 +38,8 @@ export interface AuditLogEntry {
   success: boolean;
   message?: string;
   metadata?: Record<string, unknown>;
+  /** SHA-256 hash of the previous entry in the log - forms the tamper-evident chain */
+  prevHash: string;
+  /** SHA-256 hash of this entry's own contents (including prevHash) */
+  hash: string;
 }

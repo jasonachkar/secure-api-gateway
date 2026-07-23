@@ -14,7 +14,7 @@ import { env } from '../config/index.js';
  * @returns Hashed password
  */
 export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, env.BCRYPT_ROUNDS);
+  return bcrypt.hash(password, env.auth.bcryptRounds);
 }
 
 /**

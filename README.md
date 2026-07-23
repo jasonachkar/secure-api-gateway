@@ -1,322 +1,322 @@
 # Secure API Gateway
 
-A **production-grade API Gateway** implementation in Node.js + TypeScript, demonstrating enterprise-level security patterns, OWASP API Top 10 mitigations, and modern authentication/authorization flows.
+A **production-grade API Gateway** in Fastify + TypeScript, paired with a React
+security-operations dashboard — built to demonstrate real OWASP API Security Top 10
+mitigations, modern auth patterns, and a genuine cloud deployment story, not just a
+local demo.
 
-## Features
-
-### Authentication & Authorization
-- **JWT-based authentication** with RS256 asymmetric signing
-- **Access tokens** (short-lived, 15min) + **Refresh tokens** (long-lived, 7d)
-- **Refresh token rotation** with reuse detection
-- **Token revocation** support via Redis-backed token store
-- **Role-Based Access Control (RBAC)** with granular permissions
-- **Account lockout** after failed login attempts
-
-### Security & OWASP Mitigations
-- **OWASP API Security Top 10** mitigations (see [owasp-api-top10.md](docs/owasp-api-top10.md))
-- **Redis-backed rate limiting** with sliding window algorithm
-- **Request validation** using Zod schemas
-- **Security headers** (HSTS, CSP, X-Frame-Options, etc.)
-- **CORS** with origin allowlisting
-- **SSRF protection** for proxy endpoints
-- **Input sanitization** and unknown field stripping
-- **Safe error responses** (no stack trace leakage in production)
-
-### Observability & Compliance
-- **Structured logging** with Pino (request IDs, log redaction)
-- **Audit logging** for security events (login, token rotation, permission denials)
-- **OpenAPI 3.0 specification** with Swagger UI
-- **Health checks** (`/healthz`, `/readyz`)
-
-### Gateway Pattern
-- **Reverse proxy** to upstream services with:
-  - Request/response transformation
-  - Outbound timeout and retry logic
-  - Header sanitization
-  - Circuit breaker patterns (ready for implementation)
+**Why this exists**: most portfolio API projects stop at "it runs on my machine."
+This one is meant to hold up to the questions a senior cloud/security engineer would
+actually ask: *Where does this run? Who can access what, and how do you know? What
+happens when a dependency fails? What's your story for secrets, for audit, for
+incident response?* Every claim below is backed by code in this repo, not aspirational
+bullet points — and where something genuinely isn't implemented yet, it's called out
+as a roadmap item instead of glossed over.
 
 ## Architecture
 
-**Why Fastify?**
-We chose Fastify over Express for:
-- **Performance**: ~2x faster request throughput
-- **Schema-first design**: Built-in JSON schema validation (we use Zod for additional type safety)
-- **TypeScript support**: First-class TypeScript experience
-- **Plugin ecosystem**: Rich ecosystem with official security plugins
+```mermaid
+flowchart TB
+    subgraph Client
+        Browser["Browser"]
+    end
+    subgraph Vercel["Vercel"]
+        Dashboard["Security Dashboard (React + Vite)"]
+    end
+    subgraph Azure["Azure"]
+        Gateway["Secure API Gateway\n(Container Apps)"]
+        ACR["Container Registry"]
+        KV["Key Vault"]
+        Redis["Cache for Redis"]
+        LAW["Log Analytics + App Insights"]
+    end
+    Upstream["Upstream services"]
 
-**Layered Architecture**:
-```
-┌─────────────────────────────────────────────┐
-│  Client (Browser, Mobile App, Service)     │
-└─────────────────┬───────────────────────────┘
-                  │
-        ┌─────────▼──────────┐
-        │   API Gateway      │
-        │  (This Service)    │
-        └─────────┬──────────┘
-                  │
-        ┌─────────▼──────────────────────────────┐
-        │  Middleware Chain                      │
-        │  • Request ID                          │
-        │  • Security Headers                    │
-        │  • Rate Limiting (Global/User/Route)   │
-        │  • Authentication (JWT validation)     │
-        │  • Authorization (RBAC)                │
-        │  • Validation (Zod schemas)            │
-        └─────────┬──────────────────────────────┘
-                  │
-        ┌─────────▼──────────┐
-        │  Route Handlers    │
-        │  • Auth endpoints  │
-        │  • Proxy routes    │
-        │  • Admin routes    │
-        └─────────┬──────────┘
-                  │
-        ┌─────────▼──────────┐
-        │  Business Logic    │
-        │  • Services        │
-        │  • Stores          │
-        └─────────┬──────────┘
-                  │
-    ┌─────────────┴────────────────┐
-    │                              │
-┌───▼────┐              ┌──────────▼─────────┐
-│ Redis  │              │  Upstream Services │
-└────────┘              └────────────────────┘
+    Browser -->|HTTPS| Dashboard
+    Dashboard -->|VITE_API_URL| Gateway
+    Gateway --> ACR
+    Gateway --> KV
+    Gateway --> Redis
+    Gateway --> LAW
+    Gateway -->|SSRF-checked, DNS-pinned| Upstream
 ```
 
-## Quick Start
+- **Frontend** (`dashboard/`) → **Vercel**. Static Vite build.
+- **Backend** (`src/`) → **Azure Container Apps**, provisioned by [`terraform/`](terraform).
+- **Local development** → Docker Compose, the one supported local path.
 
-### Prerequisites
-- Node.js 20+ LTS
-- Docker & Docker Compose
-- Redis (via Docker or local)
+Full architecture detail (component breakdown, data flows, tech-stack rationale):
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-### Local Development (Docker Compose)
+## Security features
 
-1. **Clone and setup**:
+### Authentication & authorization
+- JWT access (15min) + refresh (7d) tokens, refresh rotation with **reuse detection**
+  that revokes an entire token **family** (every token issued across that login's
+  rotation chain), not just the reused one
+- **Access-token revocation** on logout (Redis blacklist) — access tokens aren't just
+  "wait for expiry"
+- Role-based access control (RBAC) with granular permissions, enforced per-route
+- **Scoped API keys** for machine-to-machine callers, independent of user RBAC,
+  fully audited (create/revoke/use/invalid events)
+- Account lockout after repeated failed logins (Redis-backed, IP+username keyed)
+
+### Request-path security
+- Redis-backed rate limiting — global (per-IP), per-route, per-user, and **per-API-key**,
+  all correct across multiple gateway instances (this used to be a real bug: the
+  route-level limiter was an in-memory `Map` that only worked by accident with one
+  instance running)
+- Explicit **CORS origin allowlist**, actually enforced (also a fixed bug — the CORS
+  plugin was previously hardcoded to allow every origin regardless of config)
+- Zod schema validation on every input, strips unknown keys (prototype-pollution
+  defense)
+- Security headers via Helmet (CSP, HSTS, X-Frame-Options, etc.)
+- **SSRF protection**: hostname allowlist + private-IP blocking + **DNS-pinning** — the
+  validated IP is what's actually dialed, closing a DNS-rebinding TOCTOU gap that
+  existed before this pass
+- **Circuit breaker** on upstream calls — fails fast instead of retrying into a
+  cascading failure once an upstream is already down
+
+### Auditability
+- Structured security event log (login/logout, token events, permission denials, rate
+  limit violations, SSRF blocks, API key lifecycle, …)
+- **Tamper-evident hash chain** over the audit log (`GET /admin/audit-logs/verify`) —
+  detects if a past entry was edited or deleted. Tamper-*evident*, not tamper-*proof*;
+  see [`docs/SECURITY_CONTROLS.md`](docs/SECURITY_CONTROLS.md#roadmap) for what real
+  immutability would take.
+- Pino structured logging with field-level redaction (tokens/passwords never appear in
+  logs)
+
+### Threat intelligence & incident response (already built, not just planned)
+- Per-IP threat scoring with attack-pattern detection (brute force, credential
+  stuffing, rate-limit abuse) — `src/modules/admin/threat-intel.service.ts`
+- AbuseIPDB integration for IP reputation
+- Full incident lifecycle tracking (create/assign/status/timeline/playbook actions) —
+  `src/modules/admin/incident-response.service.ts`
+- Compliance posture scoring (NIST/OWASP/PCI/GDPR-oriented) — directional, not a
+  certification claim; see [`docs/SECURITY_CONTROLS.md`](docs/SECURITY_CONTROLS.md#compliance-mapping)
+- Live security dashboard: request/error rates, auth stats, rate-limit violations,
+  response-time percentiles, streamed via SSE
+
+See [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) for the attack-surface reasoning
+behind these controls, and [`docs/SECURITY_CONTROLS.md`](docs/SECURITY_CONTROLS.md)
+for the full control-to-implementation mapping (every row cites a real file).
+
+## Local development
+
+The one supported local path is Docker Compose:
+
 ```bash
 git clone <repo-url> secure-api-gateway
 cd secure-api-gateway
-cp .env.example .env
-```
-
-2. **Generate JWT keys** (RS256):
-```bash
-mkdir -p keys
-openssl genrsa -out keys/private.pem 2048
-openssl rsa -in keys/private.pem -pubout -out keys/public.pem
-```
-
-3. **Start services**:
-```bash
+npm run seed          # generates JWT keys + .env from .env.example (scripts/dev-seed.sh)
 docker compose up --build
 ```
 
-4. **Gateway available at**: `http://localhost:3000`
-   - Swagger UI: `http://localhost:3000/docs`
-   - Health check: `http://localhost:3000/healthz`
+- Gateway: http://localhost:3000 (Swagger UI at `/docs`, health at `/healthz`)
+- Mock upstream service: http://localhost:4000
+- Redis: `localhost:6379`
+- Dashboard: http://localhost:5173
 
-### Local Development (Without Docker)
+### Without Docker
 
-1. **Install dependencies**:
 ```bash
+npm run seed
 npm install
-```
-
-2. **Start Redis** (requires local Redis or Docker):
-```bash
-docker run -d -p 6379:6379 redis:7-alpine
-```
-
-3. **Generate JWT keys** (see above)
-
-4. **Run in dev mode**:
-```bash
+docker run -d -p 6379:6379 redis:7-alpine   # Redis is required, no fallback mode
 npm run dev
 ```
 
-## API Usage Examples
-
-### 1. Login
 ```bash
+cd dashboard && npm install && npm run dev
+```
+
+Or use `make install && make dev` / `make docker-up` — see the [`Makefile`](Makefile)
+for the full target list (npm scripts are the cross-platform primary; the Makefile is
+optional sugar).
+
+### Default users (dev only)
+
+| Username | Password | Roles | Permissions |
+|---|---|---|---|
+| `admin` | `Admin123!` | `admin`, `user` | all |
+| `user` | `User123!` | `user` | `read:reports` |
+| `service` | `Service123!` | `service` | `read:reports`, `write:reports` |
+
+Seeded in-memory for local development only — never present in the Azure deployment.
+
+## API usage
+
+```bash
+# Login
 curl -X POST http://localhost:3000/auth/login \
   -H "Content-Type: application/json" \
-  -d '{
-    "username": "admin",
-    "password": "Admin123!"
-  }'
+  -d '{"username": "admin", "password": "Admin123!"}'
+# → { "accessToken": "...", "expiresIn": 900, "tokenType": "Bearer" }
+# (refresh token set as an httpOnly cookie)
+
+# Access a protected resource
+curl http://localhost:3000/reports/123 -H "Authorization: Bearer <access-token>"
+
+# Refresh
+curl -X POST http://localhost:3000/auth/refresh --cookie "refreshToken=<...>"
+
+# Create a scoped API key (admin)
+curl -X POST http://localhost:3000/admin/api-keys \
+  -H "Authorization: Bearer <admin-access-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "ci-pipeline", "scopes": ["proxy:access"]}'
+# → { "apiKey": {...}, "rawKey": "gwk_..." }  (rawKey shown exactly once)
+
+# Use the API key against the proxy endpoint
+curl "http://localhost:3000/upstream/echo?message=hi" -H "X-API-Key: gwk_..."
+
+# Verify the audit log hasn't been tampered with
+curl http://localhost:3000/admin/audit-logs/verify -H "Authorization: Bearer <admin-access-token>"
 ```
 
-Response:
-```json
-{
-  "accessToken": "eyJhbGc...",
-  "expiresIn": 900,
-  "tokenType": "Bearer"
-}
-```
-*Note: Refresh token is set as httpOnly cookie*
+Full OpenAPI spec: [`openapi/openapi.yaml`](openapi/openapi.yaml) (also served at
+`/docs` when `ENABLE_SWAGGER=true`).
 
-### 2. Access Protected Resource
+## Azure deployment
+
 ```bash
-curl http://localhost:3000/reports/123 \
-  -H "Authorization: Bearer <access-token>" \
-  --cookie "refreshToken=<from-login>"
+cd terraform
+terraform init
+cp environments/dev.tfvars.example environments/dev.tfvars   # set cors_origin at minimum
+terraform apply -var-file=environments/dev.tfvars
 ```
 
-### 3. Refresh Access Token
+This provisions everything — Container Registry, Key Vault (with real, generated
+`cookie-secret`/`jwt-secret` written in as part of the apply, no manual seeding step),
+Container Apps environment + the gateway app, Log Analytics + Application Insights,
+and (optionally) Azure Cache for Redis. Then push the real image and point the app at
+it:
+
 ```bash
-curl -X POST http://localhost:3000/auth/refresh \
-  --cookie "refreshToken=<from-login>"
+ACR=$(terraform output -raw acr_login_server)
+docker build -t "$ACR/secure-api-gateway:latest" .
+az acr login --name "${ACR%%.*}"
+docker push "$ACR/secure-api-gateway:latest"
+az containerapp update -n "$(terraform output -raw container_app_name)" \
+  -g "$(terraform output -raw resource_group_name)" --image "$ACR/secure-api-gateway:latest"
 ```
 
-### 4. View Audit Logs (Admin Only)
-```bash
-curl http://localhost:3000/admin/audit-logs \
-  -H "Authorization: Bearer <admin-access-token>"
-```
+`.github/workflows/deploy.yml` automates this on `workflow_dispatch`. Full walkthrough,
+remote state setup, secret rotation, and design notes (why the Container App uses a
+user-assigned identity, why JWT is HS256 in this deployment):
+[`terraform/README.md`](terraform/README.md).
 
-### 5. Logout (Revoke Refresh Token)
-```bash
-curl -X POST http://localhost:3000/auth/logout \
-  --cookie "refreshToken=<from-login>"
-```
+Deploy the dashboard to Vercel separately — root directory `dashboard`, env var
+`VITE_API_URL` set to the gateway's URL (`terraform output container_app_url`). See
+[`dashboard/DEPLOYMENT.md`](dashboard/DEPLOYMENT.md). Prefer one cloud instead? Set
+`enable_azure_static_web_app = true` in Terraform to host the dashboard on Azure
+Static Web Apps — free tier, automatic HTTPS domain, no custom domain needed either
+way. See [`terraform/README.md`](terraform/README.md#frontend-hosting-vercel-vs-azure-static-web-apps)
+for the (two-step, one-time) manual GitHub secret/variable setup this still needs.
+
+### Cost
+
+| Resource | Monthly cost |
+|---|---|
+| Resource Group, Container Registry (Basic), Key Vault, Container Apps (scale-to-zero) | Free tier / consumption-priced, ~$0 at rest for a demo |
+| Log Analytics + Application Insights | Free up to 5GB/mo (capped via `log_analytics_daily_quota_gb`) |
+| **Azure Cache for Redis (Basic C0)** | **~$16/mo — the one unavoidable fixed cost** |
+| API Management (optional, `enable_apim`) | ~$50+/mo, Developer SKU, no SLA — off by default |
+
+Full breakdown: [`terraform/README.md`](terraform/README.md#what-gets-created-default-path).
+Set `enable_redis = false` for a genuinely $0-at-rest deployment (documented degraded
+mode, no fallback silently disables security controls — see
+[`docs/OPERATIONS.md`](docs/OPERATIONS.md#redis-unavailability)).
+
+## Environment variables
+
+Full reference with defaults and validation rules: [`.env.example`](.env.example),
+enforced by [`src/config/env.ts`](src/config/env.ts) (fails fast at startup — in
+production specifically, refuses to boot with placeholder secrets, an unauthenticated
+Redis, a wildcard CORS origin, or Swagger left enabled).
+
+| Group | Key variables |
+|---|---|
+| Server | `NODE_ENV`, `PORT`, `HOST` |
+| Redis | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_TLS` (required for Azure Cache for Redis) |
+| Auth | `JWT_ALGORITHM`, `JWT_SECRET` / `JWT_PRIVATE_KEY`+`JWT_PUBLIC_KEY`, `COOKIE_SECRET`, `MAX_LOGIN_ATTEMPTS` |
+| Rate limiting | `RATE_LIMIT_GLOBAL_MAX`, `RATE_LIMIT_AUTH_MAX`, `RATE_LIMIT_USER_MAX`, `RATE_LIMIT_APIKEY_MAX` (+ matching `_WINDOW` vars) |
+| Security | `CORS_ORIGIN` (explicit allowlist, never `*` in production) |
+| Upstream/SSRF | `UPSTREAM_REPORTS_URL`, `ALLOWED_UPSTREAM_HOSTS`, `CIRCUIT_BREAKER_FAILURE_THRESHOLD`, `CIRCUIT_BREAKER_COOLDOWN_MS` |
+| Features | `ENABLE_SWAGGER`, `DEMO_MODE` |
 
 ## Testing
 
 ```bash
-# Run all tests
-npm test
-
-# Watch mode
+npm test              # full suite (backend needs Redis - see test/setup.ts)
 npm run test:watch
-
-# Coverage report
 npm run test:coverage
+npm run lint
+npm run typecheck
 ```
 
-**Test Coverage**:
-- Unit tests: RBAC, rate limiting, token rotation, validation
-- Integration tests: Auth flows, rate limit enforcement
+61 tests across unit (RBAC, rate limiting, token rotation, API keys, audit hash chain,
+SSRF/circuit breaker, CORS, validation) and integration (auth flow, rate limit
+enforcement, CORS) suites. CI (`.github/workflows/ci.yml`) runs all of this plus a
+Redis service container on every push/PR.
 
-## Configuration
+## CI/CD
 
-See [.env.example](.env.example) for all configuration options.
+| Workflow | What it does |
+|---|---|
+| `ci.yml` | Lint, typecheck, test (with Redis), build - backend, dashboard, mock-service |
+| `docker.yml` | Builds both Dockerfiles, Trivy container scan → SARIF |
+| `terraform.yml` | `fmt -check`, `validate`, tfsec scan → SARIF |
+| `dependency-review.yml` | Dependency Review (PRs), `npm audit`, SBOM generation |
+| `deploy.yml` | Manual (`workflow_dispatch`): build → push to ACR → `az containerapp update` |
 
-**Key Settings**:
-- `JWT_ALGORITHM`: RS256 (recommended) or HS256
-- `RATE_LIMIT_*`: Configure per-IP, per-user, and per-route limits
-- `CORS_ORIGIN`: Comma-separated allowlist
-- `ENABLE_SWAGGER`: Disable in production
-- `ALLOWED_UPSTREAM_HOSTS`: SSRF protection allowlist
+All SARIF output uploads to GitHub code scanning. `deploy.yml` documents the exact
+repo secrets it needs and an OIDC federated-credential setup (no long-lived Azure
+secret) in its header comment.
 
-## Default Users (Development Only)
-
-| Username | Password | Roles | Permissions |
-|----------|----------|-------|-------------|
-| `admin` | `Admin123!` | `admin`, `user` | All permissions |
-| `user` | `User123!` | `user` | `read:reports` |
-| `service` | `Service123!` | `service` | `read:reports`, `write:reports` |
-
-**Warning**: These are seeded for local dev only. Never use in production!
-
-## Roles & Permissions
-
-**Roles**:
-- `admin`: Full system access
-- `user`: Standard user access
-- `service`: Service-to-service access
-
-**Permissions** (example set):
-- `read:reports`: Read report data
-- `write:reports`: Create/update reports
-- `read:admin`: Read admin data
-- `manage:users`: User management
-
-See [src/modules/auth/auth.service.ts](src/modules/auth/auth.service.ts) for RBAC configuration.
-
-## Security Considerations
-
-### Production Checklist
-- [ ] Generate strong, unique `COOKIE_SECRET` and `JWT_PRIVATE_KEY`
-- [ ] Set `NODE_ENV=production`
-- [ ] Disable Swagger UI (`ENABLE_SWAGGER=false`)
-- [ ] Configure TLS termination at reverse proxy (Nginx, ALB, etc.)
-- [ ] Set appropriate `CORS_ORIGIN` allowlist
-- [ ] Enable HSTS with appropriate `max-age`
-- [ ] Configure Redis persistence and authentication
-- [ ] Set up log aggregation (ELK, Datadog, CloudWatch)
-- [ ] Implement secret rotation procedures
-- [ ] Review and adjust rate limits for your traffic patterns
-- [ ] Set up monitoring and alerting for audit log events
-
-See [docs/security.md](docs/security.md) for detailed security guidance.
-
-## Documentation
-
-- [Architecture Overview](docs/architecture.md)
-- [Security Guide](docs/security.md)
-- [OWASP API Top 10 Mitigations](docs/owasp-api-top10.md)
-- [Deployment Guide](docs/deployment.md)
-- [Runbook (Operations)](docs/runbook.md)
-- [OpenAPI Specification](openapi/openapi.yaml)
-
-## Project Structure
+## Project structure
 
 ```
 secure-api-gateway/
-├── docs/                    # Documentation
-├── openapi/                 # OpenAPI specification
-├── scripts/                 # Utility scripts
 ├── src/
-│   ├── config/             # Configuration and env validation
-│   ├── lib/                # Shared utilities (logger, errors, crypto)
-│   ├── middleware/         # Request middleware (auth, rate limit, etc.)
-│   ├── modules/            # Business modules (auth, audit, reports, proxy)
-│   ├── types/              # TypeScript type definitions
-│   ├── app.ts              # Fastify app setup
-│   └── main.ts             # Entry point
-├── test/                   # Unit and integration tests
-├── mock-service/           # Mock upstream service
-└── docker-compose.yml      # Local development stack
+│   ├── config/env.ts        # Zod-validated, grouped config (server/auth/redis/...)
+│   ├── lib/                 # crypto, logger, errors, circuit breaker, http client
+│   ├── middleware/           # auth, rbac, rate limiting, validation, security headers
+│   ├── modules/
+│   │   ├── auth/             # login, refresh rotation, token store
+│   │   ├── apikeys/           # scoped API keys
+│   │   ├── audit/              # hash-chained audit log
+│   │   ├── admin/               # metrics, threat intel, incidents, compliance
+│   │   └── proxy/, reports/      # the actual gateway/proxy pattern
+│   ├── app.ts / main.ts
+├── dashboard/                # React + Vite security dashboard → Vercel
+├── mock-service/             # mock upstream for local dev/demo
+├── terraform/                # Azure IaC (see terraform/README.md)
+├── docs/                     # ARCHITECTURE, THREAT_MODEL, SECURITY_CONTROLS, OPERATIONS, INCIDENT_RESPONSE
+├── .github/workflows/        # CI, Docker scan, Terraform scan, deploy
+└── legacy/deploy-configs/    # retired Fly.io/Railway/Render/self-host configs
 ```
-
-## Performance & Scalability
-
-- **Horizontal scaling**: Stateless design (session stored in Redis)
-- **Rate limiting**: Distributed via Redis (scales across instances)
-- **Caching**: Ready for response caching layer
-- **Load testing**: See [docs/runbook.md](docs/runbook.md) for benchmarks
 
 ## Roadmap
 
-- [ ] GraphQL gateway support
-- [ ] WebSocket proxy support
-- [ ] Circuit breaker implementation
-- [ ] Response caching layer
-- [ ] Distributed tracing (OpenTelemetry)
-- [ ] Metrics export (Prometheus)
-- [ ] Multi-factor authentication (MFA)
+Honestly framed as not-yet-implemented, not partially faked — see
+[`docs/SECURITY_CONTROLS.md#roadmap`](docs/SECURITY_CONTROLS.md#roadmap) for the
+reasoning behind each:
 
-## Contributing
-
-Contributions welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass (`npm test`)
-5. Submit a pull request
+- JWT key rotation via JWKS / multi-key support (currently a single static key)
+- OpenTelemetry distributed tracing (currently request-ID correlation + App Insights)
+- mTLS to upstream services
+- Cryptographically anchored (not just chained) audit log
+- MFA / WebAuthn for login
+- Signed container image provenance (Sigstore/cosign)
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
-
-## Support
-
-- **Issues**: [GitHub Issues](https://github.com/your-org/secure-api-gateway/issues)
-- **Security**: Report vulnerabilities to security@example.com (DO NOT open public issues)
+MIT — see [LICENSE](LICENSE).
 
 ---
 
-**Built with security in mind. Review, audit, and adapt to your threat model.**
+Built to be read, not just run — every security claim above traces to a specific file.
+Start with [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) if you want the "why" before
+the "what."

@@ -1,0 +1,36 @@
+# Prod environment - copy to prod.tfvars and adjust.
+# Usage: terraform plan -var-file=environments/prod.tfvars
+#
+# "Prod" here still means "a real deployment", not "hardened for production traffic at
+# scale" - see terraform/README.md's cost/SLA notes before treating this as a genuine
+# production topology (Redis Basic has no SLA, Container Apps consumption has cold
+# starts at min_replicas=0, etc).
+
+project_name = "secapigw"
+environment  = "prod"
+location     = "eastus"
+
+# Your real Vercel production domain - never "*"
+cors_origin = "https://your-dashboard-domain.example.com"
+
+# No scale-to-zero in "prod" - avoids cold-start latency on the first request
+container_min_replicas = 1
+container_max_replicas = 5
+container_cpu            = 1
+container_memory          = "2Gi"
+
+enable_redis   = true
+redis_sku_name  = "Standard" # adds replication + SLA over Basic
+redis_capacity   = 1
+
+# Consider enabling for a production-grade edge (WAF-style filtering, edge rate
+# limiting, subscription-key auth) - adds real cost and 30-45min provisioning time
+enable_apim = false
+
+enable_vnet = false
+
+log_analytics_daily_quota_gb = 5
+
+tags = {
+  owner = "your-name"
+}

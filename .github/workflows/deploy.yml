@@ -1,0 +1,97 @@
+name: Deploy to Azure
+
+# Manual by design - promote to `on: push: branches: [main]` once you've run this
+# by hand at least once and are comfortable with it deploying automatically.
+#
+# Required repository secrets/variables (Settings → Secrets and variables → Actions):
+#   AZURE_CLIENT_ID        - App registration client ID, federated for OIDC (recommended:
+#                            no long-lived secret - see the "Federated credential" setup
+#                            below). A classic client-secret-based login also works if you
+#                            add AZURE_CLIENT_SECRET and swap the login step accordingly,
+#                            but OIDC is the least-privilege default here.
+#   AZURE_TENANT_ID        - Azure AD tenant ID
+#   AZURE_SUBSCRIPTION_ID  - Target subscription ID
+#   ACR_LOGIN_SERVER        - e.g. secapigwdevacrXXXX.azurecr.io (terraform output acr_login_server)
+#   RESOURCE_GROUP           - e.g. rg-secapigw-dev (terraform output resource_group_name)
+#   CONTAINER_APP_NAME        - e.g. secapigw-dev-gateway (terraform output container_app_name)
+#
+# Federated credential setup (one-time, via Azure CLI):
+#   az ad app create --display-name secure-api-gateway-deploy
+#   az ad sp create --id <appId>
+#   az role assignment create --assignee <appId-object-id> --role Contributor \
+#     --scope /subscriptions/<sub>/resourceGroups/<rg>
+#   az ad app federated-credential create --id <appId> --parameters '{
+#     "name": "github-main",
+#     "issuer": "https://token.actions.githubusercontent.com",
+#     "subject": "repo:<org>/<repo>:ref:refs/heads/main",
+#     "audiences": ["api://AzureADTokenExchange"]
+#   }'
+# A Contributor scoped to just the resource group (not the subscription) is the
+# least-privilege choice - the deploy workflow only ever needs to push images and
+# update the one Container App in that group.
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag to build and deploy'
+        required: false
+        default: ${{ github.sha }}
+
+permissions:
+  id-token: write # required for OIDC federated login
+  contents: read
+
+jobs:
+  build-and-deploy:
+    name: Build, push, and deploy
+    runs-on: ubuntu-latest
+    environment: production # optional: gate behind a GitHub Environment with required reviewers
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: ACR login
+        run: az acr login --name "$(cut -d. -f1 <<< '${{ secrets.ACR_LOGIN_SERVER }}')"
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.ACR_LOGIN_SERVER }}/secure-api-gateway:${{ inputs.image_tag }}
+            ${{ secrets.ACR_LOGIN_SERVER }}/secure-api-gateway:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy to Container Apps
+        run: |
+          az containerapp update \
+            --name "${{ secrets.CONTAINER_APP_NAME }}" \
+            --resource-group "${{ secrets.RESOURCE_GROUP }}" \
+            --image "${{ secrets.ACR_LOGIN_SERVER }}/secure-api-gateway:${{ inputs.image_tag }}"
+
+      - name: Verify health
+        run: |
+          FQDN=$(az containerapp show \
+            --name "${{ secrets.CONTAINER_APP_NAME }}" \
+            --resource-group "${{ secrets.RESOURCE_GROUP }}" \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          for i in $(seq 1 10); do
+            if curl -fsS "https://$FQDN/healthz"; then
+              echo "Healthy"
+              exit 0
+            fi
+            echo "Waiting for new revision to become healthy... ($i/10)"
+            sleep 10
+          done
+          echo "Health check failed after deploy - check 'az containerapp revision list' and consider rolling back"
+          exit 1

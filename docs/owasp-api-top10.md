@@ -15,7 +15,7 @@ Users can access objects they shouldn't by manipulating object IDs in requests.
 
 ```typescript
 async getReport(reportId: string, userId: string, roles: string[]): Promise<Report> {
-  const report = await httpGet(`${env.UPSTREAM_REPORTS_URL}/reports/${reportId}`);
+  const report = await httpGet(`${env.upstream.reportsUrl}/reports/${reportId}`);
 
   // BOLA prevention: Check resource ownership
   if (!roles.includes('admin') && report.createdBy !== userId) {
@@ -66,7 +66,7 @@ if (await this.lockoutManager.isLocked(lockoutKey)) {
 // Increment attempts on failure
 await this.lockoutManager.incrementAttempts(lockoutKey);
 
-if (attempts >= env.MAX_LOGIN_ATTEMPTS) {
+if (attempts >= env.auth.maxLoginAttempts) {
   throw new AccountLockedError(ttl);
 }
 ```
@@ -277,12 +277,12 @@ API fetches remote resource without validating user-supplied URL, allowing acces
 
 ### Our Mitigation
 
-**Implementation**: [src/lib/httpClient.ts:30-75](../src/lib/httpClient.ts)
+**Implementation**: [src/lib/httpClient.ts](../src/lib/httpClient.ts) (`resolveAndValidateHostname`, `createPinnedDispatcher`)
 
 ```typescript
-async function validateHostname(hostname: string): Promise<void> {
+async function resolveAndValidateHostname(hostname: string): Promise<string[]> {
   // Check allowlist
-  const isAllowed = env.ALLOWED_UPSTREAM_HOSTS.some((allowed) => {
+  const isAllowed = env.upstream.allowedHosts.some((allowed) => {
     return hostname === allowed || hostname.endsWith(`.${allowed}`);
   });
 
@@ -300,8 +300,14 @@ async function validateHostname(hostname: string): Promise<void> {
       throw new SSRFError(`Host resolves to private IP: ${ip}`);
     }
   }
+
+  return addresses; // validated IPs, pinned for the actual request below
 }
 
+// The validated IP(s) are then pinned via a per-request undici dispatcher with a
+// custom DNS lookup, so the connection that's actually opened uses the same address
+// that was just checked - not a fresh resolution that could answer differently
+// (DNS-rebinding). See createPinnedDispatcher in httpClient.ts.
 function isPrivateIp(ip: string): boolean {
   const privateRanges = [
     /^10\./,              // 10.0.0.0/8
@@ -321,9 +327,10 @@ function isPrivateIp(ip: string): boolean {
 2. ✅ DNS resolution before request
 3. ✅ **Private IP blocking** (RFC 1918, loopback, link-local)
 4. ✅ IPv6 private range blocking
-5. ✅ No URL redirects followed blindly
-6. ✅ Request timeout enforcement
-7. ✅ Audit logging of SSRF attempts
+5. ✅ **DNS-rebinding protection** - the validated IP is pinned for the actual connection instead of letting a second, independent DNS lookup decide where the request goes
+6. ✅ No URL redirects followed blindly
+7. ✅ Request timeout enforcement + circuit breaker (fails fast once an upstream is already down, instead of retrying into a cascading failure - see `src/lib/circuitBreaker.ts`)
+8. ✅ Audit logging of SSRF attempts
 
 ---
 

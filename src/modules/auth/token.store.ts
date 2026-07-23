@@ -6,7 +6,6 @@
 import Redis from 'ioredis';
 import { RefreshTokenMetadata } from '../../types/index.js';
 import { logger } from '../../lib/logger.js';
-import { hashToken } from '../../lib/crypto.js';
 
 /**
  * Token store for managing refresh tokens in Redis

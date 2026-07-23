@@ -17,6 +17,8 @@ import { ComplianceController } from './compliance.controller.js';
 import { MetricsSeederService } from './metrics-seeder.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { AdminAuditLogService } from './audit-log.service.js';
+import { IngestionService } from '../ingestion/ingestion.service.js';
+import { IngestionController } from '../ingestion/ingestion.controller.js';
 import { requireAuth, verifyToken } from '../../middleware/auth.js';
 import { requireAnyRole, requireRole } from '../../middleware/rbac.js';
 import { validate } from '../../middleware/validation.js';
@@ -25,9 +27,16 @@ import {
   auditLogQuerySchema,
   sessionRevokeSchema,
   userUnlockSchema,
+  createApiKeySchema,
+  apiKeyIdParamsSchema,
+  type CreateApiKeyBody,
+  type ApiKeyIdParams,
 } from './admin.schemas.js';
-import { UnauthorizedError } from '../../lib/errors.js';
+import { UnauthorizedError, NotFoundError } from '../../lib/errors.js';
 import { env } from '../../config/index.js';
+import { AuditEventType } from '../audit/audit.types.js';
+import { getClientIp, getRequestId } from '../../lib/requestContext.js';
+import { upstreamCircuitBreaker } from '../../lib/httpClient.js';
 import type { PostgresClient } from '../ingestion/normalized-event.store.js';
 
 /**
@@ -57,7 +66,7 @@ async function requireAuthSSE(request: FastifyRequest, reply: FastifyReply) {
 
 async function createPostgresClient(): Promise<PostgresClient> {
   const { Pool } = await import('pg');
-  return new Pool({ connectionString: env.POSTGRES_URL });
+  return new Pool({ connectionString: env.storage.postgresUrl });
 }
 
 /**
@@ -81,7 +90,7 @@ export async function registerAdminRoutes(
   const incidentController = new IncidentResponseController(incidentService);
   const complianceService = new ComplianceService(redis, metricsService, threatIntelService, adminService);
   const complianceController = new ComplianceController(complianceService);
-  const postgresPool = env.POSTGRES_URL ? await createPostgresClient() : undefined;
+  const postgresPool = env.storage.postgresUrl ? await createPostgresClient() : undefined;
   const ingestionService = new IngestionService(redis, incidentService, postgresPool);
   await ingestionService.initialize();
   const ingestionController = new IngestionController(ingestionService);
@@ -120,7 +129,7 @@ export async function registerAdminRoutes(
         }
       | undefined;
 
-    const action = context?.action ?? `${request.method} ${request.routerPath ?? request.url}`;
+    const action = context?.action ?? `${request.method} ${request.routeOptions.url ?? request.url}`;
     const incidentId =
       context?.incidentId ?? (typeof request.params === 'object' ? (request.params as any).id : undefined);
 
@@ -130,7 +139,7 @@ export async function registerAdminRoutes(
         username: user.username,
       },
       action,
-      resource: request.routerPath ?? request.url,
+      resource: request.routeOptions.url ?? request.url,
       incidentId,
       metadata: {
         statusCode: reply.statusCode,
@@ -860,7 +869,7 @@ export async function registerAdminRoutes(
    * POST /admin/incidents/seed-test-data
    * Seed test incidents for development/demo (admin only)
    */
-  if (env.DEMO_MODE) {
+  if (env.features.demoMode) {
     app.post(
       '/admin/incidents/seed-test-data',
       {
@@ -871,10 +880,9 @@ export async function registerAdminRoutes(
         },
         preHandler: adminAuth,
       },
-      preHandler: incidentAuth,
-    },
-    incidentController.seedTestIncidents.bind(incidentController)
-  );
+      incidentController.seedTestIncidents.bind(incidentController)
+    );
+  }
 
   // ======================
   // Compliance Routes
@@ -912,5 +920,132 @@ export async function registerAdminRoutes(
       preHandler: adminAuth,
     },
     complianceController.getComplianceMetrics.bind(complianceController)
+  );
+
+  /**
+   * GET /admin/upstream-health
+   * Circuit breaker state per upstream host - closed/open/half-open and
+   * consecutive-failure counts, so an operator can see a failing upstream
+   * before it shows up as a wave of user-facing 503s.
+   */
+  app.get(
+    '/admin/upstream-health',
+    {
+      schema: {
+        description: 'Circuit breaker state for upstream hosts',
+        tags: ['Admin'],
+        security: [{ bearerAuth: [] }],
+      },
+      preHandler: metricsAuth,
+    },
+    async () => {
+      return { upstreams: upstreamCircuitBreaker.getSnapshot() };
+    }
+  );
+
+  // ======================
+  // API Key Routes
+  // ======================
+
+  /**
+   * POST /admin/api-keys
+   * Create a scoped API key. The raw key is returned exactly once - it is
+   * never recoverable again, only revocable.
+   */
+  app.post<{ Body: CreateApiKeyBody }>(
+    '/admin/api-keys',
+    {
+      schema: {
+        description: 'Create a scoped API key (the raw key is only ever shown in this response)',
+        tags: ['API Keys'],
+        security: [{ bearerAuth: [] }],
+      },
+      preHandler: [...adminAuth, validate(createApiKeySchema, 'body')],
+    },
+    async (request, reply) => {
+      const user = (request as any).user;
+      const { name, scopes, expiresInDays } = request.body;
+
+      const { record, rawKey } = await app.apiKeyStore.create({
+        name,
+        scopes,
+        createdBy: user.userId,
+        expiresInDays,
+      });
+
+      await auditService.log({
+        eventType: AuditEventType.APIKEY_CREATED,
+        userId: user.userId,
+        username: user.username,
+        ip: getClientIp(request),
+        requestId: getRequestId(request),
+        resource: '/admin/api-keys',
+        action: 'POST',
+        success: true,
+        message: `API key "${name}" created`,
+        metadata: { apiKeyId: record.id, scopes },
+      });
+
+      return reply.code(201).send({ apiKey: record, rawKey });
+    }
+  );
+
+  /**
+   * GET /admin/api-keys
+   * List API keys (metadata only - never returns raw or hashed secrets)
+   */
+  app.get(
+    '/admin/api-keys',
+    {
+      schema: {
+        description: 'List API keys',
+        tags: ['API Keys'],
+        security: [{ bearerAuth: [] }],
+      },
+      preHandler: adminAuth,
+    },
+    async () => {
+      const apiKeys = await app.apiKeyStore.list();
+      return { apiKeys };
+    }
+  );
+
+  /**
+   * DELETE /admin/api-keys/:id
+   * Revoke an API key
+   */
+  app.delete<{ Params: ApiKeyIdParams }>(
+    '/admin/api-keys/:id',
+    {
+      schema: {
+        description: 'Revoke an API key',
+        tags: ['API Keys'],
+        security: [{ bearerAuth: [] }],
+      },
+      preHandler: [...adminAuth, validate(apiKeyIdParamsSchema, 'params')],
+    },
+    async (request, reply) => {
+      const user = (request as any).user;
+      const record = await app.apiKeyStore.revoke(request.params.id);
+
+      if (!record) {
+        throw new NotFoundError('API key');
+      }
+
+      await auditService.log({
+        eventType: AuditEventType.APIKEY_REVOKED,
+        userId: user.userId,
+        username: user.username,
+        ip: getClientIp(request),
+        requestId: getRequestId(request),
+        resource: '/admin/api-keys',
+        action: 'DELETE',
+        success: true,
+        message: `API key "${record.name}" revoked`,
+        metadata: { apiKeyId: record.id },
+      });
+
+      return reply.send({ apiKey: record });
+    }
   );
 }

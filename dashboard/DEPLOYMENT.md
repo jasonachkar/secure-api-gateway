@@ -36,13 +36,13 @@ This guide will help you deploy the Security Dashboard to Vercel.
    
    | Name | Value | Environment |
    |------|-------|-------------|
-   | `VITE_API_URL` | Your backend API URL (e.g., `https://your-api.vercel.app` or `https://api.yourdomain.com`) | Production, Preview, Development |
+   | `VITE_API_URL` | Your Azure Container Apps gateway URL (`terraform output container_app_url`, e.g. `https://secapigw-dev-gateway.<region>.azurecontainerapps.io`) | Production, Preview, Development |
 
    **Important Notes:**
-   - If your backend is on a different domain, ensure CORS is configured to allow your Vercel domain
+   - The backend (Azure Container Apps) and frontend (Vercel) are on different domains by design - make sure the gateway's `CORS_ORIGIN` includes this Vercel deployment's URL (set via the `cors_origin` Terraform variable, see `terraform/README.md`)
    - The backend URL should NOT have a trailing slash
-   - Example: `https://api.example.com` ✅ (correct)
-   - Example: `https://api.example.com/` ❌ (incorrect)
+   - Example: `https://secapigw-dev-gateway.<region>.azurecontainerapps.io` ✅ (correct)
+   - Example: `https://secapigw-dev-gateway.<region>.azurecontainerapps.io/` ❌ (incorrect)
 
 5. **Deploy**
    - Click "Deploy"

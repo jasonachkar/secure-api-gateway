@@ -20,7 +20,7 @@ export class ProxyService {
 
     // Call upstream service (SSRF protection applied in httpGet)
     const response = await httpGet<{ message: string; timestamp: number }>(
-      `${env.UPSTREAM_REPORTS_URL}/echo?message=${encodeURIComponent(message)}`
+      `${env.upstream.reportsUrl}/echo?message=${encodeURIComponent(message)}`
     );
 
     return response.data;
@@ -38,7 +38,7 @@ export class ProxyService {
 
     // Forward request to upstream
     const response = await httpPost(
-      `${env.UPSTREAM_REPORTS_URL}${path}`,
+      `${env.upstream.reportsUrl}${path}`,
       body,
       { headers: sanitizedHeaders }
     );

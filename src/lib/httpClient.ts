@@ -1,11 +1,13 @@
 /**
  * Secure HTTP client for upstream service communication
- * Implements timeout, retry logic, and SSRF protection
+ * Implements timeout, retry logic, DNS-pinned SSRF protection, and a circuit breaker
  */
 
+import { Agent, type Dispatcher } from 'undici';
 import { env } from '../config/index.js';
 import { SSRFError, ServiceUnavailableError } from './errors.js';
 import { logger } from './logger.js';
+import { CircuitBreaker } from './circuitBreaker.js';
 import dns from 'dns/promises';
 
 /**
@@ -28,14 +30,25 @@ export interface HttpResponse<T = unknown> {
 }
 
 /**
- * Validate that a hostname is allowed for SSRF protection
- * Checks against allowlist and prevents private IP access
- * @param hostname - Target hostname
- * @throws SSRFError if host is not allowed
+ * Shared circuit breaker across all upstream calls made through this client
  */
-async function validateHostname(hostname: string): Promise<void> {
+export const upstreamCircuitBreaker = new CircuitBreaker({
+  failureThreshold: env.upstream.circuitBreaker.failureThreshold,
+  cooldownMs: env.upstream.circuitBreaker.cooldownMs,
+});
+
+/**
+ * Resolve and validate a hostname for SSRF protection.
+ * Checks against the allowlist and rejects hostnames that resolve to private/internal IPs.
+ *
+ * @param hostname - Target hostname
+ * @returns Validated IP addresses (empty if DNS resolution itself failed - caller lets the
+ *   request fail naturally in that case, same as before)
+ * @throws SSRFError if the host is not allowlisted or resolves to a private IP
+ */
+async function resolveAndValidateHostname(hostname: string): Promise<string[]> {
   // Check allowlist
-  const isAllowed = env.ALLOWED_UPSTREAM_HOSTS.some((allowed) => {
+  const isAllowed = env.upstream.allowedHosts.some((allowed) => {
     return hostname === allowed || hostname.endsWith(`.${allowed}`);
   });
 
@@ -48,24 +61,30 @@ async function validateHostname(hostname: string): Promise<void> {
   let addresses: string[];
   try {
     addresses = await dns.resolve4(hostname);
-  } catch (error) {
+  } catch {
     // If IPv4 fails, try IPv6
     try {
       addresses = await dns.resolve6(hostname);
     } catch {
       // Can't resolve - let the request fail naturally
       logger.warn({ hostname }, 'Failed to resolve hostname for SSRF check');
-      return;
+      return [];
     }
   }
 
-  // Check for private/internal IP addresses
-  for (const ip of addresses) {
-    if (isPrivateIp(ip)) {
-      logger.warn({ hostname, ip }, 'SSRF attempt blocked: resolves to private IP');
-      throw new SSRFError(`Host resolves to private IP: ${ip}`);
+  // Check for private/internal IP addresses. Skipped only when SSRF_ALLOW_PRIVATE_IPS
+  // is set (local Docker Compose dev, where the upstream legitimately lives on a
+  // private container-network IP) - env.ts refuses this flag outright in production.
+  if (!env.upstream.allowPrivateIps) {
+    for (const ip of addresses) {
+      if (isPrivateIp(ip)) {
+        logger.warn({ hostname, ip }, 'SSRF attempt blocked: resolves to private IP');
+        throw new SSRFError(`Host resolves to private IP: ${ip}`);
+      }
     }
   }
+
+  return addresses;
 }
 
 /**
@@ -101,50 +120,106 @@ function isPrivateIp(ip: string): boolean {
 }
 
 /**
- * Secure HTTP GET request
- * @param url - Target URL
- * @param options - Request options
- * @returns HTTP response
+ * Build a dispatcher that pins the TCP connection to the already-validated IP
+ * addresses for `hostname`, instead of letting undici re-resolve DNS itself.
+ *
+ * Without this, the SSRF check above and the actual outbound connection race
+ * independently: an attacker controlling DNS for an allowlisted hostname could
+ * answer safely for our validation lookup and then rebind to a private IP for
+ * the real connection a moment later (DNS-rebinding TOCTOU). Pinning closes
+ * that window entirely - only the IP(s) we already vetted are ever dialed.
+ * The original hostname is still used for the Host header / TLS SNI.
  */
-export async function httpGet<T = unknown>(
-  url: string,
-  options: HttpClientOptions = {}
-): Promise<HttpResponse<T>> {
-  const { timeout = env.UPSTREAM_TIMEOUT, retries = env.UPSTREAM_RETRY_ATTEMPTS, headers = {}, validateHost = true } = options;
+function createPinnedDispatcher(hostname: string, validatedAddresses: string[]): Dispatcher {
+  return new Agent({
+    connect: {
+      // undici's LookupFunction type is stricter than we need here; the shape below
+      // matches Node's dns.lookup callback contract that undici actually calls.
+      lookup: ((host: string, options: { all?: boolean }, callback: (...args: any[]) => void) => {
+        if (host !== hostname) {
+          callback(new Error(`Refusing DNS lookup for unexpected host "${host}"`));
+          return;
+        }
 
-  // Parse URL
-  const parsedUrl = new URL(url);
+        const results = validatedAddresses.map((address) => ({
+          address,
+          family: address.includes(':') ? 6 : 4,
+        }));
 
-  // SSRF protection: validate hostname
-  if (validateHost) {
-    await validateHostname(parsedUrl.hostname);
+        if (options?.all) {
+          callback(null, results);
+        } else {
+          callback(null, results[0].address, results[0].family);
+        }
+      }) as any,
+    },
+  });
+}
+
+/**
+ * Resolve + validate a hostname and build a pinned dispatcher for it in one step.
+ * Returns undefined when DNS couldn't be resolved at all (validateHost=false skips
+ * this entirely and undici falls back to its normal resolution behavior).
+ */
+async function buildRequestDispatcher(hostname: string, validateHost: boolean): Promise<Dispatcher | undefined> {
+  if (!validateHost) {
+    return undefined;
   }
 
-  // Implement retry logic with exponential backoff
+  const validatedAddresses = await resolveAndValidateHostname(hostname);
+  if (validatedAddresses.length === 0) {
+    return undefined;
+  }
+
+  return createPinnedDispatcher(hostname, validatedAddresses);
+}
+
+interface ExecuteRequestParams {
+  url: string;
+  parsedUrl: URL;
+  init: RequestInit & { dispatcher?: Dispatcher };
+  timeout: number;
+  retries: number;
+}
+
+/**
+ * Shared fetch-with-retry-and-circuit-breaker execution used by both httpGet and httpPost
+ */
+async function executeRequest<T>({ url, parsedUrl, init, timeout, retries }: ExecuteRequestParams): Promise<HttpResponse<T>> {
+  const host = parsedUrl.hostname;
+
+  if (!upstreamCircuitBreaker.canRequest(host)) {
+    logger.warn({ host }, 'Circuit breaker open - short-circuiting upstream request');
+    throw new ServiceUnavailableError('Upstream service unavailable (circuit open)', host);
+  }
+
   let lastError: Error | null = null;
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeout);
 
       const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'User-Agent': 'SecureAPIGateway/1.0',
-          ...headers,
-        },
+        ...init,
         signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
 
-      // Parse response
+      // A response - even an error one - means the upstream is reachable.
+      // Only 5xx counts as a circuit-breaker failure; 4xx is the client's fault.
+      if (response.status >= 500) {
+        upstreamCircuitBreaker.recordFailure(host);
+      } else {
+        upstreamCircuitBreaker.recordSuccess(host);
+      }
+
       const contentType = response.headers.get('content-type');
       const data = contentType?.includes('application/json')
         ? await response.json()
         : await response.text();
 
-      // Convert headers to object
       const responseHeaders: Record<string, string> = {};
       response.headers.forEach((value, key) => {
         responseHeaders[key] = value;
@@ -174,8 +249,40 @@ export async function httpGet<T = unknown>(
   }
 
   // All retries exhausted
+  upstreamCircuitBreaker.recordFailure(host);
   logger.error({ url, error: lastError }, 'Upstream request failed after retries');
-  throw new ServiceUnavailableError('Upstream service unavailable', parsedUrl.hostname);
+  throw new ServiceUnavailableError('Upstream service unavailable', host);
+}
+
+/**
+ * Secure HTTP GET request
+ * @param url - Target URL
+ * @param options - Request options
+ * @returns HTTP response
+ */
+export async function httpGet<T = unknown>(
+  url: string,
+  options: HttpClientOptions = {}
+): Promise<HttpResponse<T>> {
+  const { timeout = env.upstream.timeoutMs, retries = env.upstream.retryAttempts, headers = {}, validateHost = true } = options;
+
+  const parsedUrl = new URL(url);
+  const dispatcher = await buildRequestDispatcher(parsedUrl.hostname, validateHost);
+
+  return executeRequest<T>({
+    url,
+    parsedUrl,
+    timeout,
+    retries,
+    init: {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'SecureAPIGateway/1.0',
+        ...headers,
+      },
+      ...(dispatcher ? { dispatcher } : {}),
+    },
+  });
 }
 
 /**
@@ -190,67 +297,25 @@ export async function httpPost<T = unknown>(
   body: unknown,
   options: HttpClientOptions = {}
 ): Promise<HttpResponse<T>> {
-  const { timeout = env.UPSTREAM_TIMEOUT, retries = env.UPSTREAM_RETRY_ATTEMPTS, headers = {}, validateHost = true } = options;
+  const { timeout = env.upstream.timeoutMs, retries = env.upstream.retryAttempts, headers = {}, validateHost = true } = options;
 
-  // Parse URL
   const parsedUrl = new URL(url);
+  const dispatcher = await buildRequestDispatcher(parsedUrl.hostname, validateHost);
 
-  // SSRF protection: validate hostname
-  if (validateHost) {
-    await validateHostname(parsedUrl.hostname);
-  }
-
-  // Implement retry logic
-  let lastError: Error | null = null;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'SecureAPIGateway/1.0',
-          ...headers,
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      const contentType = response.headers.get('content-type');
-      const data = contentType?.includes('application/json')
-        ? await response.json()
-        : await response.text();
-
-      const responseHeaders: Record<string, string> = {};
-      response.headers.forEach((value, key) => {
-        responseHeaders[key] = value;
-      });
-
-      return {
-        status: response.status,
-        data: data as T,
-        headers: responseHeaders,
-      };
-    } catch (error) {
-      lastError = error as Error;
-
-      if (error instanceof Error && error.name === 'AbortError') {
-        logger.warn({ url, attempt, timeout }, 'Upstream request timeout');
-        break;
-      }
-
-      if (attempt < retries) {
-        const backoff = Math.min(1000 * Math.pow(2, attempt), 5000);
-        logger.info({ url, attempt, backoff }, 'Retrying upstream request');
-        await new Promise((resolve) => setTimeout(resolve, backoff));
-      }
-    }
-  }
-
-  logger.error({ url, error: lastError }, 'Upstream request failed after retries');
-  throw new ServiceUnavailableError('Upstream service unavailable', parsedUrl.hostname);
+  return executeRequest<T>({
+    url,
+    parsedUrl,
+    timeout,
+    retries,
+    init: {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'SecureAPIGateway/1.0',
+        ...headers,
+      },
+      body: JSON.stringify(body),
+      ...(dispatcher ? { dispatcher } : {}),
+    },
+  });
 }

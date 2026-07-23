@@ -22,7 +22,7 @@
 
 4. **Add Environment Variable**
    - Click "Environment Variables"
-   - Add: `VITE_API_URL` = `https://your-backend-url.com`
+   - Add: `VITE_API_URL` = your Azure Container Apps gateway URL (`terraform output container_app_url` after deploying the backend - see `terraform/README.md`)
    - Select: Production, Preview, Development
 
 5. **Deploy**
@@ -40,9 +40,9 @@ After deployment, you'll get:
 
 ⚠️ **Root Directory**: Must be set to `dashboard` (not the repo root)
 
-⚠️ **Backend URL**: Set `VITE_API_URL` to your backend API URL (no trailing slash)
+⚠️ **Backend URL**: Set `VITE_API_URL` to your Azure Container Apps gateway URL (no trailing slash)
 
-⚠️ **CORS**: Make sure your backend allows requests from your Vercel domain
+⚠️ **CORS**: Add this Vercel domain to the gateway's `cors_origin` Terraform variable and re-apply - the gateway enforces an explicit origin allowlist, not a wildcard
 
 ## Troubleshooting
 

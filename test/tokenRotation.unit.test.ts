@@ -18,7 +18,7 @@ describe('Token Rotation', () => {
     redis = new Redis({
       host: process.env.REDIS_HOST || 'localhost',
       port: parseInt(process.env.REDIS_PORT || '6379', 10),
-      db: 1, // Use separate DB for tests
+      db: parseInt(process.env.REDIS_DB || '0', 10), // Per-worker DB, set in test/setup.ts
     });
 
     tokenStore = new TokenStore(redis);

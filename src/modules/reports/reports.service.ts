@@ -25,7 +25,7 @@ export class ReportsService {
   async getReport(reportId: string, userId: string, roles: string[]): Promise<ReportData> {
     // Fetch report from upstream service
     const response = await httpGet<Report>(
-      `${env.UPSTREAM_REPORTS_URL}/reports/${reportId}`
+      `${env.upstream.reportsUrl}/reports/${reportId}`
     );
 
     if (response.status === 404) {

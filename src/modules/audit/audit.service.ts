@@ -6,6 +6,7 @@
 import { nanoid } from 'nanoid';
 import { AuditLogEntry, AuditEventType } from './audit.types.js';
 import { FileAuditStore, RedisAuditStore } from './audit.store.js';
+import { GENESIS_HASH, computeEntryHash, verifyEntryChain, type ChainVerificationResult } from './audit.hash.js';
 import { logger } from '../../lib/logger.js';
 
 /**
@@ -23,13 +24,18 @@ export class AuditService {
 
   /**
    * Log an audit event
+   * Chains the new entry to the previous one (see audit.hash.ts) so tampering
+   * with any past entry is detectable via verifyChain().
    */
-  async log(event: Omit<AuditLogEntry, 'id' | 'timestamp'>): Promise<void> {
-    const entry: AuditLogEntry = {
+  async log(event: Omit<AuditLogEntry, 'id' | 'timestamp' | 'hash' | 'prevHash'>): Promise<void> {
+    const prevHash = (await this.store.getLastHash()) ?? GENESIS_HASH;
+    const unhashed: Omit<AuditLogEntry, 'hash'> = {
       id: nanoid(),
       timestamp: Date.now(),
       ...event,
+      prevHash,
     };
+    const entry: AuditLogEntry = { ...unhashed, hash: computeEntryHash(unhashed) };
 
     try {
       await this.store.append(entry);
@@ -146,5 +152,16 @@ export class AuditService {
     limit?: number;
   }): Promise<AuditLogEntry[]> {
     return this.store.query(filters);
+  }
+
+  /**
+   * Verify the tamper-evident hash chain across the retained audit log (see audit.hash.ts).
+   * Always walks the unfiltered global chain - a per-user query is a subset view and
+   * doesn't have valid prevHash linkage on its own.
+   */
+  async verifyChain(limit = 10000): Promise<ChainVerificationResult> {
+    const newestFirst = await this.store.query({ limit });
+    const chronological = [...newestFirst].reverse();
+    return verifyEntryChain(chronological);
   }
 }

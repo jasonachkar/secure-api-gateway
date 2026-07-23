@@ -3,7 +3,7 @@
  * Automatically records request metrics for the security dashboard
  */
 
-import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { FastifyInstance } from 'fastify';
 import { MetricsService } from '../modules/admin/metrics.service.js';
 import { getClientIp } from '../lib/requestContext.js';
 import { logger } from '../lib/logger.js';

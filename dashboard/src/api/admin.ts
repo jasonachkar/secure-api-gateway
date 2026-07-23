@@ -23,6 +23,7 @@ import type {
   SecurityPosture,
   ComplianceMetrics,
   IngestionStatus,
+  RuntimeConfig,
 } from '../types';
 import { normalizeIncident, normalizeIncidents } from '../utils/incident';
 

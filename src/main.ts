@@ -17,16 +17,16 @@ async function start() {
 
     // Start listening
     await app.listen({
-      port: env.PORT,
-      host: env.HOST,
+      port: env.server.port,
+      host: env.server.host,
     });
 
     logger.info(
       {
-        port: env.PORT,
-        host: env.HOST,
-        env: env.NODE_ENV,
-        swagger: env.ENABLE_SWAGGER ? `http://localhost:${env.PORT}/docs` : 'disabled',
+        port: env.server.port,
+        host: env.server.host,
+        env: env.server.nodeEnv,
+        swagger: env.features.enableSwagger ? `http://localhost:${env.server.port}/docs` : 'disabled',
       },
       'Server started successfully'
     );

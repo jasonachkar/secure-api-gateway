@@ -3,8 +3,8 @@
  * Handles user authentication, token generation, and account security
  */
 
-import { hashPassword, verifyPassword, generateSecureToken, hashToken, generateJti } from '../../lib/crypto.js';
-import { generateAccessToken, generateRefreshToken } from '../../middleware/auth.js';
+import { hashPassword, verifyPassword, hashToken, generateJti } from '../../lib/crypto.js';
+import { generateAccessToken, generateRefreshToken, verifyToken } from '../../middleware/auth.js';
 import { TokenStore } from './token.store.js';
 import { InvalidCredentialsError, AccountLockedError, TokenRevokedError, TokenInvalidError } from '../../lib/errors.js';
 import { RefreshTokenMetadata, AuthUser } from '../../types/index.js';
@@ -142,7 +142,7 @@ class LockoutManager {
 
     // Set expiration on first attempt
     if (attempts === 1) {
-      await this.redis.expire(key, Math.ceil(env.LOCKOUT_DURATION / 1000));
+      await this.redis.expire(key, Math.ceil(env.auth.lockoutDurationMs / 1000));
     }
 
     return attempts;
@@ -161,7 +161,7 @@ class LockoutManager {
    */
   async isLocked(identifier: string): Promise<boolean> {
     const attempts = await this.getAttempts(identifier);
-    return attempts >= env.MAX_LOGIN_ATTEMPTS;
+    return attempts >= env.auth.maxLoginAttempts;
   }
 
   /**
@@ -231,7 +231,7 @@ export class AuthService {
       const attempts = await this.lockoutManager.incrementAttempts(lockoutKey);
       logger.warn({ username, ip, attempts }, 'Invalid password attempt');
 
-      if (attempts >= env.MAX_LOGIN_ATTEMPTS) {
+      if (attempts >= env.auth.maxLoginAttempts) {
         const ttl = await this.lockoutManager.getLockoutTTL(lockoutKey);
         throw new AccountLockedError(ttl);
       }
@@ -277,7 +277,6 @@ export class AuthService {
     };
   }> {
     // Verify refresh token (this will throw if invalid/expired)
-    const { verifyToken } = await import('../../middleware/auth.js');
     const payload = verifyToken(refreshToken);
 
     // Check token type
@@ -305,19 +304,26 @@ export class AuthService {
       throw new TokenInvalidError('Token reuse detected');
     }
 
+    // Fetch metadata before revoking so we can carry the token family forward
+    const currentMetadata = await this.tokenStore.get(payload.jti);
+
     // Update last used timestamp
     await this.tokenStore.updateLastUsed(payload.jti);
 
     // Revoke old refresh token (rotation)
     await this.tokenStore.revoke(payload.jti, 60 * 60); // Keep in blacklist for 1 hour
 
-    // Generate new token pair
-    const { accessToken, refreshToken: newRefreshToken, expiresIn } = await this.generateTokenPair({
-      userId: payload.sub,
-      username: payload.username,
-      roles: payload.roles,
-      permissions: payload.permissions,
-    });
+    // Generate new token pair, preserving the family so a future reuse-detection
+    // event revokes every token descended from this login (see generateTokenPair)
+    const { accessToken, refreshToken: newRefreshToken, expiresIn } = await this.generateTokenPair(
+      {
+        userId: payload.sub,
+        username: payload.username,
+        roles: payload.roles,
+        permissions: payload.permissions,
+      },
+      currentMetadata?.family
+    );
 
     logger.info({ userId: payload.sub, oldJti: payload.jti }, 'Refresh token rotated');
 
@@ -337,7 +343,6 @@ export class AuthService {
    */
   async logout(refreshToken: string): Promise<void> {
     try {
-      const { verifyToken } = await import('../../middleware/auth.js');
       const payload = verifyToken(refreshToken);
 
       if (payload.type === 'refresh') {
@@ -351,9 +356,27 @@ export class AuthService {
   }
 
   /**
-   * Generate access and refresh token pair
+   * Revoke a still-live access token immediately (e.g. on logout).
+   * Access tokens are normally validated by expiry alone; this adds them to
+   * the same Redis blacklist refresh tokens use so requireAuth can reject
+   * them before their natural 15-minute expiry.
    */
-  private async generateTokenPair(user: Omit<AuthUser, 'jti'>): Promise<{
+  async revokeAccessToken(jti: string): Promise<void> {
+    const accessExpiresIn = this.parseExpiration(env.auth.jwt.accessTokenExpiresIn);
+    await this.tokenStore.revoke(jti, accessExpiresIn);
+  }
+
+  /**
+   * Generate access and refresh token pair
+   * @param user - Token subject
+   * @param family - Existing token family to continue (rotation); a new family is
+   *   started when omitted (fresh login). Every jti issued for a family is tracked
+   *   together so a reuse-detection event can revoke the whole lineage at once.
+   */
+  private async generateTokenPair(
+    user: Omit<AuthUser, 'jti'>,
+    family?: string
+  ): Promise<{
     accessToken: string;
     refreshToken: string;
     expiresIn: number;
@@ -368,7 +391,8 @@ export class AuthService {
 
     // Store refresh token metadata
     const refreshTokenHash = hashToken(refreshToken);
-    const expiresIn = this.parseExpiration(env.jwt.refreshTokenExpiresIn);
+    const expiresIn = this.parseExpiration(env.auth.jwt.refreshTokenExpiresIn);
+    const tokenFamily = family ?? generateJti();
 
     const metadata: RefreshTokenMetadata = {
       userId: user.userId,
@@ -377,14 +401,20 @@ export class AuthService {
       permissions: user.permissions,
       jti: refreshJti,
       tokenHash: refreshTokenHash,
+      family: tokenFamily,
       createdAt: Date.now(),
       expiresAt: Date.now() + expiresIn * 1000,
     };
 
     await this.tokenStore.store(refreshJti, metadata, expiresIn);
 
+    // Track every jti issued for this family (across rotations) so reuse
+    // detection can revoke the access token that's currently in flight too
+    const existingFamilyJtis = family ? (await this.tokenStore.getFamily(family)) ?? [] : [];
+    await this.tokenStore.storeFamily(tokenFamily, [...existingFamilyJtis, refreshJti, accessJti], expiresIn);
+
     // Return access token expiration for client
-    const accessExpiresIn = this.parseExpiration(env.jwt.accessTokenExpiresIn);
+    const accessExpiresIn = this.parseExpiration(env.auth.jwt.accessTokenExpiresIn);
 
     return {
       accessToken,

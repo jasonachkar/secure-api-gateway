@@ -11,7 +11,7 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { env } from './config/index.js';
 import { logger } from './lib/logger.js';
-import { AppError, isOperationalError } from './lib/errors.js';
+import { AppError } from './lib/errors.js';
 import { requestIdHook } from './middleware/requestId.js';
 import { registerSecurityHeaders } from './middleware/securityHeaders.js';
 import { registerGlobalRateLimit, createRedisClient } from './middleware/rateLimit.js';
@@ -24,7 +24,8 @@ import { AuditService } from './modules/audit/audit.service.js';
 import { createAuditStore } from './modules/audit/audit.store.js';
 import { MetricsService } from './modules/admin/metrics.service.js';
 import { registerMetricsCollection } from './middleware/metrics.js';
-import { getRequestDuration } from './lib/requestContext.js';
+import { TokenStore } from './modules/auth/token.store.js';
+import { ApiKeyStore } from './modules/apikeys/apikey.store.js';
 
 /**
  * Create and configure Fastify application
@@ -33,8 +34,8 @@ export async function createApp(): Promise<FastifyInstance> {
   // Create Fastify instance with logger
   const app = Fastify({
     loggerInstance: logger,
-    bodyLimit: env.BODY_LIMIT,
-    requestTimeout: env.REQUEST_TIMEOUT,
+    bodyLimit: env.server.bodyLimit,
+    requestTimeout: env.server.requestTimeout,
     trustProxy: true, // Trust X-Forwarded-* headers from proxy
     disableRequestLogging: true, // We use custom request logging
   });
@@ -43,16 +44,25 @@ export async function createApp(): Promise<FastifyInstance> {
   const redis = createRedisClient();
 
   // Initialize audit service
-  const auditStore = createAuditStore(env.isProduction ? redis : undefined);
+  const auditStore = createAuditStore(env.server.isProduction ? redis : undefined);
   const auditService = new AuditService(auditStore);
   await auditService.initialize();
 
   // Initialize metrics service
   const metricsService = new MetricsService(redis);
 
+  // Shared token store so requireAuth can check access-token revocation
+  // (auth routes also construct their own TokenStore, backed by the same Redis keyspace)
+  const tokenStore = new TokenStore(redis);
+
+  // Shared API key store (admin routes manage keys, proxy routes accept them)
+  const apiKeyStore = new ApiKeyStore(redis);
+
   // Decorate app with services for use in routes
   app.decorate('audit', auditService);
   app.decorate('metrics', metricsService);
+  app.decorate('tokenStore', tokenStore);
+  app.decorate('apiKeyStore', apiKeyStore);
 
   // ============================================
   // PLUGINS
@@ -60,17 +70,19 @@ export async function createApp(): Promise<FastifyInstance> {
 
   // Cookie parser (for refresh tokens)
   await app.register(cookie, {
-    secret: env.COOKIE_SECRET,
+    secret: env.security.cookieSecret,
     parseOptions: {
       httpOnly: true,
-      secure: env.isProduction,
+      secure: env.server.isProduction,
       sameSite: 'strict',
     },
   });
 
-  // CORS - Allow all origins for development and flexibility
+  // CORS - explicit origin allowlist (env.security.corsOrigins, from CORS_ORIGIN).
+  // env.ts already refuses to boot with a wildcard here in production; this is what
+  // actually enforces it at the HTTP layer.
   await app.register(cors, {
-    origin: true, // Allow all origins
+    origin: env.security.corsOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'Cache-Control', 'Accept'],
@@ -93,7 +105,7 @@ export async function createApp(): Promise<FastifyInstance> {
   await registerMetricsCollection(app, metricsService);
 
   // OpenAPI / Swagger (only if enabled)
-  if (env.ENABLE_SWAGGER) {
+  if (env.features.enableSwagger) {
     await app.register(swagger, {
       openapi: {
         info: {
@@ -103,7 +115,7 @@ export async function createApp(): Promise<FastifyInstance> {
         },
         servers: [
           {
-            url: `http://localhost:${env.PORT}`,
+            url: `http://localhost:${env.server.port}`,
             description: 'Development server',
           },
         ],
@@ -213,7 +225,7 @@ export async function createApp(): Promise<FastifyInstance> {
         error: {
           code: 'VALIDATION_ERROR',
           message: 'Validation failed',
-          ...(env.isDevelopment ? { details: error.validation } : {}),
+          ...(env.server.isDevelopment ? { details: error.validation } : {}),
         },
         requestId,
       });
@@ -233,7 +245,7 @@ export async function createApp(): Promise<FastifyInstance> {
     );
 
     // Never leak internal error details in production
-    const message = env.isProduction
+    const message = env.server.isProduction
       ? 'Internal server error'
       : error.message || 'Internal server error';
 
@@ -327,8 +339,8 @@ export async function createApp(): Promise<FastifyInstance> {
   // Register module routes
   await registerAuthRoutes(app, redis, auditService);
   await registerAuditRoutes(app, auditService);
-  await registerReportsRoutes(app);
-  await registerProxyRoutes(app);
+  await registerReportsRoutes(app, redis);
+  await registerProxyRoutes(app, redis);
   await registerAdminRoutes(app, redis, auditService);
 
   return app;
@@ -339,5 +351,7 @@ declare module 'fastify' {
   interface FastifyInstance {
     audit: AuditService;
     metrics: MetricsService;
+    tokenStore: TokenStore;
+    apiKeyStore: ApiKeyStore;
   }
 }

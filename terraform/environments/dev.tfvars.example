@@ -1,0 +1,25 @@
+# Dev environment - copy to dev.tfvars and adjust.
+# Usage: terraform plan -var-file=environments/dev.tfvars
+
+project_name = "secapigw"
+environment  = "dev"
+location     = "eastus"
+
+# Point at your Vercel preview/dev deployment
+cors_origin = "https://secure-api-gateway-dev.vercel.app"
+
+# Keep cost minimal for a dev/demo stack
+container_min_replicas = 0
+container_max_replicas = 2
+enable_redis            = true
+redis_sku_name           = "Basic"
+redis_capacity            = 0 # C0
+
+enable_apim  = false
+enable_vnet  = false
+
+log_analytics_daily_quota_gb = 1
+
+tags = {
+  owner = "your-name"
+}

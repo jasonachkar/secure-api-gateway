@@ -61,6 +61,20 @@ export class FileAuditStore {
   }
 
   /**
+   * Hash of the most recently appended entry (chain tail), or null if the log is empty
+   */
+  async getLastHash(): Promise<string | null> {
+    try {
+      const content = await readFile(this.logFile, 'utf-8');
+      const logs: AuditLogEntry[] = JSON.parse(content);
+      return logs.length > 0 ? logs[logs.length - 1].hash ?? null : null;
+    } catch (error) {
+      logger.error({ error }, 'Failed to read last audit log hash');
+      return null;
+    }
+  }
+
+  /**
    * Query audit logs
    */
   async query(filters: {
@@ -145,6 +159,23 @@ export class RedisAuditStore {
     } catch (error) {
       logger.error({ error }, 'Failed to write audit log to Redis');
       throw error;
+    }
+  }
+
+  /**
+   * Hash of the most recently appended entry (chain tail), or null if the log is empty
+   */
+  async getLastHash(): Promise<string | null> {
+    try {
+      const raw = await this.redis.lindex(this.LIST_KEY, 0);
+      if (!raw) {
+        return null;
+      }
+      const entry = JSON.parse(raw) as AuditLogEntry;
+      return entry.hash ?? null;
+    } catch (error) {
+      logger.error({ error }, 'Failed to read last audit log hash from Redis');
+      return null;
     }
   }
 

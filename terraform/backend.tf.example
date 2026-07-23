@@ -1,0 +1,17 @@
+# Remote state backend (Azure Storage). Copy this file to backend.tf and fill in a real
+# storage account to stop relying on local state - see terraform/README.md for the
+# bootstrap steps (creating the storage account/container this points at).
+#
+# terraform init -backend-config="key=secure-api-gateway/${environment}.tfstate"
+# (or bake the key in directly below, one backend.tf per environment if you prefer)
+
+terraform {
+  backend "azurerm" {
+    resource_group_name  = "rg-terraform-state"
+    storage_account_name = "REPLACE_WITH_GLOBALLY_UNIQUE_NAME"
+    container_name        = "tfstate"
+    key                     = "secure-api-gateway/dev.tfstate"
+    # Auth: `az login` locally, or federated OIDC / a service principal in CI.
+    # Do not put a storage account key or SAS token in this file.
+  }
+}

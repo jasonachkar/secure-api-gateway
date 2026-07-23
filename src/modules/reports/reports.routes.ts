@@ -3,19 +3,31 @@
  */
 
 import { FastifyInstance } from 'fastify';
+import Redis from 'ioredis';
 import { ReportsController } from './reports.controller.js';
 import { ReportsService } from './reports.service.js';
 import { reportIdSchema, type ReportIdParams } from './reports.schemas.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/rbac.js';
 import { validate } from '../../middleware/validation.js';
+import { createRateLimiter, keyGenerators } from '../../middleware/rateLimit.js';
+import { env } from '../../config/index.js';
 
 /**
  * Register reports routes
  */
-export async function registerReportsRoutes(app: FastifyInstance) {
+export async function registerReportsRoutes(app: FastifyInstance, redis: Redis) {
   const service = new ReportsService();
   const controller = new ReportsController(service);
+
+  // Per-user quota on top of the global per-IP limit, since an authenticated
+  // user could otherwise exhaust the shared IP bucket for everyone behind the same NAT
+  const userRateLimit = createRateLimiter(
+    redis,
+    env.rateLimit.userMax,
+    env.rateLimit.userWindowMs,
+    keyGenerators.byUser
+  );
 
   /**
    * GET /reports/:id
@@ -50,6 +62,7 @@ export async function registerReportsRoutes(app: FastifyInstance) {
       },
       preHandler: [
         requireAuth,
+        userRateLimit,
         requirePermission('read:reports'),
         validate(reportIdSchema, 'params'),
       ],

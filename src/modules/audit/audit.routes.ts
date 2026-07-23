@@ -90,4 +90,36 @@ export async function registerAuditRoutes(app: FastifyInstance, auditService: Au
       };
     }
   );
+
+  /**
+   * GET /admin/audit-logs/verify
+   * Walk the tamper-evident hash chain across the retained audit log and report
+   * the first broken link, if any. Tamper-evident, not tamper-proof - see
+   * docs/SECURITY_CONTROLS.md for what this does and doesn't guarantee.
+   */
+  app.get(
+    '/admin/audit-logs/verify',
+    {
+      schema: {
+        description: 'Verify the audit log hash chain for tampering',
+        tags: ['Admin'],
+        security: [{ bearerAuth: [] }],
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              valid: { type: 'boolean' },
+              checked: { type: 'number' },
+              brokenEntryId: { type: 'string' },
+              reason: { type: 'string' },
+            },
+          },
+        },
+      },
+      preHandler: [requireAuth, requireRole('admin')],
+    },
+    async () => {
+      return auditService.verifyChain();
+    }
+  );
 }

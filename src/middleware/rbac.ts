@@ -9,7 +9,6 @@ import { AuthUser } from '../types/index.js';
 import { logger } from '../lib/logger.js';
 import { getClientIp, getRequestId } from '../lib/requestContext.js';
 import { AuditService } from '../modules/audit/audit.service.js';
-import { AuditEventType } from '../modules/audit/audit.types.js';
 
 /**
  * Helper to log permission denied to audit service

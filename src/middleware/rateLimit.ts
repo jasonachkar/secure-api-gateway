@@ -16,10 +16,12 @@ import { logger } from '../lib/logger.js';
  */
 export function createRedisClient(): Redis {
   const redis = new Redis({
-    host: env.REDIS_HOST,
-    port: env.REDIS_PORT,
-    password: env.REDIS_PASSWORD,
-    db: env.REDIS_DB,
+    host: env.redis.host,
+    port: env.redis.port,
+    password: env.redis.password,
+    db: env.redis.db,
+    // Managed Redis (e.g. Azure Cache for Redis) rejects plaintext connections outright
+    ...(env.redis.tls ? { tls: { servername: env.redis.host } } : {}),
     retryStrategy: (times: number) => {
       const delay = Math.min(times * 50, 2000);
       return delay;
@@ -136,84 +138,78 @@ function addRateLimitHeaders(reply: FastifyReply, context: any) {
  */
 export async function registerGlobalRateLimit(app: FastifyInstance, redis: Redis) {
   await app.register(rateLimit, {
-    max: env.RATE_LIMIT_GLOBAL_MAX,
-    timeWindow: env.RATE_LIMIT_GLOBAL_WINDOW,
+    max: env.rateLimit.globalMax,
+    timeWindow: env.rateLimit.globalWindowMs,
     redis,
     keyGenerator: keyGenerators.byIp,
     errorResponseBuilder: rateLimitErrorHandler,
-    enableDraftSpec: true, // Enable standard rate limit headers
-    addHeadersOnExceeding: {
-      'x-ratelimit-limit': true,
-      'x-ratelimit-remaining': true,
-      'x-ratelimit-reset': true,
-    },
-    addHeaders: {
-      'x-ratelimit-limit': true,
-      'x-ratelimit-remaining': true,
-      'x-ratelimit-reset': true,
-      'retry-after': true,
-    },
+    enableDraftSpec: true, // Emits IETF draft-spec "RateLimit-*" headers
   });
 
-  // Add hook to include standard rate limit headers
-  app.addHook('onSend', async (request, reply) => {
-    // Headers are already added by @fastify/rate-limit
-    // This hook is here for custom header additions if needed
+  // @fastify/rate-limit's addHeaders/addHeadersOnExceeding options are keyed by the
+  // *active* label set - with enableDraftSpec on, that's "ratelimit-*", so those options
+  // can't also produce the legacy "X-RateLimit-*" headers. Mirror them here instead, since
+  // some API clients still only look for the legacy names.
+  app.addHook('onSend', async (request, reply, payload) => {
+    const limit = reply.getHeader('ratelimit-limit');
+    if (limit !== undefined) {
+      reply.header('x-ratelimit-limit', limit);
+      reply.header('x-ratelimit-remaining', reply.getHeader('ratelimit-remaining'));
+
+      // The draft-spec "ratelimit-reset" header is a delta in seconds-until-reset;
+      // the legacy "X-RateLimit-Reset" convention is an absolute Unix timestamp
+      const resetDeltaSeconds = Number(reply.getHeader('ratelimit-reset'));
+      if (Number.isFinite(resetDeltaSeconds)) {
+        reply.header('x-ratelimit-reset', Math.floor(Date.now() / 1000) + resetDeltaSeconds);
+      }
+    }
+    return payload;
   });
 }
 
 /**
- * Create route-specific rate limiter
- * Use this for stricter limits on sensitive endpoints
+ * Create a Redis-backed, fixed-window route rate limiter.
+ * Use this for stricter limits on sensitive endpoints (auth, per-user quotas, etc).
+ * Unlike an in-memory Map, this is correct across multiple gateway instances since
+ * every instance increments the same Redis counter.
  *
- * @param max - Maximum requests
- * @param timeWindow - Time window in milliseconds
+ * @param redis - Shared Redis client
+ * @param max - Maximum requests per window
+ * @param timeWindowMs - Time window in milliseconds
  * @param keyGenerator - Optional custom key generator
  * @returns Fastify preHandler hook
  *
  * @example
  * app.post('/auth/login', {
- *   preHandler: createRateLimiter(5, 60000) // 5 requests per minute
+ *   preHandler: createRateLimiter(redis, 5, 60000) // 5 requests per minute
  * }, handler);
  */
 export function createRateLimiter(
+  redis: Redis,
   max: number,
-  timeWindow: number,
+  timeWindowMs: number,
   keyGenerator: (request: FastifyRequest) => string = keyGenerators.byIp
 ) {
-  // Store for rate limit data (in-memory fallback if Redis unavailable)
-  const store = new Map<string, { count: number; resetTime: number }>();
-
   return async (request: FastifyRequest, reply: FastifyReply) => {
-    const key = keyGenerator(request);
-    const now = Date.now();
+    const key = `ratelimit:route:${keyGenerator(request)}:${request.routeOptions.url ?? request.url}`;
 
-    // Get or create rate limit entry
-    let entry = store.get(key);
-
-    // Reset if window expired
-    if (!entry || now > entry.resetTime) {
-      entry = { count: 0, resetTime: now + timeWindow };
-      store.set(key, entry);
+    // Atomic fixed-window counter: increment, and set the window's expiry only
+    // on the first hit so concurrent requests can't each reset the window.
+    const count = await redis.incr(key);
+    if (count === 1) {
+      await redis.pexpire(key, timeWindowMs);
     }
+    const ttl = await redis.pttl(key);
+    const effectiveTtl = ttl > 0 ? ttl : timeWindowMs;
 
-    // Increment counter
-    entry.count++;
-
-    // Calculate remaining and TTL
-    const remaining = Math.max(0, max - entry.count);
-    const ttl = entry.resetTime - now;
-
-    // Add headers
     addRateLimitHeaders(reply, {
       max,
-      current: entry.count,
-      ttl,
+      current: count,
+      ttl: effectiveTtl,
     });
 
-    // Check if limit exceeded
-    if (entry.count > max) {
-      const retryAfter = Math.ceil(ttl / 1000);
+    if (count > max) {
+      const retryAfter = Math.ceil(effectiveTtl / 1000);
       const requestId = (request as any).requestId;
       const ip = getClientIp(request);
       const user = (request as any).user;
@@ -243,16 +239,6 @@ export function createRateLimiter(
       }
 
       throw new RateLimitError(retryAfter, 'Too many requests, please try again later');
-    }
-
-    // Cleanup expired entries periodically (simple approach)
-    if (Math.random() < 0.01) {
-      // 1% chance
-      for (const [k, v] of store.entries()) {
-        if (now > v.resetTime) {
-          store.delete(k);
-        }
-      }
     }
   };
 }

@@ -32,7 +32,7 @@ export class AppError extends Error {
         code: this.code,
         message: this.message,
         // Only include details in development
-        ...(env.isDevelopment && this.details ? { details: this.details } : {}),
+        ...(env.server.isDevelopment && this.details ? { details: this.details } : {}),
       },
     };
   }
@@ -108,11 +108,11 @@ export class InternalServerError extends AppError {
   constructor(message: string = 'Internal server error', originalError?: Error) {
     super(
       // Never leak internal error details to client in production
-      env.isProduction ? 'Internal server error' : message,
+      env.server.isProduction ? 'Internal server error' : message,
       500,
       'INTERNAL_ERROR',
       false,
-      env.isDevelopment && originalError ? { originalError: originalError.message } : undefined
+      env.server.isDevelopment && originalError ? { originalError: originalError.message } : undefined
     );
   }
 }

@@ -144,3 +144,23 @@ export const userUnlockSchema = z.object({
 });
 
 export type UserUnlockParams = z.infer<typeof userUnlockSchema>;
+
+/**
+ * API key creation body
+ */
+export const createApiKeySchema = z.object({
+  name: z.string().min(1).max(100),
+  scopes: z.array(z.string().min(1)).min(1).max(20),
+  expiresInDays: z.coerce.number().int().min(1).max(3650).optional(),
+});
+
+export type CreateApiKeyBody = z.infer<typeof createApiKeySchema>;
+
+/**
+ * API key revoke params
+ */
+export const apiKeyIdParamsSchema = z.object({
+  id: z.string().min(1),
+});
+
+export type ApiKeyIdParams = z.infer<typeof apiKeyIdParamsSchema>;

@@ -44,9 +44,9 @@ const REDACT_PATHS = [
  * Base logger instance with redaction and formatting
  */
 export const logger = pino({
-  level: env.LOG_LEVEL,
+  level: env.observability.logLevel,
   // Pretty print in development for readability
-  transport: env.isDevelopment && env.LOG_PRETTY
+  transport: env.server.isDevelopment && env.observability.logPretty
     ? {
         target: 'pino-pretty',
         options: {
@@ -71,7 +71,7 @@ export const logger = pino({
   // Base fields
   base: {
     pid: process.pid,
-    env: env.NODE_ENV,
+    env: env.server.nodeEnv,
   },
   // Timestamp
   timestamp: pino.stdTimeFunctions.isoTime,
@@ -149,7 +149,7 @@ export function logError(error: Error, context?: Record<string, unknown>) {
         message: error.message,
         name: error.name,
         // Only log stack traces in development
-        stack: env.isDevelopment ? error.stack : undefined,
+        stack: env.server.isDevelopment ? error.stack : undefined,
       },
       ...context,
     },

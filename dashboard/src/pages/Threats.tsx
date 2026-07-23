@@ -281,7 +281,7 @@ export function Threats() {
                           <span className="rank-pill">{index + 1}</span>
                           <span className="country-name">{country.country}</span>
                         </div>
-                        <Badge tone="primary">{country.count} threats</Badge>
+                        <Badge variant="info">{country.count} threats</Badge>
                       </div>
                     ))}
                   </div>

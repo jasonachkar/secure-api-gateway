@@ -8,6 +8,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { adminApi } from '../api/admin';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from './Button';
+import { theme } from '../styles/theme';
 
 interface LayoutProps {
   children: React.ReactNode;

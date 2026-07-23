@@ -1,0 +1,65 @@
+name: Deploy Dashboard (Azure Static Web Apps)
+
+# Alternative to Vercel's automatic deploys - only relevant if you provisioned the
+# dashboard via Terraform's `enable_azure_static_web_app = true` (see
+# terraform/README.md#frontend-hosting-vercel-vs-azure-static-web-apps). If you're
+# using Vercel instead (the default), this workflow is unused - Vercel's own GitHub
+# integration handles deploys and none of the setup below applies.
+#
+# Required one-time setup (both come from `terraform apply` output once
+# enable_azure_static_web_app = true):
+#   Repo secret   AZURE_STATIC_WEB_APPS_API_TOKEN = terraform output -raw static_web_app_deployment_token
+#   Repo variable VITE_API_URL                    = terraform output -raw container_app_url
+# (Settings -> Secrets and variables -> Actions -> "Secrets" tab / "Variables" tab)
+#
+# Without AZURE_STATIC_WEB_APPS_API_TOKEN set, every run of this workflow will fail at
+# the deploy step - that's expected until the secret above is added.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'dashboard/**'
+      - '.github/workflows/deploy-dashboard.yml'
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, closed]
+    paths:
+      - 'dashboard/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write # for the action's PR preview-environment comments
+
+jobs:
+  deploy:
+    name: Build and deploy
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: 'upload'
+          app_location: '/dashboard'
+          output_location: 'dist'
+
+  close-preview:
+    name: Close PR preview environment
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close Azure Static Web Apps preview environment
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: 'close'

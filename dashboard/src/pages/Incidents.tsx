@@ -394,7 +394,7 @@ export function Incidents() {
                 </div>
                 <button className="modal__close" onClick={() => setSelectedIncident(null)}>
                   ×
-                </Button>
+                </button>
               </div>
 
               <div className="page-stack">
@@ -452,6 +452,7 @@ export function Incidents() {
                     </div>
                   </div>
                 )}
+              </div>
 
               <div style={{ marginBottom: '20px' }}>
                 <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>Playbook Actions</h3>

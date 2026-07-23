@@ -64,7 +64,10 @@ describe('Validation Middleware', () => {
         email: 'test@example.com',
       });
       expect(mockRequest.body).not.toHaveProperty('extraField');
-      expect(mockRequest.body).not.toHaveProperty('__proto__');
+      // __proto__ is an inherited accessor on every plain object, so
+      // toHaveProperty('__proto__') would always match via the prototype chain
+      // regardless of stripping - assert there's no *own* property instead.
+      expect(Object.prototype.hasOwnProperty.call(mockRequest.body, '__proto__')).toBe(false);
     });
   });
 

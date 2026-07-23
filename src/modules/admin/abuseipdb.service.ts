@@ -4,7 +4,6 @@
  */
 
 import { logger } from '../../lib/logger.js';
-import { env } from '../../config/index.js';
 
 export interface AbuseIPDBResponse {
   data: {

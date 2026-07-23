@@ -171,7 +171,7 @@ export function AuditLogs() {
           <MetricCard
             title="Incident Actions"
             value={stats.incidentLogs.toLocaleString()}
-            color="purple"
+            color="yellow"
           />
           <MetricCard title="Unique Actors" value={stats.uniqueActors.toString()} color="green" />
           <MetricCard title="Top Action" value={stats.topAction} color="blue" />
@@ -179,7 +179,7 @@ export function AuditLogs() {
 
         <div
           style={{
-            background: theme.colors.background.card,
+            background: theme.colors.background.primary,
             borderRadius: theme.borderRadius.lg,
             padding: theme.spacing.lg,
             marginBottom: theme.spacing.lg,
@@ -254,7 +254,7 @@ export function AuditLogs() {
 
         <div
           style={{
-            background: theme.colors.background.card,
+            background: theme.colors.background.primary,
             borderRadius: theme.borderRadius.lg,
             border: `1px solid ${theme.colors.border.light}`,
             overflow: 'hidden',

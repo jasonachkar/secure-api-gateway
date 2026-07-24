@@ -43,6 +43,10 @@ export interface RefreshTokenMetadata {
   createdAt: number;
   expiresAt: number;
   lastUsedAt?: number;
+  issuedIp: string; // IP the token family was originally issued from (unchanged across rotations)
+  lastKnownIp: string; // IP that performed the most recent login/refresh
+  rotationCount: number; // Number of times this token family has rotated (0 = never refreshed)
+  ipChangedAtLastRotation: boolean; // True if lastKnownIp differs from the IP at the previous rotation
 }
 
 /**

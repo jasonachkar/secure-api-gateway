@@ -93,6 +93,16 @@ class UserStore {
         password: 'Service123!',
         roles: ['service'],
       },
+      {
+        // Dedicated, non-privileged target for the dashboard's "Attack Simulator" panel
+        // (dashboard Dashboard.tsx). The simulator intentionally sends wrong passwords to
+        // trigger a real lockout - it must never point at `admin`/`user`/`service`, or a
+        // reviewer clicking the button could lock themselves out of their own demo session.
+        userId: 'user-4',
+        username: 'sim-target',
+        password: 'SimTarget123!',
+        roles: ['user'],
+      },
     ];
 
     for (const user of demoUsers) {
@@ -243,12 +253,15 @@ export class AuthService {
     await this.lockoutManager.resetAttempts(lockoutKey);
 
     // Generate tokens
-    const { accessToken, refreshToken, expiresIn } = await this.generateTokenPair({
-      userId: user.userId,
-      username: user.username,
-      roles: user.roles,
-      permissions: user.permissions,
-    });
+    const { accessToken, refreshToken, expiresIn } = await this.generateTokenPair(
+      {
+        userId: user.userId,
+        username: user.username,
+        roles: user.roles,
+        permissions: user.permissions,
+      },
+      ip
+    );
 
     logger.info({ username, userId: user.userId }, 'User logged in successfully');
 
@@ -267,7 +280,7 @@ export class AuthService {
    * Refresh access token using refresh token
    * Implements token rotation and reuse detection
    */
-  async refresh(refreshToken: string): Promise<{
+  async refresh(refreshToken: string, ip: string): Promise<{
     accessToken: string;
     refreshToken: string;
     expiresIn: number;
@@ -322,7 +335,9 @@ export class AuthService {
         roles: payload.roles,
         permissions: payload.permissions,
       },
-      currentMetadata?.family
+      ip,
+      currentMetadata?.family,
+      currentMetadata ?? undefined
     );
 
     logger.info({ userId: payload.sub, oldJti: payload.jti }, 'Refresh token rotated');
@@ -369,13 +384,21 @@ export class AuthService {
   /**
    * Generate access and refresh token pair
    * @param user - Token subject
+   * @param ip - Client IP performing this login/refresh - tracked across rotations so
+   *   the Sessions admin view can flag a session whose IP changed between rotations
+   *   (a signal of possible refresh-token theft).
    * @param family - Existing token family to continue (rotation); a new family is
    *   started when omitted (fresh login). Every jti issued for a family is tracked
    *   together so a reuse-detection event can revoke the whole lineage at once.
+   * @param previousMetadata - The metadata of the refresh token being rotated, if any.
+   *   Carries `issuedIp` and `rotationCount` forward and is compared against `ip` to
+   *   detect an IP change since the previous rotation.
    */
   private async generateTokenPair(
     user: Omit<AuthUser, 'jti'>,
-    family?: string
+    ip: string,
+    family?: string,
+    previousMetadata?: RefreshTokenMetadata
   ): Promise<{
     accessToken: string;
     refreshToken: string;
@@ -404,6 +427,10 @@ export class AuthService {
       family: tokenFamily,
       createdAt: Date.now(),
       expiresAt: Date.now() + expiresIn * 1000,
+      issuedIp: previousMetadata?.issuedIp ?? ip,
+      lastKnownIp: ip,
+      rotationCount: previousMetadata ? previousMetadata.rotationCount + 1 : 0,
+      ipChangedAtLastRotation: previousMetadata ? previousMetadata.lastKnownIp !== ip : false,
     };
 
     await this.tokenStore.store(refreshJti, metadata, expiresIn);

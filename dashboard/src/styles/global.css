@@ -201,12 +201,23 @@ a:focus-visible {
 .skeleton {
   background: linear-gradient(
     90deg,
-    #f1f5f9 0px,
-    #e2e8f0 40px,
-    #f1f5f9 80px
+    var(--color-neutral-100, #f1f5f9) 0px,
+    var(--color-neutral-200, #e2e8f0) 40px,
+    var(--color-neutral-100, #f1f5f9) 80px
   );
   background-size: 1000px;
   animation: shimmer 2s infinite;
+  border-radius: var(--radius-sm, 4px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton,
+  .animate-pulse,
+  .animate-fadeIn,
+  .animate-slideIn {
+    animation: none !important;
+    background-position: 0 0;
+  }
 }
 
 

@@ -81,6 +81,9 @@ export interface SessionInfo {
   createdAt: number;
   expiresAt: number;
   lastUsedAt?: number;
+  rotationCount: number;
+  lastKnownIp: string;
+  ipChangedAtLastRotation: boolean;
 }
 
 /**

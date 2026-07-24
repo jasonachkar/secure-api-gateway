@@ -24,6 +24,7 @@ import { AuditService } from './modules/audit/audit.service.js';
 import { createAuditStore } from './modules/audit/audit.store.js';
 import { MetricsService } from './modules/admin/metrics.service.js';
 import { registerMetricsCollection } from './middleware/metrics.js';
+import { registerRequestTelemetry } from './lib/requestTelemetry.js';
 import { TokenStore } from './modules/auth/token.store.js';
 import { ApiKeyStore } from './modules/apikeys/apikey.store.js';
 
@@ -103,6 +104,9 @@ export async function createApp(): Promise<FastifyInstance> {
 
   // Metrics collection
   await registerMetricsCollection(app, metricsService);
+
+  // Rolling in-memory log of recent requests, powering the dashboard's Request Inspector
+  registerRequestTelemetry(app);
 
   // OpenAPI / Swagger (only if enabled)
   if (env.features.enableSwagger) {
@@ -295,6 +299,7 @@ export async function createApp(): Promise<FastifyInstance> {
           properties: {
             status: { type: 'string' },
             timestamp: { type: 'number' },
+            uptimeSeconds: { type: 'number' },
           },
         },
       },
@@ -302,6 +307,9 @@ export async function createApp(): Promise<FastifyInstance> {
   }, async () => ({
     status: 'ok',
     timestamp: Date.now(),
+    // process.uptime() is the real, honest signal here - this app doesn't track historical
+    // downtime, so it deliberately doesn't report a fabricated SLA percentage.
+    uptimeSeconds: Math.floor(process.uptime()),
   }));
 
   app.get('/readyz', {

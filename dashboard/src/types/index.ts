@@ -49,6 +49,17 @@ export interface IngestionStatus {
   storage: IngestionStorageStatus;
 }
 
+export interface RequestLogEntry {
+  timestamp: number;
+  method: string;
+  path: string;
+  user: string;
+  rbacDecision: 'allowed' | 'denied' | 'anonymous';
+  rateLimitRemaining: number | null;
+  statusCode: number;
+  latencyMs: number;
+}
+
 export interface AuditLogEntry {
   id: string;
   timestamp: number;
@@ -85,6 +96,9 @@ export interface SessionInfo {
   createdAt: number;
   expiresAt: number;
   lastUsedAt?: number;
+  rotationCount: number;
+  lastKnownIp: string;
+  ipChangedAtLastRotation: boolean;
 }
 
 export interface UserInfo {

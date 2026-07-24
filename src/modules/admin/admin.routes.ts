@@ -37,6 +37,7 @@ import { env } from '../../config/index.js';
 import { AuditEventType } from '../audit/audit.types.js';
 import { getClientIp, getRequestId } from '../../lib/requestContext.js';
 import { upstreamCircuitBreaker } from '../../lib/httpClient.js';
+import { getRecentRequests } from '../../lib/requestTelemetry.js';
 import type { PostgresClient } from '../ingestion/normalized-event.store.js';
 
 /**
@@ -93,7 +94,12 @@ export async function registerAdminRoutes(
   const postgresPool = env.storage.postgresUrl ? await createPostgresClient() : undefined;
   const ingestionService = new IngestionService(redis, incidentService, postgresPool);
   await ingestionService.initialize();
+  ingestionService.start();
   const ingestionController = new IngestionController(ingestionService);
+
+  app.addHook('onClose', async () => {
+    ingestionService.stop();
+  });
 
   if (postgresPool) {
     app.addHook('onClose', async () => {
@@ -179,6 +185,36 @@ export async function registerAdminRoutes(
       preHandler: adminAuth,
     },
     ingestionController.getStatus.bind(ingestionController)
+  );
+
+  /**
+   * GET /admin/requests/live
+   * Rolling log of recent requests (method, path, authenticated user, RBAC decision,
+   * rate limit remaining, status, latency) - powers the dashboard's Request Inspector.
+   * Polled rather than pushed over SSE; the data changes fast enough that a 2s poll
+   * interval on the client is indistinguishable from a push for this use case, without
+   * a second raw SSE writer to maintain alongside /admin/metrics/realtime.
+   */
+  app.get(
+    '/admin/requests/live',
+    {
+      schema: {
+        description: 'Get the most recent requests through the gateway',
+        tags: ['Admin'],
+        security: [{ bearerAuth: [] }],
+        querystring: {
+          type: 'object',
+          properties: {
+            limit: { type: 'number', minimum: 1, maximum: 100, default: 20 },
+          },
+        },
+      },
+      preHandler: metricsAuth,
+    },
+    async (request: FastifyRequest) => {
+      const { limit } = request.query as { limit?: number };
+      return { requests: getRecentRequests(limit ?? 20) };
+    }
   );
 
   /**

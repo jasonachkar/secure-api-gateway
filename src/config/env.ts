@@ -124,8 +124,13 @@ const envSchema = z
 
     // Ingestion Adapters
     CLOUDWATCH_LOG_GROUP: z.string().optional(),
+    AWS_REGION: z.string().optional(),
+    AWS_ACCESS_KEY_ID: z.string().optional(),
+    AWS_SECRET_ACCESS_KEY: z.string().optional(),
     GCP_LOGGING_PROJECT: z.string().optional(),
+    GCP_SERVICE_ACCOUNT_KEY: z.string().optional(),
     AZURE_SENTINEL_WORKSPACE: z.string().optional(),
+    INGESTION_POLL_INTERVAL_MS: z.coerce.number().int().min(10000).default(60000),
 
     // Request Limits
     BODY_LIMIT: z.coerce.number().int().min(1024).default(1048576), // 1MB default
@@ -324,8 +329,13 @@ export const env = {
   },
   ingestion: {
     cloudwatchLogGroup: validatedEnv.CLOUDWATCH_LOG_GROUP,
+    awsRegion: validatedEnv.AWS_REGION,
+    awsAccessKeyId: validatedEnv.AWS_ACCESS_KEY_ID,
+    awsSecretAccessKey: validatedEnv.AWS_SECRET_ACCESS_KEY,
     gcpLoggingProject: validatedEnv.GCP_LOGGING_PROJECT,
+    gcpServiceAccountKey: validatedEnv.GCP_SERVICE_ACCOUNT_KEY,
     azureSentinelWorkspace: validatedEnv.AZURE_SENTINEL_WORKSPACE,
+    pollIntervalMs: validatedEnv.INGESTION_POLL_INTERVAL_MS,
   },
   storage: {
     postgresUrl: validatedEnv.POSTGRES_URL,

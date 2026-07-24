@@ -8,6 +8,9 @@ import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
 import { SectionHeader } from '../components/SectionHeader';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
+import { useToast } from '../contexts/ToastContext';
 import { adminApi } from '../api/admin';
 import type { UserInfo } from '../types';
 
@@ -15,6 +18,8 @@ export function Users() {
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [pendingUnlock, setPendingUnlock] = useState<{ userId: string; username: string } | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     fetchUsers();
@@ -32,17 +37,17 @@ export function Users() {
     }
   };
 
-  const handleUnlock = async (userId: string, username: string) => {
-    if (!confirm(`Unlock account for ${username}?`)) {
-      return;
-    }
+  const handleUnlock = async () => {
+    if (!pendingUnlock) return;
+    const { userId, username } = pendingUnlock;
+    setPendingUnlock(null);
 
     try {
       await adminApi.unlockUser(userId);
       await fetchUsers();
-      alert('User unlocked successfully');
+      showToast(`${username}'s account has been unlocked`, 'success');
     } catch (err: any) {
-      alert('Failed to unlock user: ' + err.message);
+      showToast('Failed to unlock user: ' + err.message, 'error');
     }
   };
 
@@ -55,7 +60,7 @@ export function Users() {
           actions={<Button onClick={fetchUsers}>Refresh</Button>}
         />
 
-        {loading && <div className="empty-state">Loading users...</div>}
+        {loading && <PageLoadingSkeleton cardCount={2} showMetrics={false} />}
 
         {error && <div className="alert alert--danger">{error}</div>}
 
@@ -78,7 +83,7 @@ export function Users() {
                         variant="success"
                         size="sm"
                         className="button-nowrap"
-                        onClick={() => handleUnlock(user.userId, user.username)}
+                        onClick={() => setPendingUnlock({ userId: user.userId, username: user.username })}
                       >
                         Unlock Account
                       </Button>
@@ -128,6 +133,16 @@ export function Users() {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={pendingUnlock !== null}
+        title="Unlock account"
+        message={pendingUnlock ? `Unlock account for ${pendingUnlock.username}?` : ''}
+        confirmLabel="Unlock"
+        confirmVariant="success"
+        onConfirm={handleUnlock}
+        onCancel={() => setPendingUnlock(null)}
+      />
     </Layout>
   );
 }

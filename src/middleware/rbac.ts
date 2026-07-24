@@ -131,6 +131,7 @@ export function requireRole(requiredRole: string) {
 
       await logPermissionDenied(request, user, `role:${requiredRole}`);
 
+      (request as any).rbacDecision = 'denied';
       throw new ForbiddenError(`Required role: ${requiredRole}`);
     }
   };
@@ -166,6 +167,7 @@ export function requireAnyRole(requiredRoles: string[]) {
         'Access denied: insufficient role'
       );
 
+      (request as any).rbacDecision = 'denied';
       throw new ForbiddenError(`Required one of roles: ${requiredRoles.join(', ')}`);
     }
   };
@@ -204,6 +206,7 @@ export function requirePermission(requiredPermission: string) {
 
       await logPermissionDenied(request, user, requiredPermission);
 
+      (request as any).rbacDecision = 'denied';
       throw new ForbiddenError(`Required permission: ${requiredPermission}`, requiredPermission);
     }
   };
@@ -241,6 +244,7 @@ export function requireAnyPermission(requiredPermissions: string[]) {
 
       await logPermissionDenied(request, user, requiredPermissions[0]);
 
+      (request as any).rbacDecision = 'denied';
       throw new ForbiddenError(
         `Required one of permissions: ${requiredPermissions.join(', ')}`,
         requiredPermissions[0]
@@ -276,6 +280,7 @@ export function requireAllPermissions(requiredPermissions: string[]) {
 
       await logPermissionDenied(request, user, requiredPermissions[0]);
 
+      (request as any).rbacDecision = 'denied';
       throw new ForbiddenError(
         `Required all permissions: ${requiredPermissions.join(', ')}`,
         requiredPermissions[0]

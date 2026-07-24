@@ -4,8 +4,29 @@
  */
 
 import { Link } from 'react-router-dom';
+import { ShieldCheck, Radar, ClipboardCheck } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
+import { ArchitectureDiagram } from '../components/ArchitectureDiagram';
+import { LiveTrafficPreview } from '../components/LiveTrafficPreview';
+
+const FEATURE_HIGHLIGHTS = [
+  {
+    icon: ShieldCheck,
+    title: 'OWASP API Top 10 Coverage',
+    description: 'Every risk on the list has a real, working mitigation - not a checklist.',
+  },
+  {
+    icon: Radar,
+    title: 'Real-time Threat Intelligence',
+    description: 'IP reputation scoring, geo-distribution, and attack-pattern detection, live.',
+  },
+  {
+    icon: ClipboardCheck,
+    title: 'Multi-framework Compliance',
+    description: 'NIST, OWASP, PCI DSS, and GDPR scoring, each control linked to the code that implements it.',
+  },
+];
 
 export function Landing() {
   return (
@@ -24,23 +45,28 @@ export function Landing() {
         </div>
       </header>
 
-      <section className="landing-hero landing-container">
-        <h1 className="landing-hero__title">Production-Grade API Gateway</h1>
-        <p className="landing-hero__subtitle">
-          A comprehensive demonstration of enterprise-level security patterns, OWASP API Top 10 mitigations, and modern
-          authentication/authorization flows. Built with Node.js, TypeScript, and Fastify.
-        </p>
-        <div className="landing-actions">
-          <Link to="/login">
-            <Button variant="primary" size="lg">
-              Try Live Demo →
-            </Button>
-          </Link>
-          <a href="#features" className="landing-link">
-            <Button variant="ghost" size="lg">
-              Learn More
-            </Button>
-          </a>
+      <section className="landing-hero landing-container landing-hero--split">
+        <div className="landing-hero__copy">
+          <h1 className="landing-hero__title landing-hero__title--left">Production-Grade API Security — Live Demo</h1>
+          <p className="landing-hero__subtitle landing-hero__subtitle--left">
+            A working API gateway with real JWT auth, RBAC, rate limiting, threat intelligence, and incident response
+            - not screenshots. Sign in and watch it react to real traffic in real time.
+          </p>
+          <div className="landing-actions landing-actions--left">
+            <Link to="/login">
+              <Button variant="primary" size="lg">
+                Try Live Demo →
+              </Button>
+            </Link>
+            <a href="https://github.com/jasonachkar/secure-api-gateway" target="_blank" rel="noopener noreferrer" className="landing-link">
+              <Button variant="ghost" size="lg">
+                View on GitHub
+              </Button>
+            </a>
+          </div>
+        </div>
+        <div className="landing-hero__widget">
+          <LiveTrafficPreview />
         </div>
       </section>
 
@@ -65,47 +91,25 @@ export function Landing() {
       <section id="features" className="landing-section">
         <div className="landing-container">
           <h2 className="landing-section__title">Key Features</h2>
-          <div className="landing-grid">
-            {[
-              {
-                icon: '🔐',
-                title: 'Authentication & Authorization',
-                description:
-                  'JWT-based authentication with token rotation, RBAC with granular permissions, and account lockout mechanisms.',
-              },
-              {
-                icon: '🛡️',
-                title: 'Security & OWASP Mitigations',
-                description:
-                  'Full OWASP API Top 10 coverage, Redis-backed rate limiting, request validation, security headers, and SSRF protection.',
-              },
-              {
-                icon: '📊',
-                title: 'Security Monitoring Dashboard',
-                description: 'Real-time metrics, threat intelligence, incident response, and comprehensive audit logging.',
-              },
-              {
-                icon: '✅',
-                title: 'Compliance Monitoring',
-                description: 'Security posture scoring with NIST, OWASP, PCI, and GDPR compliance frameworks.',
-              },
-              {
-                icon: '⚡',
-                title: 'Performance & Scalability',
-                description: 'Fastify-based architecture, horizontal scaling support, distributed rate limiting via Redis.',
-              },
-              {
-                icon: '🔍',
-                title: 'Observability',
-                description: 'Structured logging, health checks, OpenAPI documentation, and real-time metrics streaming.',
-              },
-            ].map((feature, idx) => (
-              <Card key={idx} className="landing-feature-card">
-                <div className="landing-feature-icon">{feature.icon}</div>
-                <div className="section-title">{feature.title}</div>
-                <p className="section-subtitle">{feature.description}</p>
-              </Card>
-            ))}
+          <div className="landing-split-grid">
+            <Card className="landing-architecture-card">
+              <div className="section-title">Security Architecture</div>
+              <p className="section-subtitle" style={{ marginBottom: 'var(--space-md)' }}>
+                Every request passes through a real middleware chain before it ever reaches an upstream service.
+              </p>
+              <ArchitectureDiagram />
+            </Card>
+            <div className="landing-highlight-stack">
+              {FEATURE_HIGHLIGHTS.map((feature) => (
+                <div key={feature.title} className="landing-highlight">
+                  <feature.icon size={22} className="landing-highlight__icon" aria-hidden="true" />
+                  <div>
+                    <div className="landing-highlight__title">{feature.title}</div>
+                    <p className="landing-highlight__description">{feature.description}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -114,7 +118,29 @@ export function Landing() {
         <div className="landing-container">
           <h2 className="landing-section__title">Technology Stack</h2>
           <div className="landing-chip-row">
-            {['Node.js', 'TypeScript', 'Fastify', 'React', 'Redis', 'JWT', 'Zod', 'Pino', 'OpenAPI'].map((tech) => (
+            {[
+              { name: 'Node.js', slug: 'nodedotjs' },
+              { name: 'TypeScript', slug: 'typescript' },
+              { name: 'Fastify', slug: 'fastify' },
+              { name: 'React', slug: 'react' },
+              { name: 'Redis', slug: 'redis' },
+              { name: 'JWT', slug: 'jsonwebtokens' },
+            ].map((tech) => (
+              <span key={tech.name} className="tech-chip tech-chip--logo">
+                <img
+                  src={`https://cdn.simpleicons.org/${tech.slug}`}
+                  alt=""
+                  width={16}
+                  height={16}
+                  loading="lazy"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+                {tech.name}
+              </span>
+            ))}
+            {['Zod', 'Pino', 'OpenAPI'].map((tech) => (
               <span key={tech} className="tech-chip">
                 {tech}
               </span>

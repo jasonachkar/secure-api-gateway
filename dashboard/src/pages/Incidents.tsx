@@ -5,12 +5,16 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { MetricCard } from '../components/MetricCard';
 import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
 import { SectionHeader } from '../components/SectionHeader';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
+import { useToast } from '../contexts/ToastContext';
 import { adminApi } from '../api/admin';
 import type { Incident, IncidentStatistics, IncidentStatus, IncidentSeverity, IncidentType, IncidentTimelineEntry, IncidentTimelineEntryType } from '../types';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -30,11 +34,11 @@ const statusBadgeClass: Record<IncidentStatus, string> = {
   closed: 'badge-status-closed',
 };
 
-const timelineTypeStyles: Record<IncidentTimelineEntryType, { label: string; bg: string; text: string; border: string }> = {
-  note: { label: 'Note', bg: '#e0f2fe', text: '#0369a1', border: '#7dd3fc' },
-  status_change: { label: 'Status', bg: '#fef9c3', text: '#92400e', border: '#facc15' },
-  assignment: { label: 'Assignment', bg: '#ede9fe', text: '#6d28d9', border: '#c4b5fd' },
-  action: { label: 'Action', bg: '#dcfce7', text: '#166534', border: '#86efac' },
+const timelineTypeStyles: Record<IncidentTimelineEntryType, { label: string; className: string }> = {
+  note: { label: 'Note', className: 'timeline-dot--note' },
+  status_change: { label: 'Status', className: 'timeline-dot--status' },
+  assignment: { label: 'Assignment', className: 'timeline-dot--assignment' },
+  action: { label: 'Action', className: 'timeline-dot--action' },
 };
 
 const playbookActions = [
@@ -108,6 +112,11 @@ const buildTimelineEntries = (incident: Incident): IncidentTimelineEntry[] => {
   return fallback.sort((a, b) => a.timestamp - b.timestamp);
 };
 
+type TextPromptMode =
+  | { kind: 'assign'; incidentId: string }
+  | { kind: 'note'; incidentId: string }
+  | { kind: 'playbook'; incidentId: string; action: (typeof playbookActions)[number] };
+
 export function Incidents() {
   const [searchParams] = useSearchParams();
   const incidentIdParam = searchParams.get('incidentId');
@@ -120,6 +129,9 @@ export function Incidents() {
   const [filterStatus, setFilterStatus] = useState<IncidentStatus | 'all'>('all');
   const [filterSeverity, setFilterSeverity] = useState<IncidentSeverity | 'all'>('all');
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+  const [expandedTimelines, setExpandedTimelines] = useState<Set<string>>(new Set());
+  const [textPrompt, setTextPrompt] = useState<TextPromptMode | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     fetchData();
@@ -156,6 +168,18 @@ export function Incidents() {
     }
   };
 
+  const toggleTimeline = (incidentId: string) => {
+    setExpandedTimelines((prev) => {
+      const next = new Set(prev);
+      if (next.has(incidentId)) {
+        next.delete(incidentId);
+      } else {
+        next.add(incidentId);
+      }
+      return next;
+    });
+  };
+
   const handleStatusChange = async (id: string, newStatus: IncidentStatus) => {
     try {
       await adminApi.updateIncidentStatus(id, newStatus);
@@ -165,56 +189,52 @@ export function Incidents() {
         setSelectedIncident(updated);
       }
     } catch (err: any) {
-      alert('Failed to update status: ' + err.message);
+      showToast('Failed to update status: ' + err.message, 'error');
     }
   };
 
-  const handleAssign = async (id: string) => {
-    const assignedTo = prompt('Assign to (username):');
-    if (!assignedTo) return;
+  const handleTextPromptConfirm = async (value?: string) => {
+    if (!textPrompt || !value) {
+      setTextPrompt(null);
+      return;
+    }
+    const { kind, incidentId } = textPrompt;
+    setTextPrompt(null);
 
     try {
-      await adminApi.assignIncident(id, assignedTo);
+      if (kind === 'assign') {
+        await adminApi.assignIncident(incidentId, value);
+      } else if (kind === 'note') {
+        await adminApi.addIncidentNote(incidentId, value);
+      } else if (kind === 'playbook') {
+        setActionInProgress(textPrompt.action.key);
+        await adminApi.runIncidentAction(incidentId, textPrompt.action.key, value);
+      }
       await fetchData();
-      if (selectedIncident?.id === id) {
-        const updated = await adminApi.getIncident(id);
+      if (selectedIncident?.id === incidentId) {
+        const updated = await adminApi.getIncident(incidentId);
         setSelectedIncident(updated);
       }
+      showToast(kind === 'assign' ? 'Incident assigned' : kind === 'note' ? 'Note added' : 'Playbook action executed', 'success');
     } catch (err: any) {
-      alert('Failed to assign incident: ' + err.message);
+      showToast(`Failed to ${kind === 'assign' ? 'assign incident' : kind === 'note' ? 'add note' : 'execute playbook action'}: ${err.message}`, 'error');
+    } finally {
+      setActionInProgress(null);
     }
   };
 
-  const handleAddNote = async (id: string) => {
-    const content = prompt('Add note:');
-    if (!content) return;
-
-    try {
-      await adminApi.addIncidentNote(id, content);
-      await fetchData();
-      if (selectedIncident?.id === id) {
-        const updated = await adminApi.getIncident(id);
-        setSelectedIncident(updated);
-      }
-    } catch (err: any) {
-      alert('Failed to add note: ' + err.message);
-    }
-  };
-
-  const handlePlaybookAction = async (id: string, action: typeof playbookActions[number]) => {
-    const target = action.promptLabel ? prompt(`${action.promptLabel}:`) : '';
-    if (action.promptLabel && !target) return;
-
+  const handlePlaybookActionNoInput = async (id: string, action: (typeof playbookActions)[number]) => {
     try {
       setActionInProgress(action.key);
-      await adminApi.runIncidentAction(id, action.key, target || undefined);
+      await adminApi.runIncidentAction(id, action.key);
       await fetchData();
       if (selectedIncident?.id === id) {
         const updated = await adminApi.getIncident(id);
         setSelectedIncident(updated);
       }
+      showToast('Playbook action executed', 'success');
     } catch (err: any) {
-      alert('Failed to execute playbook action: ' + err.message);
+      showToast('Failed to execute playbook action: ' + err.message, 'error');
     } finally {
       setActionInProgress(null);
     }
@@ -245,9 +265,13 @@ export function Incidents() {
           }
         />
 
-        {loading && <div className="empty-state">Loading incidents...</div>}
+        {loading && <PageLoadingSkeleton cardCount={4} />}
 
-        {error && <div className="alert alert--danger">{error}</div>}
+        {error && (
+          <div className="alert alert--danger" role="alert">
+            {error}
+          </div>
+        )}
 
         {!loading && !error && statistics && (
           <div className="page-stack">
@@ -281,6 +305,7 @@ export function Incidents() {
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value as IncidentStatus | 'all')}
                 className="form-control"
+                aria-label="Filter by status"
               >
                 <option value="all">All Statuses</option>
                 <option value="open">Open</option>
@@ -293,6 +318,7 @@ export function Incidents() {
                 value={filterSeverity}
                 onChange={(e) => setFilterSeverity(e.target.value as IncidentSeverity | 'all')}
                 className="form-control"
+                aria-label="Filter by severity"
               >
                 <option value="all">All Severities</option>
                 <option value="critical">Critical</option>
@@ -310,15 +336,20 @@ export function Incidents() {
                   const severityClass = severityBadgeClass[incident.severity];
                   const statusClass = statusBadgeClass[incident.status];
                   const cardClass = `incident-card incident-card--${incident.severity}`;
+                  const isTimelineExpanded = expandedTimelines.has(incident.id);
+                  const cardTimeline = buildTimelineEntries(incident);
 
                   return (
-                    <Card
-                      key={incident.id}
-                      className={cardClass}
-                      onClick={() => setSelectedIncident(incident)}
-                      role="button"
-                    >
-                      <div className="page-stack flex-1">
+                    <Card key={incident.id} className={cardClass}>
+                      <div
+                        className="page-stack flex-1"
+                        onClick={() => setSelectedIncident(incident)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') setSelectedIncident(incident);
+                        }}
+                      >
                         <div className="card-header">
                           <div>
                             <div className="section-title">{incident.title}</div>
@@ -355,6 +386,41 @@ export function Incidents() {
                           )}
                         </div>
                       </div>
+
+                      <button
+                        type="button"
+                        className="incident-card__timeline-toggle"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleTimeline(incident.id);
+                        }}
+                        aria-expanded={isTimelineExpanded}
+                        aria-controls={`timeline-${incident.id}`}
+                      >
+                        {isTimelineExpanded ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
+                        Timeline ({cardTimeline.length})
+                      </button>
+
+                      {isTimelineExpanded && (
+                        <div id={`timeline-${incident.id}`} className="commit-timeline">
+                          {cardTimeline.map((entry) => (
+                            <div key={entry.id} className="commit-timeline__entry">
+                              <span className={`commit-timeline__dot ${timelineTypeStyles[entry.type].className}`} aria-hidden="true" />
+                              <div className="commit-timeline__content">
+                                <div className="commit-timeline__header">
+                                  <span className="commit-timeline__type">{timelineTypeStyles[entry.type].label}</span>
+                                  <span className="commit-timeline__time text-mono">
+                                    {format(new Date(entry.timestamp), 'MMM dd HH:mm:ss')}
+                                  </span>
+                                </div>
+                                <div className="commit-timeline__summary">{entry.summary}</div>
+                                <div className="commit-timeline__actor text-mono">actor: {entry.actor}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       <div className="incident-actions">
                         <Button
                           size="sm"
@@ -392,7 +458,7 @@ export function Incidents() {
                     </Badge>
                   </div>
                 </div>
-                <button className="modal__close" onClick={() => setSelectedIncident(null)}>
+                <button className="modal__close" onClick={() => setSelectedIncident(null)} aria-label="Close incident details">
                   ×
                 </button>
               </div>
@@ -454,94 +520,55 @@ export function Incidents() {
                 )}
               </div>
 
-              <div style={{ marginBottom: '20px' }}>
-                <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>Playbook Actions</h3>
-                <div style={{ display: 'grid', gap: '10px' }}>
+              <div className="incident-modal-section">
+                <h3 className="subsection-title">Playbook Actions</h3>
+                <div className="incident-playbook-list">
                   {playbookActions.map((action) => (
-                    <div
-                      key={action.key}
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        padding: '12px 14px',
-                        borderRadius: '8px',
-                        border: '1px solid #e2e8f0',
-                        backgroundColor: '#f8fafc',
-                      }}
-                    >
+                    <div key={action.key} className="incident-playbook-item">
                       <div>
-                        <div style={{ fontWeight: '600', marginBottom: '4px' }}>{action.label}</div>
-                        <div style={{ color: '#64748b', fontSize: '13px' }}>{action.description}</div>
+                        <div className="incident-playbook-item__label">{action.label}</div>
+                        <div className="incident-playbook-item__description">{action.description}</div>
                       </div>
                       <button
-                        onClick={() => handlePlaybookAction(selectedIncident.id, action)}
+                        className="ui-button ui-button--sm ui-button--secondary"
+                        onClick={() =>
+                          action.promptLabel
+                            ? setTextPrompt({ kind: 'playbook', incidentId: selectedIncident.id, action })
+                            : handlePlaybookActionNoInput(selectedIncident.id, action)
+                        }
                         disabled={actionInProgress === action.key}
-                        style={{
-                          backgroundColor: actionInProgress === action.key ? '#94a3b8' : '#0f172a',
-                          color: 'white',
-                          padding: '8px 14px',
-                          border: 'none',
-                          borderRadius: '6px',
-                          cursor: actionInProgress === action.key ? 'wait' : 'pointer',
-                          fontSize: '12px',
-                          fontWeight: '600',
-                        }}
                       >
-                        {actionInProgress === action.key ? 'Running...' : 'Run'}
+                        {actionInProgress === action.key ? 'Running…' : 'Run'}
                       </button>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div style={{ marginBottom: '20px' }}>
-                <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>Timeline</h3>
-                <div style={{ maxHeight: '260px', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div className="incident-modal-section">
+                <h3 className="subsection-title">Timeline</h3>
+                <div className="commit-timeline commit-timeline--scroll">
                   {timelineEntries.length === 0 ? (
-                    <div style={{ color: '#94a3b8', fontSize: '14px' }}>No timeline events yet</div>
+                    <div className="empty-text">No timeline events yet</div>
                   ) : (
-                    timelineEntries.map((entry) => {
-                      const style = timelineTypeStyles[entry.type];
-                      return (
-                        <div
-                          key={entry.id}
-                          style={{
-                            padding: '12px',
-                            borderRadius: '8px',
-                            border: `1px solid ${style.border}`,
-                            backgroundColor: 'white',
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span
-                                style={{
-                                  padding: '2px 8px',
-                                  borderRadius: '999px',
-                                  backgroundColor: style.bg,
-                                  color: style.text,
-                                  fontSize: '11px',
-                                  fontWeight: '600',
-                                }}
-                              >
-                                {style.label}
-                              </span>
-                              <span style={{ fontWeight: '600', fontSize: '14px' }}>{entry.summary}</span>
-                            </div>
-                            <span style={{ color: '#64748b', fontSize: '12px' }}>
+                    timelineEntries.map((entry) => (
+                      <div key={entry.id} className="commit-timeline__entry">
+                        <span className={`commit-timeline__dot ${timelineTypeStyles[entry.type].className}`} aria-hidden="true" />
+                        <div className="commit-timeline__content">
+                          <div className="commit-timeline__header">
+                            <span className="commit-timeline__type">{timelineTypeStyles[entry.type].label}</span>
+                            <span className="commit-timeline__time text-mono">
                               {format(new Date(entry.timestamp), 'MMM dd, HH:mm')} · {formatDistanceToNow(new Date(entry.timestamp), { addSuffix: true })}
                             </span>
                           </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: '12px' }}>
-                            <span>Actor: <strong style={{ color: '#0f172a' }}>{entry.actor}</strong></span>
-                            {entry.type === 'action' && (
-                              <span style={{ color: '#16a34a', fontWeight: '600' }}>Audit logged</span>
-                            )}
+                          <div className="commit-timeline__summary">{entry.summary}</div>
+                          <div className="commit-timeline__actor text-mono">
+                            actor: {entry.actor}
+                            {entry.type === 'action' && <span className="text-success"> · audit logged</span>}
                           </div>
                         </div>
-                      );
-                    })
+                      </div>
+                    ))
                   )}
                 </div>
 
@@ -550,6 +577,7 @@ export function Incidents() {
                     value={selectedIncident.status}
                     onChange={(e) => handleStatusChange(selectedIncident.id, e.target.value as IncidentStatus)}
                     className="form-control"
+                    aria-label="Change incident status"
                   >
                     <option value="open">Open</option>
                     <option value="investigating">Investigating</option>
@@ -557,10 +585,10 @@ export function Incidents() {
                     <option value="resolved">Resolved</option>
                     <option value="closed">Closed</option>
                   </select>
-                  <Button variant="secondary" onClick={() => handleAssign(selectedIncident.id)}>
+                  <Button variant="secondary" onClick={() => setTextPrompt({ kind: 'assign', incidentId: selectedIncident.id })}>
                     Assign
                   </Button>
-                  <Button onClick={() => handleAddNote(selectedIncident.id)}>Add Note</Button>
+                  <Button onClick={() => setTextPrompt({ kind: 'note', incidentId: selectedIncident.id })}>Add Note</Button>
                 </div>
               </div>
             </div>
@@ -585,6 +613,31 @@ export function Incidents() {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={textPrompt !== null}
+        title={
+          textPrompt?.kind === 'assign'
+            ? 'Assign incident'
+            : textPrompt?.kind === 'note'
+              ? 'Add note'
+              : textPrompt?.kind === 'playbook'
+                ? textPrompt.action.label
+                : ''
+        }
+        reasonLabel={
+          textPrompt?.kind === 'assign'
+            ? 'Assign to (username)'
+            : textPrompt?.kind === 'note'
+              ? 'Note'
+              : textPrompt?.kind === 'playbook'
+                ? textPrompt.action.promptLabel
+                : undefined
+        }
+        confirmLabel={textPrompt?.kind === 'playbook' ? 'Run' : 'Save'}
+        onConfirm={handleTextPromptConfirm}
+        onCancel={() => setTextPrompt(null)}
+      />
     </Layout>
   );
 }
@@ -596,6 +649,7 @@ function CreateIncidentForm({ onSuccess, onCancel }: { onSuccess: () => void; on
   const [severity, setSeverity] = useState<IncidentSeverity>('medium');
   const [affectedIPs, setAffectedIPs] = useState('');
   const [tags, setTags] = useState('');
+  const { showToast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -610,15 +664,16 @@ function CreateIncidentForm({ onSuccess, onCancel }: { onSuccess: () => void; on
       });
       onSuccess();
     } catch (err: any) {
-      alert('Failed to create incident: ' + err.message);
+      showToast('Failed to create incident: ' + err.message, 'error');
     }
   };
 
   return (
     <form onSubmit={handleSubmit} className="page-stack">
       <div className="form-field">
-        <label className="form-label">Title *</label>
+        <label className="form-label" htmlFor="incident-title">Title *</label>
         <input
+          id="incident-title"
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -627,8 +682,9 @@ function CreateIncidentForm({ onSuccess, onCancel }: { onSuccess: () => void; on
         />
       </div>
       <div className="form-field">
-        <label className="form-label">Description *</label>
+        <label className="form-label" htmlFor="incident-description">Description *</label>
         <textarea
+          id="incident-description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           required
@@ -638,8 +694,9 @@ function CreateIncidentForm({ onSuccess, onCancel }: { onSuccess: () => void; on
       </div>
       <div className="form-grid">
         <div>
-          <label className="form-label">Type *</label>
+          <label className="form-label" htmlFor="incident-type">Type *</label>
           <select
+            id="incident-type"
             value={type}
             onChange={(e) => setType(e.target.value as IncidentType)}
             required
@@ -658,8 +715,9 @@ function CreateIncidentForm({ onSuccess, onCancel }: { onSuccess: () => void; on
           </select>
         </div>
         <div>
-          <label className="form-label">Severity *</label>
+          <label className="form-label" htmlFor="incident-severity">Severity *</label>
           <select
+            id="incident-severity"
             value={severity}
             onChange={(e) => setSeverity(e.target.value as IncidentSeverity)}
             required
@@ -673,8 +731,9 @@ function CreateIncidentForm({ onSuccess, onCancel }: { onSuccess: () => void; on
         </div>
       </div>
       <div className="form-field">
-        <label className="form-label">Affected IPs (comma-separated)</label>
+        <label className="form-label" htmlFor="incident-ips">Affected IPs (comma-separated)</label>
         <input
+          id="incident-ips"
           type="text"
           value={affectedIPs}
           onChange={(e) => setAffectedIPs(e.target.value)}
@@ -683,8 +742,9 @@ function CreateIncidentForm({ onSuccess, onCancel }: { onSuccess: () => void; on
         />
       </div>
       <div className="form-field">
-        <label className="form-label">Tags (comma-separated)</label>
+        <label className="form-label" htmlFor="incident-tags">Tags (comma-separated)</label>
         <input
+          id="incident-tags"
           type="text"
           value={tags}
           onChange={(e) => setTags(e.target.value)}

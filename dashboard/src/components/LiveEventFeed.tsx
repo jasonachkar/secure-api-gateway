@@ -1,12 +1,13 @@
 /**
  * Enhanced Live Event Feed Component
- * Shows real-time security events with improved design and animations
+ * Shows real-time security events with improved design and animations. Each row is
+ * clickable and opens a drill-down drawer (see Dashboard.tsx, which owns the Drawer).
  */
 
-import { useState, useEffect, type CSSProperties } from 'react';
+import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 
-interface SecurityEvent {
+export interface SecurityEvent {
   timestamp: number;
   type: string;
   severity: 'info' | 'warning' | 'critical';
@@ -18,6 +19,7 @@ interface SecurityEvent {
 interface LiveEventFeedProps {
   events: SecurityEvent[];
   maxEvents?: number;
+  onSelectEvent?: (event: SecurityEvent) => void;
 }
 
 const severityIcons = {
@@ -26,7 +28,7 @@ const severityIcons = {
   critical: '🚨',
 };
 
-export function LiveEventFeed({ events, maxEvents = 10 }: LiveEventFeedProps) {
+export function LiveEventFeed({ events, maxEvents = 10, onSelectEvent }: LiveEventFeedProps) {
   const [displayEvents, setDisplayEvents] = useState<SecurityEvent[]>([]);
 
   useEffect(() => {
@@ -59,12 +61,17 @@ export function LiveEventFeed({ events, maxEvents = 10 }: LiveEventFeedProps) {
               .filter(Boolean)
               .join(' ');
             return (
-              <div
+              <button
                 key={`${event.timestamp}-${index}`}
-                className={itemClasses}
+                type="button"
+                className={`${itemClasses} live-feed__item-button`}
+                onClick={() => onSelectEvent?.(event)}
+                aria-label={`View details for event: ${event.message}`}
               >
                 <div className="live-feed__item-header">
-                  <span className="live-feed__item-icon">{icon}</span>
+                  <span className="live-feed__item-icon" aria-hidden="true">
+                    {icon}
+                  </span>
                   <div className="live-feed__item-body">
                     <div className="live-feed__item-meta">
                       <span className="live-feed__item-type">
@@ -74,9 +81,6 @@ export function LiveEventFeed({ events, maxEvents = 10 }: LiveEventFeedProps) {
                         {format(new Date(event.timestamp), 'HH:mm:ss')}
                       </span>
                     </div>
-                    <div className="live-feed__item-text">
-                      {event.message}
-                    </div>
                     <div className="live-feed__message">{event.message}</div>
                     {event.username && (
                       <div className="live-feed__item-detail">
@@ -85,7 +89,7 @@ export function LiveEventFeed({ events, maxEvents = 10 }: LiveEventFeedProps) {
                     )}
                   </div>
                 </div>
-              </div>
+              </button>
             );
           })
         )}

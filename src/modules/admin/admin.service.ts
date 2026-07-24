@@ -55,6 +55,12 @@ export class AdminService {
       roles: ['service'],
       permissions: ['read:reports', 'write:reports'],
     },
+    {
+      userId: 'user-4',
+      username: 'sim-target',
+      roles: ['user'],
+      permissions: ['read:reports'],
+    },
   ];
 
   constructor(
@@ -88,6 +94,11 @@ export class AdminService {
             createdAt: metadata.createdAt,
             expiresAt: metadata.expiresAt,
             lastUsedAt: metadata.lastUsedAt,
+            // Defaulted for tokens issued before this field existed (e.g. across a
+            // rolling deploy) rather than leaking `undefined` to the dashboard.
+            rotationCount: metadata.rotationCount ?? 0,
+            lastKnownIp: metadata.lastKnownIp ?? 'unknown',
+            ipChangedAtLastRotation: metadata.ipChangedAtLastRotation ?? false,
           });
         }
       }

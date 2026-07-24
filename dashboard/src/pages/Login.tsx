@@ -4,9 +4,15 @@
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { KeyRound } from 'lucide-react';
 import { adminApi } from '../api/admin';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button';
+
+const DEMO_ACCOUNTS = [
+  { username: 'admin', password: 'Admin123!', label: 'admin (full access)' },
+  { username: 'user', password: 'User123!', label: 'user (read-only)' },
+];
 
 export function Login() {
   const [username, setUsername] = useState('');
@@ -16,27 +22,22 @@ export function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
 
+  const fillDemoCredentials = (account: (typeof DEMO_ACCOUNTS)[number]) => {
+    setUsername(account.username);
+    setPassword(account.password);
+    setError('');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
     try {
-      console.log('Attempting login with:', { username });
       const response = await adminApi.login({ username, password });
-      console.log('Login successful, response:', response);
       login(response.accessToken);
       navigate('/', { replace: true });
     } catch (err: any) {
-      console.error('Login error:', err);
-      console.error('Error details:', {
-        message: err.message,
-        response: err.response?.data,
-        status: err.response?.status,
-        statusText: err.response?.statusText,
-        config: err.config,
-      });
-
       const errorMessage =
         err.response?.data?.error?.message ||
         err.response?.data?.message ||
@@ -56,45 +57,69 @@ export function Login() {
           <h1 className="auth-card__title">🔒 Security Dashboard</h1>
           <p className="auth-card__subtitle">Sign in to access the admin panel</p>
 
+          <div className="demo-banner" role="note">
+            <KeyRound size={18} className="demo-banner__icon" aria-hidden="true" />
+            <div className="demo-banner__content">
+              <div className="demo-banner__title">Demo credentials — no signup required</div>
+              <div className="demo-banner__accounts">
+                {DEMO_ACCOUNTS.map((account) => (
+                  <button
+                    key={account.username}
+                    type="button"
+                    className="demo-banner__fill"
+                    onClick={() => fillDemoCredentials(account)}
+                  >
+                    <span className="text-mono">{account.username}</span> / <span className="text-mono">{account.password}</span>
+                    <span className="demo-banner__fill-hint"> — click to fill</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <form onSubmit={handleSubmit} className="page-stack">
             <div className="form-field">
-              <label className="form-label">Username</label>
+              <label className="form-label" htmlFor="login-username">
+                Username
+              </label>
               <input
+                id="login-username"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
                 className="form-control"
                 placeholder="admin"
+                autoComplete="username"
               />
             </div>
 
             <div className="form-field">
-              <label className="form-label">Password</label>
+              <label className="form-label" htmlFor="login-password">
+                Password
+              </label>
               <input
+                id="login-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 className="form-control"
                 placeholder="••••••••"
+                autoComplete="current-password"
               />
             </div>
 
-            {error && <div className="alert alert--danger">{error}</div>}
+            {error && (
+              <div className="alert alert--danger" role="alert">
+                {error}
+              </div>
+            )}
 
             <Button type="submit" disabled={loading} isLoading={loading} className="button-full">
               {loading ? 'Signing in...' : 'Sign In'}
             </Button>
           </form>
-
-          <div className="auth-help">
-            <strong>Demo credentials:</strong>
-            <br />
-            admin / Admin123!
-            <br />
-            user / User123!
-          </div>
         </div>
       </div>
     </div>

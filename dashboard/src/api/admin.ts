@@ -24,6 +24,7 @@ import type {
   ComplianceMetrics,
   IngestionStatus,
   RuntimeConfig,
+  RequestLogEntry,
 } from '../types';
 import { normalizeIncident, normalizeIncidents } from '../utils/incident';
 
@@ -47,6 +48,11 @@ export const adminApi = {
   getIngestionStatus: async (): Promise<IngestionStatus> => {
     const { data } = await apiClient.get('/admin/ingestion/status');
     return data.status;
+  },
+
+  getRecentRequests: async (limit?: number): Promise<RequestLogEntry[]> => {
+    const { data } = await apiClient.get('/admin/requests/live', { params: { limit } });
+    return data.requests;
   },
 
   // Audit Logs

@@ -11,6 +11,7 @@ import { MetricCard } from '../components/MetricCard';
 import { Card } from '../components/Card';
 import { SectionHeader } from '../components/SectionHeader';
 import { Table, TableHeader, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/Table';
+import { AuditReportExport } from '../components/AuditReportExport';
 import { adminApi } from '../api/admin';
 import { theme } from '../styles/theme';
 import type { AdminAuditLogEntry } from '../types';
@@ -154,9 +155,12 @@ export function AuditLogs() {
               Administrative action history across the platform
             </p>
           </div>
-          <Button variant="ghost" onClick={() => fetchLogs()} disabled={loading}>
-            🔄 Refresh
-          </Button>
+          <div style={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'flex-start' }}>
+            <AuditReportExport />
+            <Button variant="ghost" onClick={() => fetchLogs()} disabled={loading}>
+              🔄 Refresh
+            </Button>
+          </div>
         </div>
 
         <div
@@ -196,6 +200,7 @@ export function AuditLogs() {
           >
             <input
               type="text"
+              aria-label="Filter by actor ID"
               placeholder="Actor ID"
               value={filters.actorId || ''}
               onChange={(e) => handleFilterChange('actorId', e.target.value)}
@@ -207,6 +212,7 @@ export function AuditLogs() {
             />
             <input
               type="text"
+              aria-label="Filter by action"
               placeholder="Action (e.g. incident.update)"
               value={filters.action || ''}
               onChange={(e) => handleFilterChange('action', e.target.value)}
@@ -218,6 +224,7 @@ export function AuditLogs() {
             />
             <input
               type="text"
+              aria-label="Filter by incident ID"
               placeholder="Incident ID"
               value={filters.incidentId || ''}
               onChange={(e) => handleFilterChange('incidentId', e.target.value)}
@@ -282,14 +289,19 @@ export function AuditLogs() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr>
-                    <td
-                      colSpan={4}
-                      style={{ padding: theme.spacing.xl, textAlign: 'center' }}
+                  Array.from({ length: 8 }).map((_, rowIdx) => (
+                    <tr
+                      key={`skeleton-${rowIdx}`}
+                      style={{ borderBottom: `1px solid ${theme.colors.border.light}` }}
+                      aria-hidden="true"
                     >
-                      Loading audit logs...
-                    </td>
-                  </tr>
+                      {['55%', '70%', '65%', '40%'].map((width, cellIdx) => (
+                        <td key={cellIdx} style={{ padding: theme.spacing.md }}>
+                          <div className="skeleton" style={{ height: 14, width }} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))
                 ) : error ? (
                   <tr>
                     <td

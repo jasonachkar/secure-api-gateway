@@ -5,14 +5,19 @@
 
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Sun, Moon, ExternalLink } from 'lucide-react';
 import { adminApi } from '../api/admin';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { Button } from './Button';
+import { HealthCheckPill } from './HealthCheckPill';
 import { theme } from '../styles/theme';
 
 interface LayoutProps {
   children: React.ReactNode;
 }
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: '📊' },
@@ -29,6 +34,7 @@ export function Layout({ children }: LayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout } = useAuth();
+  const { theme: activeTheme, toggleTheme } = useTheme();
   const [demoMode, setDemoMode] = React.useState(false);
   const [demoModeLoaded, setDemoModeLoaded] = React.useState(false);
 
@@ -75,31 +81,54 @@ export function Layout({ children }: LayoutProps) {
       {/* Enhanced Sidebar */}
       <aside className="app-shell__sidebar">
         <div className="app-shell__sidebar-brand">
-          <div className="app-shell__title">
-            <span role="img" aria-label="lock">
-              🔒
-            </span>{' '}
-            Security Dashboard
+          <div className="app-shell__sidebar-brand-row">
+            <div className="app-shell__title">
+              <span role="img" aria-label="lock">
+                🔒
+              </span>{' '}
+              Security Dashboard
+            </div>
+            <button
+              type="button"
+              className="theme-toggle"
+              onClick={toggleTheme}
+              aria-label={activeTheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {activeTheme === 'dark' ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
+            </button>
           </div>
           <div className="app-shell__subtitle">
             Enterprise security hub
+          </div>
+          <div className="app-shell__health">
+            <HealthCheckPill />
           </div>
         </div>
 
         <nav className="app-shell__nav">
           {navItems.map((item) => (
-            <NavLink 
-              key={item.path} 
-              to={item.path} 
+            <NavLink
+              key={item.path}
+              to={item.path}
               active={isActive(item.path)}
               icon={item.icon}
             >
               {item.label}
             </NavLink>
           ))}
+          <a
+            href={`${API_URL}/docs`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="nav-link nav-link--inactive"
+          >
+            <span className="nav-link__icon" aria-hidden="true">📖</span>
+            <span>API Docs</span>
+            <ExternalLink size={12} style={{ marginLeft: 'auto' }} aria-hidden="true" />
+          </a>
         </nav>
 
-        <div style={{ 
+        <div style={{
           paddingTop: theme.spacing.lg,
           borderTop: `1px solid ${theme.colors.neutral[700]}`,
         }}>
@@ -141,9 +170,9 @@ export function Layout({ children }: LayoutProps) {
       </aside>
 
       {/* Enhanced Main Content */}
-      <main style={{ 
-        flex: 1, 
-        backgroundColor: theme.colors.background.secondary, 
+      <main style={{
+        flex: 1,
+        backgroundColor: theme.colors.background.secondary,
         padding: theme.spacing.xl,
         minHeight: '100vh',
         maxWidth: '100%',
@@ -198,7 +227,7 @@ function NavLink({ to, active, icon, children }: NavLinkProps) {
       to={to}
       className={classes}
     >
-      {icon && <span className="nav-link__icon">{icon}</span>}
+      {icon && <span className="nav-link__icon" aria-hidden="true">{icon}</span>}
       <span>{children}</span>
     </Link>
   );

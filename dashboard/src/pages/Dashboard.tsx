@@ -2,18 +2,24 @@
  * Main dashboard page with metrics
  */
 
-import { useState, useEffect, type CSSProperties } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { ChevronDown, ChevronUp, ListTree } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { MetricCard } from '../components/MetricCard';
 import { RequestRateChart } from '../components/RequestRateChart';
 import { ErrorRateChart } from '../components/ErrorRateChart';
 import { ResponseTimeChart } from '../components/ResponseTimeChart';
-import { LiveEventFeed } from '../components/LiveEventFeed';
+import { LiveEventFeed, type SecurityEvent } from '../components/LiveEventFeed';
+import { LiveStatsBar } from '../components/LiveStatsBar';
+import { AttackSimulator } from '../components/AttackSimulator';
+import { RequestInspector } from '../components/RequestInspector';
+import { Drawer } from '../components/Drawer';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { SectionHeader } from '../components/SectionHeader';
 import { useSSE } from '../hooks/useSSE';
+import { useToast } from '../contexts/ToastContext';
 import { adminApi } from '../api/admin';
 import { theme } from '../styles/theme';
 import type { IngestionStatus, SecurityPosture } from '../types';
@@ -43,16 +49,48 @@ interface RealtimeMetrics {
   };
 }
 
-interface SecurityEvent {
-  timestamp: number;
-  type: string;
-  severity: 'info' | 'warning' | 'critical';
-  message: string;
-  userId?: string;
-  username?: string;
-}
+const EVENT_GUIDANCE: Record<string, { rule: string; remediation: string }> = {
+  AUTH_FAILURE: {
+    rule: 'High failed-login rate threshold (>5 in a 5-minute window)',
+    remediation:
+      'Threat intelligence scoring flags the source IP if failures continue; account lockout engages after 5 consecutive failures on one account (see the Users page).',
+  },
+  ACCOUNT_LOCKOUT: {
+    rule: 'Account lockout threshold reached',
+    remediation: 'The account is locked for the configured lockout window. An admin can unlock it from the Users page.',
+  },
+  RATE_LIMIT: {
+    rule: 'Rate limit violation threshold',
+    remediation: 'Requests from this source are being throttled. Sustained abuse raises the source IP\'s threat score (see the Threats page).',
+  },
+  HIGH_ERROR_RATE: {
+    rule: 'Elevated 4xx/5xx error rate threshold (>10%)',
+    remediation: 'Check the Error Rate chart and /admin/upstream-health for a failing upstream.',
+  },
+};
 
 const MAX_HISTORY = 30; // Keep 30 data points (1 minute at 2-second intervals)
+
+/**
+ * Compares the average of the newest half of a history window against the average of
+ * the oldest half, so metric cards can show a real trend instead of a decorative one.
+ * Needs at least 6 points before it bothers (too little data makes the % swing wildly).
+ */
+function computeTrend(values: number[]): { direction: 'up' | 'down' | 'flat'; percentage: number } | undefined {
+  if (values.length < 6) return undefined;
+
+  const mid = Math.floor(values.length / 2);
+  const older = values.slice(0, mid);
+  const newer = values.slice(mid);
+  const olderAvg = older.reduce((sum, v) => sum + v, 0) / older.length;
+  const newerAvg = newer.reduce((sum, v) => sum + v, 0) / newer.length;
+
+  if (olderAvg === 0) return undefined;
+
+  const percentage = ((newerAvg - olderAvg) / olderAvg) * 100;
+  if (Math.abs(percentage) < 2) return { direction: 'flat', percentage: 0 };
+  return { direction: percentage > 0 ? 'up' : 'down', percentage };
+}
 
 export function Dashboard() {
   const [requestRateHistory, setRequestRateHistory] = useState<Array<{ timestamp: number; requests: number }>>([]);
@@ -65,6 +103,10 @@ export function Dashboard() {
   const [infoBannerDismissed, setInfoBannerDismissed] = useState(() => {
     return localStorage.getItem('dashboard-info-banner-dismissed') === 'true';
   });
+  const [selectedEvent, setSelectedEvent] = useState<SecurityEvent | null>(null);
+  const [inspectorExpanded, setInspectorExpanded] = useState(false);
+  const [addingToIncident, setAddingToIncident] = useState(false);
+  const { showToast } = useToast();
 
   const { data, isConnected, error } = useSSE<any>({
     url: `${API_URL}/admin/metrics/realtime`,
@@ -182,17 +224,28 @@ export function Dashboard() {
     }
   }, [data]);
 
-  const statusClass = isConnected ? 'status-pill--success' : 'status-pill--danger';
+  const handleAddToIncident = async () => {
+    if (!selectedEvent) return;
+    setAddingToIncident(true);
+    try {
+      const severity = selectedEvent.severity === 'critical' ? 'critical' : selectedEvent.severity === 'warning' ? 'medium' : 'low';
+      await adminApi.createIncident({
+        title: `${selectedEvent.type.replace(/_/g, ' ')} - ${new Date(selectedEvent.timestamp).toLocaleString()}`,
+        description: selectedEvent.message,
+        type: selectedEvent.type === 'AUTH_FAILURE' || selectedEvent.type === 'ACCOUNT_LOCKOUT' ? 'brute_force' : selectedEvent.type === 'RATE_LIMIT' ? 'rate_limit_abuse' : 'suspicious_activity',
+        severity,
+        tags: ['from-live-feed'],
+      });
+      showToast('Incident created from this event', 'success');
+      setSelectedEvent(null);
+    } catch (err: any) {
+      showToast('Failed to create incident: ' + err.message, 'error');
+    } finally {
+      setAddingToIncident(false);
+    }
+  };
 
-  const gradeClass = posture
-    ? posture.grade === 'A'
-      ? 'posture-grade--A'
-      : posture.grade === 'B'
-        ? 'posture-grade--B'
-        : posture.grade === 'C'
-          ? 'posture-grade--C'
-          : 'posture-grade--D'
-    : '';
+  const statusClass = isConnected ? 'status-pill--success' : 'status-pill--danger';
 
   return (
     <Layout>
@@ -208,8 +261,13 @@ export function Dashboard() {
           }
         />
 
+        <LiveStatsBar
+          totalRequests={currentMetrics?.totalRequests ?? 0}
+          rateLimitViolations={currentMetrics?.rateLimitStats.violations ?? 0}
+        />
+
         {error && (
-          <div className="alert alert--danger">
+          <div className="alert alert--danger" role="alert">
             <strong>Connection Error:</strong> {error}
           </div>
         )}
@@ -240,8 +298,10 @@ export function Dashboard() {
           </div>
         )}
 
+        <AttackSimulator />
+
         {posture && (
-          <div style={{ 
+          <div style={{
             backgroundColor: theme.colors.background.primary,
             padding: theme.spacing.lg,
             borderRadius: theme.borderRadius.lg,
@@ -283,11 +343,11 @@ export function Dashboard() {
 
         {ingestionStatus && (
           <section style={{ marginBottom: theme.spacing.xl }}>
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
               justifyContent: 'space-between',
-              marginBottom: theme.spacing.md 
+              marginBottom: theme.spacing.md
             }}>
               <div>
                 <h2 style={{ ...theme.typography.h3 }}>Ingestion Status</h2>
@@ -295,7 +355,7 @@ export function Dashboard() {
                   Normalized event pipeline health and adapter readiness
                 </p>
               </div>
-              <span style={{ 
+              <span style={{
                 padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
                 borderRadius: theme.borderRadius.md,
                 backgroundColor: ingestionStatus.storage.redisConnected
@@ -311,11 +371,11 @@ export function Dashboard() {
               </span>
             </div>
 
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', 
-              gap: theme.spacing.lg, 
-              marginBottom: theme.spacing.lg 
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: theme.spacing.lg,
+              marginBottom: theme.spacing.lg
             }}>
               <MetricCard
                 title="Normalized Events"
@@ -335,29 +395,29 @@ export function Dashboard() {
               />
             </div>
 
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', 
-              gap: theme.spacing.md 
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+              gap: theme.spacing.md
             }}>
               {ingestionStatus.adapters.map(adapter => (
-                <div key={adapter.provider} style={{ 
+                <div key={adapter.provider} style={{
                   backgroundColor: theme.colors.background.primary,
                   padding: theme.spacing.md,
                   borderRadius: theme.borderRadius.lg,
                   boxShadow: theme.shadows.sm,
                   border: `1px solid ${theme.colors.border.light}`,
                 }}>
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
                     justifyContent: 'space-between',
-                    marginBottom: theme.spacing.xs 
+                    marginBottom: theme.spacing.xs
                   }}>
                     <div style={{ fontWeight: theme.typography.fontWeight.semibold }}>
                       {adapter.name}
                     </div>
-                    <span style={{ 
+                    <span style={{
                       padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
                       borderRadius: theme.borderRadius.md,
                       backgroundColor: adapter.healthy ? theme.colors.success[100] : theme.colors.warning[100],
@@ -368,7 +428,7 @@ export function Dashboard() {
                       {adapter.configured ? 'Configured' : 'Needs setup'}
                     </span>
                   </div>
-                  <div style={{ 
+                  <div style={{
                     ...theme.typography.small,
                     color: theme.colors.text.secondary,
                   }}>
@@ -383,11 +443,18 @@ export function Dashboard() {
         {/* Key Metrics Cards */}
         {currentMetrics && (
           <div className="page-grid page-grid--cards">
-            <MetricCard title="Requests/sec" value={currentMetrics.requestsPerSecond.toFixed(2)} color="blue" />
+            <MetricCard
+              title="Requests/sec"
+              value={currentMetrics.requestsPerSecond.toFixed(2)}
+              color="blue"
+              trend={computeTrend(requestRateHistory.map((p) => p.requests))}
+            />
             <MetricCard
               title="Error Rate"
               value={`${currentMetrics.errorRate.toFixed(2)}%`}
               color={currentMetrics.errorRate > 5 ? 'red' : 'green'}
+              trend={computeTrend(errorRateHistory.map((p) => p.errors4xx + p.errors5xx))}
+              invertTrend
             />
             <MetricCard
               title="Failed Logins"
@@ -418,7 +485,31 @@ export function Dashboard() {
               <ResponseTimeChart data={responseTimeHistory} title="Response Time Percentiles" />
             )}
           </div>
-          <LiveEventFeed events={securityEvents} maxEvents={15} />
+          <LiveEventFeed events={securityEvents} maxEvents={15} onSelectEvent={setSelectedEvent} />
+        </div>
+
+        <div className="simulator-panel">
+          <button
+            className="simulator-panel__toggle"
+            onClick={() => setInspectorExpanded((prev) => !prev)}
+            aria-expanded={inspectorExpanded}
+            aria-controls="request-inspector-body"
+          >
+            <div className="simulator-panel__title">
+              <ListTree size={18} aria-hidden="true" />
+              Request Inspector — Live Log
+            </div>
+            {inspectorExpanded ? <ChevronUp size={18} aria-hidden="true" /> : <ChevronDown size={18} aria-hidden="true" />}
+          </button>
+          {inspectorExpanded && (
+            <div id="request-inspector-body" className="simulator-panel__body">
+              <p className="section-subtitle">
+                The last 20 requests through the gateway, refreshed every 2 seconds — method, path, authenticated
+                user, RBAC decision, remaining rate-limit quota, response code, and latency.
+              </p>
+              <RequestInspector />
+            </div>
+          )}
         </div>
 
         <Card className="page-stack">
@@ -476,6 +567,57 @@ export function Dashboard() {
           </div>
         </Card>
       </div>
+
+      <Drawer
+        isOpen={selectedEvent !== null}
+        title="Event Details"
+        onClose={() => setSelectedEvent(null)}
+        footer={
+          selectedEvent && (
+            <Button variant="primary" className="button-full" onClick={handleAddToIncident} isLoading={addingToIncident}>
+              Add to Incident
+            </Button>
+          )
+        }
+      >
+        {selectedEvent && (
+          <>
+            <DetailRow label="Timestamp" value={new Date(selectedEvent.timestamp).toLocaleString()} />
+            <DetailRow label="Event Type" value={selectedEvent.type.replace(/_/g, ' ')} />
+            <DetailRow
+              label="Severity"
+              value={<span className={`ui-badge ui-badge--${selectedEvent.severity === 'critical' ? 'error' : selectedEvent.severity === 'warning' ? 'warning' : 'info'}`}>{selectedEvent.severity.toUpperCase()}</span>}
+            />
+            <DetailRow label="Message" value={selectedEvent.message} />
+            {selectedEvent.username && (
+              <DetailRow label="User" value={`${selectedEvent.username} (${selectedEvent.userId})`} />
+            )}
+            <DetailRow
+              label="Matched Security Rule"
+              value={EVENT_GUIDANCE[selectedEvent.type]?.rule ?? 'General security threshold'}
+            />
+            <DetailRow
+              label="Recommended Remediation"
+              value={EVENT_GUIDANCE[selectedEvent.type]?.remediation ?? 'Review the relevant metric on this dashboard.'}
+            />
+            <div className="helper-text">
+              This event is derived from an aggregate metric snapshot (a threshold crossed within a 2-second polling
+              window), not a single captured request — so it has no per-request IP/user-agent/request-ID the way an
+              audit log entry or Request Inspector row does. For that level of detail on an individual request, see
+              the Request Inspector above or the Audit Logs page.
+            </div>
+          </>
+        )}
+      </Drawer>
     </Layout>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <div className="threat-card__meta-label">{label}</div>
+      <div className="section-subtitle">{value}</div>
+    </div>
   );
 }

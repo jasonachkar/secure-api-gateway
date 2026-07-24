@@ -113,7 +113,7 @@ export class AuthController {
     try {
       // Refresh tokens - this will decode the token and return user info if available
       const { accessToken, refreshToken: newRefreshToken, expiresIn, user } =
-        await this.authService.refresh(refreshToken);
+        await this.authService.refresh(refreshToken, ip);
 
       // Log token refresh
       await this.auditService.log({

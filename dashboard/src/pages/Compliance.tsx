@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
+import { ExternalLink } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { MetricCard } from '../components/MetricCard';
 import { Button } from '../components/Button';
@@ -12,7 +13,23 @@ import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
 import { SectionHeader } from '../components/SectionHeader';
 import { adminApi } from '../api/admin';
+import { NIST_EVIDENCE, OWASP_EVIDENCE, PCI_EVIDENCE, githubUrl, type EvidenceEntry } from '../data/complianceEvidence';
+import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
 import type { SecurityPosture, ComplianceMetrics } from '../types';
+
+function EvidenceNote({ entry }: { entry?: EvidenceEntry }) {
+  if (!entry) return null;
+  return (
+    <div className="compliance-item__evidence">
+      <p className="compliance-item__implementation-note">{entry.note}</p>
+      {entry.path && (
+        <a href={githubUrl(entry.path)} target="_blank" rel="noopener noreferrer" className="compliance-item__evidence-link">
+          View Implementation <ExternalLink size={12} aria-hidden="true" />
+        </a>
+      )}
+    </div>
+  );
+}
 
 const factorBadgeClass: Record<string, string> = {
   excellent: 'badge-excellent',
@@ -60,15 +77,11 @@ export function Compliance() {
         }),
       ]);
 
-      console.log('Posture data received:', postureResponse);
-      console.log('Metrics data received:', metricsResponse);
-
       if (!postureResponse) {
         throw new Error('Failed to fetch security posture data');
       }
 
       if (!postureResponse.factors) {
-        console.warn('Posture data missing factors, initializing...');
         postureResponse.factors = {
           authentication: {
             score: 0,
@@ -136,12 +149,6 @@ export function Compliance() {
       setMetrics(metricsResponse);
       setError('');
     } catch (err: any) {
-      console.error('Compliance data fetch error:', err);
-      console.error('Error details:', {
-        message: err.message,
-        stack: err.stack,
-        response: (err as any).response,
-      });
       setError(err.message || 'Failed to fetch compliance data');
       setPosture(null);
       setMetrics(null);
@@ -169,7 +176,7 @@ export function Compliance() {
           actions={<Button onClick={fetchData}>Refresh</Button>}
         />
 
-        {loading && <div className="empty-state">Loading compliance data...</div>}
+        {loading && <PageLoadingSkeleton cardCount={3} />}
 
         {error && <div className="alert alert--danger">{error}</div>}
 
@@ -289,6 +296,7 @@ export function Compliance() {
                               </ul>
                             </div>
                           )}
+                          <EvidenceNote entry={NIST_EVIDENCE[control.id]} />
                         </div>
                       );
                     })
@@ -319,6 +327,7 @@ export function Compliance() {
                             <Badge className={badgeClass}>{risk.status.toUpperCase()}</Badge>
                           </div>
                           <div className="compliance-item__description">{risk.description}</div>
+                          <EvidenceNote entry={OWASP_EVIDENCE[risk.risk]} />
                         </div>
                       );
                     })
@@ -350,6 +359,7 @@ export function Compliance() {
                             </div>
                             <Badge className={badgeClass}>{req.status.toUpperCase()}</Badge>
                           </div>
+                          <EvidenceNote entry={PCI_EVIDENCE[req.id]} />
                         </div>
                       );
                     })

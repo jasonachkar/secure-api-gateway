@@ -9,17 +9,24 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "axios": "^1.7.9",
+    "d3-scale": "^4.0.2",
+    "date-fns": "^4.1.0",
+    "i18n-iso-countries": "^7.14.0",
+    "jwt-decode": "^4.0.0",
+    "lucide-react": "^1.26.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.2",
+    "react-simple-maps": "^3.0.0",
     "recharts": "^2.13.3",
-    "axios": "^1.7.9",
-    "date-fns": "^4.1.0",
-    "jwt-decode": "^4.0.0"
+    "world-atlas": "^2.0.2"
   },
   "devDependencies": {
+    "@types/d3-scale": "^4.0.9",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/react-simple-maps": "^3.0.6",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.7.2",
     "vite": "^6.0.5"

@@ -9,6 +9,8 @@ import { Layout } from '../components/Layout';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { SectionHeader } from '../components/SectionHeader';
+import { ArchitectureDiagram } from '../components/ArchitectureDiagram';
+import { GitHubStatusBadge } from '../components/GitHubStatusBadge';
 
 export function About() {
   return (
@@ -37,47 +39,7 @@ export function About() {
 
         <Card className="page-stack">
           <div className="section-title">Architecture Overview</div>
-          <div className="code-block">
-            <pre className="text-prewrap">
-{`┌─────────────────────────────────────────────┐
-│  Client (Browser, Mobile App, Service)     │
-└─────────────────┬───────────────────────────┘
-                  │
-        ┌─────────▼──────────┐
-        │   API Gateway      │
-        │  (This Service)    │
-        └─────────┬──────────┘
-                  │
-        ┌─────────▼──────────────────────────────┐
-        │  Middleware Chain                      │
-        │  • Request ID                          │
-        │  • Security Headers                    │
-        │  • Rate Limiting (Global/User/Route)   │
-        │  • Authentication (JWT validation)     │
-        │  • Authorization (RBAC)                │
-        │  • Validation (Zod schemas)            │
-        └─────────┬──────────────────────────────┘
-                  │
-        ┌─────────▼──────────┐
-        │  Route Handlers    │
-        │  • Auth endpoints  │
-        │  • Proxy routes    │
-        │  • Admin routes    │
-        └─────────┬──────────┘
-                  │
-        ┌─────────▼──────────┐
-        │  Business Logic    │
-        │  • Services        │
-        │  • Stores          │
-        └─────────┬──────────┘
-                  │
-    ┌─────────────┴────────────────┐
-    │                              │
-┌───▼────┐              ┌──────────▼─────────┐
-│ Redis  │              │  Upstream Services │
-└────────┘              └────────────────────┘`}
-            </pre>
-          </div>
+          <ArchitectureDiagram />
           <div className="section-subtitle">
             <p>
               <strong>Why Fastify?</strong> We chose Fastify over Express for better performance (~2x faster),
@@ -161,9 +123,11 @@ export function About() {
 
         <Card className="page-stack">
           <div className="section-title">What This Dashboard Shows</div>
-          <div className="alert alert--warning">
-            <strong>Note:</strong> All metrics and data shown in this dashboard are auto-generated for demonstration
-            purposes. This helps showcase the monitoring capabilities without requiring actual production traffic.
+          <div className="alert alert--success">
+            <strong>Live traffic simulator built in.</strong> This deployment continuously generates realistic API
+            traffic — rate limit violations, brute-force login attempts, token rotations, and geo-distributed threat
+            IPs — so every security control below is always visible and testable without requiring real production
+            traffic. Everything you see reacts to genuine requests hitting the real gateway, not canned screenshots.
           </div>
           <div className="page-stack">
             {[
@@ -244,6 +208,7 @@ export function About() {
               architecture for load balancing, health checks for orchestration platforms.
             </p>
           </div>
+          <GitHubStatusBadge />
         </Card>
 
         <div className="centered-section">

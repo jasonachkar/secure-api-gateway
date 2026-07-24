@@ -10,6 +10,10 @@ import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
 import { SectionHeader } from '../components/SectionHeader';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { WorldMapHeatmap } from '../components/WorldMapHeatmap';
+import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
+import { useToast } from '../contexts/ToastContext';
 import { adminApi } from '../api/admin';
 import type { IPThreatInfo, ThreatStatistics, AttackPattern, ThreatLevel } from '../types';
 
@@ -33,6 +37,9 @@ export function Threats() {
   const [patterns, setPatterns] = useState<AttackPattern[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [blockTarget, setBlockTarget] = useState<IPThreatInfo | null>(null);
+  const [unblockTarget, setUnblockTarget] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     fetchData();
@@ -56,28 +63,31 @@ export function Threats() {
     }
   };
 
-  const handleBlockIP = async (ip: string) => {
-    const reason = prompt(`Enter reason for blocking ${ip}:`);
-    if (!reason) return;
+  const handleBlockIP = async (reason?: string) => {
+    if (!blockTarget || !reason) return;
+    const ip = blockTarget.ip;
+    setBlockTarget(null);
 
     try {
       await adminApi.blockIP(ip, reason);
       await fetchData();
-      alert('IP blocked successfully');
+      showToast(`${ip} has been blocked`, 'success');
     } catch (err: any) {
-      alert('Failed to block IP: ' + err.message);
+      showToast('Failed to block IP: ' + err.message, 'error');
     }
   };
 
-  const handleUnblockIP = async (ip: string) => {
-    if (!confirm(`Unblock IP ${ip}?`)) return;
+  const handleUnblockIP = async () => {
+    if (!unblockTarget) return;
+    const ip = unblockTarget;
+    setUnblockTarget(null);
 
     try {
       await adminApi.unblockIP(ip);
       await fetchData();
-      alert('IP unblocked successfully');
+      showToast(`${ip} has been unblocked`, 'success');
     } catch (err: any) {
-      alert('Failed to unblock IP: ' + err.message);
+      showToast('Failed to unblock IP: ' + err.message, 'error');
     }
   };
 
@@ -94,9 +104,13 @@ export function Threats() {
           }
         />
 
-        {loading && !error && <div className="empty-state">Loading threat intelligence...</div>}
+        {loading && !error && <PageLoadingSkeleton cardCount={4} />}
 
-        {error && <div className="alert alert--danger">{error}</div>}
+        {error && (
+          <div className="alert alert--danger" role="alert">
+            {error}
+          </div>
+        )}
 
         {!loading && !error && statistics && (
           <div className="page-stack">
@@ -184,7 +198,7 @@ export function Threats() {
                                 variant="success"
                                 size="sm"
                                 className="button-nowrap"
-                                onClick={() => handleUnblockIP(threat.ip)}
+                                onClick={() => setUnblockTarget(threat.ip)}
                               >
                                 Unblock IP
                               </Button>
@@ -193,7 +207,7 @@ export function Threats() {
                                 variant="danger"
                                 size="sm"
                                 className="button-nowrap"
-                                onClick={() => handleBlockIP(threat.ip)}
+                                onClick={() => setBlockTarget(threat)}
                               >
                                 Block IP
                               </Button>
@@ -270,6 +284,15 @@ export function Threats() {
               )}
             </div>
 
+            {threats.length > 0 && (
+              <section className="section-block">
+                <SectionHeader title="Threat Map" subtitle="Geographic distribution of tracked threats" />
+                <Card>
+                  <WorldMapHeatmap threats={threats} />
+                </Card>
+              </section>
+            )}
+
             {statistics.topCountries.length > 0 && (
               <section className="section-block">
                 <SectionHeader title="Threats by Country" />
@@ -291,6 +314,59 @@ export function Threats() {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={blockTarget !== null}
+        title={`Block ${blockTarget?.ip ?? 'IP'}`}
+        confirmLabel="Block IP"
+        confirmVariant="danger"
+        reasonLabel="Reason for blocking"
+        reasonMinLength={10}
+        onConfirm={handleBlockIP}
+        onCancel={() => setBlockTarget(null)}
+      >
+        {blockTarget && (
+          <div className="block-ip-preview">
+            <div className="block-ip-preview__ip text-mono">{blockTarget.ip}</div>
+            <div className="detail-grid">
+              <div>
+                <div className="text-xs text-muted">Country</div>
+                <div className="font-semibold">{blockTarget.geo?.country || 'Unknown'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted">City</div>
+                <div className="font-semibold">{blockTarget.geo?.city || 'Unknown'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted">Region</div>
+                <div className="font-semibold">{blockTarget.geo?.region || 'Unknown'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted">Threat Score</div>
+                <div className={`threat-score ${threatScoreClass[blockTarget.threatLevel]}`}>
+                  {blockTarget.threatScore}/100
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-muted">Severity</div>
+                <Badge className={threatLevelBadgeClass[blockTarget.threatLevel]}>
+                  {blockTarget.threatLevel.toUpperCase()}
+                </Badge>
+              </div>
+            </div>
+          </div>
+        )}
+      </ConfirmModal>
+
+      <ConfirmModal
+        isOpen={unblockTarget !== null}
+        title="Unblock IP"
+        message={unblockTarget ? `Unblock ${unblockTarget}?` : ''}
+        confirmLabel="Unblock"
+        confirmVariant="success"
+        onConfirm={handleUnblockIP}
+        onCancel={() => setUnblockTarget(null)}
+      />
     </Layout>
   );
 }

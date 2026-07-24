@@ -18,6 +18,12 @@ redis_capacity            = 0 # C0
 enable_apim  = false
 enable_vnet  = false
 
+# Real AWS/GCP log ingestion - both free at demo scale, both require working AWS/GCP
+# credentials locally when you run `terraform apply` (see terraform/README.md)
+enable_aws_cloudwatch_ingestion = false
+enable_gcp_logging_ingestion    = false
+# gcp_project_id = "your-gcp-project-id"  # required if enable_gcp_logging_ingestion = true
+
 log_analytics_daily_quota_gb = 1
 
 tags = {

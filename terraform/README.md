@@ -24,7 +24,7 @@ demo. If you want a genuinely $0-at-rest deployment, set `enable_redis = false` 
 app documents the degraded fallback behavior without Redis in
 [`docs/OPERATIONS.md`](../docs/OPERATIONS.md).
 
-### Optional (both `false` by default)
+### Optional (all `false` by default)
 
 - **`enable_apim`** — puts Azure API Management in front of the Container App for
   edge-level rate limiting, CORS, and header-stripping policies (see
@@ -38,6 +38,19 @@ app documents the degraded fallback behavior without Redis in
 - **`enable_azure_static_web_app`** — provisions Azure Static Web Apps for the
   dashboard (see `modules/static-web-app`) instead of/alongside Vercel. Free tier.
   See "Frontend hosting: Vercel vs Azure Static Web Apps" below.
+- **`enable_aws_cloudwatch_ingestion`** — provisions a dedicated AWS CloudWatch Logs
+  log group plus a least-privilege IAM reader (see `modules/aws-logging`), and wires
+  real credentials into the gateway so its CloudWatch ingestion adapter actually
+  polls it. **$0 at demo scale** (CloudWatch Logs' free tier is 5GB/mo ingestion +
+  storage, on an ongoing basis, not just a first-year grant) — **the real cost is a
+  second static cloud credential (an IAM access key) to manage and rotate.**
+- **`enable_gcp_logging_ingestion`** — provisions a read-only (`roles/logging.viewer`)
+  GCP service account in an existing project (see `modules/gcp-logging`); no log
+  source needs provisioning since every GCP project already captures activity/audit
+  logs. **$0 at demo scale** (Cloud Logging's free tier is 50GiB/mo) — **the real
+  cost is a third cloud credential (a service account key) to manage and rotate.**
+  Unlike AWS's ARN-scoped IAM, GCP has no log-name-scoped grain — project-level
+  `roles/logging.viewer` is the finest read-only role available.
 
 ## Frontend hosting: Vercel vs Azure Static Web Apps
 
@@ -82,6 +95,10 @@ needs, so it's a deliberate two-step manual handoff rather than a gap.
 - Terraform >= 1.6
 - An Azure subscription and the [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli), logged in: `az login`
 - Docker, to build and push the gateway image after the first apply
+- Only if `enable_aws_cloudwatch_ingestion = true`: AWS credentials the AWS provider can
+  pick up ambiently (`aws configure`, `AWS_PROFILE`, or SSO)
+- Only if `enable_gcp_logging_ingestion = true`: GCP Application Default Credentials
+  (`gcloud auth application-default login`) for an existing project
 
 ## First deployment
 
@@ -154,6 +171,8 @@ resource references secrets by name, so this doesn't require recreating anything
 - **Generated secrets** (`cookie-secret`, `jwt-secret`): `terraform taint random_password.cookie_secret` (or `.jwt_secret`) then `terraform apply`. This generates a new value and updates the Key Vault secret; the Container App picks it up on its next revision (restart it if you need the rotation to take effect immediately: `az containerapp revision restart`).
 - **Manually-seeded secrets**: re-run the `az keyvault secret set` command above with a new value.
 - **Redis password**: `az redis regenerate-keys` (Azure-side), or destroy/recreate the `module.redis` resource via Terraform.
+- **AWS CloudWatch reader key**: `terraform taint 'module.aws_logging[0].aws_iam_access_key.reader'` then `terraform apply` - generates a new access key and updates Key Vault; the old key stays valid until the next apply completes.
+- **GCP Logging service account key**: `terraform taint 'module.gcp_logging[0].google_service_account_key.reader'` then `terraform apply`.
 
 See [`docs/SECURITY_CONTROLS.md`](../docs/SECURITY_CONTROLS.md) for the fuller secrets-rotation runbook.
 
@@ -215,7 +234,10 @@ terraform/
     ├── redis/             # Azure Cache for Redis (optional, enable_redis)
     ├── container-app/     # Container Apps environment + the gateway app itself
     ├── apim/               # Azure API Management front door (optional, enable_apim)
-    └── networking/         # VNet integration (optional, enable_vnet)
+    ├── networking/         # VNet integration (optional, enable_vnet)
+    ├── static-web-app/     # Dashboard hosting (optional, enable_azure_static_web_app)
+    ├── aws-logging/        # CloudWatch log group + IAM reader (optional, enable_aws_cloudwatch_ingestion)
+    └── gcp-logging/        # Cloud Logging service account (optional, enable_gcp_logging_ingestion)
 ```
 
 Each module takes plain inputs and returns plain outputs — there's no hidden global
@@ -242,3 +264,13 @@ what, which is deliberately kept boring and readable over clever.
   internet access to the Terraform registry in CI - see `.github/workflows/terraform.yml`).
   It cannot catch everything `plan`/`apply` would (auth, quota, region availability),
   since those require real Azure credentials.
+- **AWS/GCP ingestion credentials are static, not federated, and live in Terraform
+  state.** `modules/aws-logging`/`modules/gcp-logging` provision a long-lived IAM
+  access key / service account key rather than cross-cloud OIDC federation (Azure
+  Workload Identity → AWS STS / GCP Workload Identity Federation). Federation would
+  avoid a static credential entirely, but adds real setup complexity (configuring
+  Entra ID as a trusted OIDC issuer on the AWS/GCP side) for a demo-scale
+  integration; static, narrowly-scoped credentials rotated via `terraform taint` (see
+  "Rotating secrets" above) is the pragmatic default here, consistent with how this
+  repo already accepts the same tradeoff for its own `random_password`-generated
+  secrets. Revisit if this ever needs to be a genuine production deployment.

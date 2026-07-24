@@ -14,6 +14,7 @@ export interface PostgresClient {
 export class NormalizedEventStore {
   private readonly EVENT_KEY_PREFIX = 'ingestion:event:';
   private readonly EVENT_INDEX_KEY = 'ingestion:events:index';
+  private readonly CURSOR_KEY_PREFIX = 'ingestion:cursor:';
 
   constructor(private readonly redis: Redis, private readonly postgres?: PostgresClient) {}
 
@@ -56,6 +57,14 @@ export class NormalizedEventStore {
         ]
       );
     }
+  }
+
+  async getCursor(adapterKey: string): Promise<string | null> {
+    return this.redis.get(`${this.CURSOR_KEY_PREFIX}${adapterKey}`);
+  }
+
+  async setCursor(adapterKey: string, cursor: string): Promise<void> {
+    await this.redis.set(`${this.CURSOR_KEY_PREFIX}${adapterKey}`, cursor);
   }
 
   async getStatus(): Promise<IngestionStorageStatus> {

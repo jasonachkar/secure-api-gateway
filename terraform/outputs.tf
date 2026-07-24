@@ -46,6 +46,14 @@ output "static_web_app_deployment_token" {
   sensitive   = true
 }
 
+output "aws_cloudwatch_log_group_name" {
+  value = var.enable_aws_cloudwatch_ingestion ? module.aws_logging[0].log_group_name : null
+}
+
+output "gcp_logging_project_id" {
+  value = var.enable_gcp_logging_ingestion ? module.gcp_logging[0].project_id : null
+}
+
 output "next_steps" {
   description = "Printed reminder of what to do after `terraform apply` - see terraform/README.md for the full walkthrough"
   value = join("\n", concat(

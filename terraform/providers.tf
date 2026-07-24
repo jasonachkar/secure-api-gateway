@@ -10,6 +10,14 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.6"
     }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 6.0"
+    }
   }
 
   # Configure via `terraform init -backend-config=environments/<env>.backend.hcl`,
@@ -28,4 +36,18 @@ provider "azurerm" {
       prevent_deletion_if_contains_resources = false
     }
   }
+}
+
+# Only touched when enable_aws_cloudwatch_ingestion = true - relies on the ambient AWS
+# credential chain (aws configure / env vars / SSO), exactly like azurerm relies on
+# `az login` above. No resources are planned from this provider unless that flag is on,
+# so it doesn't need working credentials for a default apply.
+provider "aws" {
+  region = var.aws_region
+}
+
+# Only touched when enable_gcp_logging_ingestion = true - relies on Application Default
+# Credentials (`gcloud auth application-default login`), same idea as the aws provider.
+provider "google" {
+  project = var.gcp_project_id
 }

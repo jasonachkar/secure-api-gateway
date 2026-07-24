@@ -120,6 +120,19 @@ The gateway follows a layered architecture with clear separation of concerns:
   file store for dev, Redis for production.
 - **`src/modules/admin/`** — metrics, threat intel scoring, AbuseIPDB integration,
   incident response workflow, compliance scoring, audit log admin API.
+- **`src/modules/ingestion/`** — normalized external security-event pipeline
+  (`NormalizedEventStore`: Redis + optional Postgres). Two adapters are real: AWS
+  CloudWatch Logs and GCP Cloud Logging (`adapters/cloudwatch.adapter.ts`,
+  `adapters/gcp-logging.adapter.ts`) poll their respective APIs on an interval
+  (`INGESTION_POLL_INTERVAL_MS`), tracking a Redis-backed cursor per adapter so a
+  restart doesn't reprocess or lose events, and feed matching entries through
+  `IngestionService.ingestEvent()`. Both are provisioned end-to-end by
+  `terraform/modules/aws-logging` / `terraform/modules/gcp-logging` (opt-in,
+  `enable_aws_cloudwatch_ingestion` / `enable_gcp_logging_ingestion` — see
+  `terraform/README.md`), free at demo scale. Azure Sentinel remains a stub (reports
+  "not configured" only) — unlike the other two, Sentinel has no meaningful free tier,
+  so it's an intentionally undone roadmap item rather than a gap; see
+  [`SECURITY_CONTROLS.md`](SECURITY_CONTROLS.md#roadmap).
 - **`src/modules/proxy/`, `src/lib/httpClient.ts`** — the actual gateway/reverse-proxy
   pattern: SSRF-defended, DNS-pinned outbound requests with a per-host circuit breaker.
 - **`src/lib/`** — crypto helpers, structured logging (Pino, with redaction), custom

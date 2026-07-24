@@ -129,6 +129,34 @@ variable "enable_vnet" {
   default     = false
 }
 
+variable "enable_aws_cloudwatch_ingestion" {
+  description = "Provision a dedicated AWS CloudWatch Logs log group plus a least-privilege IAM reader, and wire real credentials into the gateway so its CloudWatch ingestion adapter actually polls it. Free at demo scale (well under CloudWatch Logs' 5GB/mo free tier) - the real cost is operational: a second cloud credential (a static IAM access key) to manage. Requires AWS credentials available to Terraform at apply time (aws configure / env vars / SSO). See terraform/modules/aws-logging and terraform/README.md."
+  type        = bool
+  default     = false
+}
+
+variable "aws_region" {
+  type    = string
+  default = "us-east-1"
+}
+
+variable "aws_cloudwatch_log_retention_days" {
+  type    = number
+  default = 14
+}
+
+variable "enable_gcp_logging_ingestion" {
+  description = "Provision a read-only (roles/logging.viewer) GCP service account in an existing project, and wire real credentials into the gateway so its GCP Logging ingestion adapter actually polls it. No log source needs provisioning - every GCP project already captures activity/audit logs. Free at demo scale (well under Cloud Logging's 50GiB/mo free tier) - the real cost is operational: a third cloud credential (a service account key) to manage. Requires GCP Application Default Credentials available to Terraform at apply time (gcloud auth application-default login). See terraform/modules/gcp-logging and terraform/README.md."
+  type        = bool
+  default     = false
+}
+
+variable "gcp_project_id" {
+  description = "Existing GCP project to read Cloud Logging entries from. Required only if enable_gcp_logging_ingestion = true."
+  type        = string
+  default     = null
+}
+
 # ── Monitoring ──────────────────────────────────────────────────────────────
 
 variable "log_retention_days" {

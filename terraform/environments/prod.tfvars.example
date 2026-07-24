@@ -29,6 +29,10 @@ enable_apim = false
 
 enable_vnet = false
 
+enable_aws_cloudwatch_ingestion = false
+enable_gcp_logging_ingestion    = false
+# gcp_project_id = "your-gcp-project-id"  # required if enable_gcp_logging_ingestion = true
+
 log_analytics_daily_quota_gb = 5
 
 tags = {

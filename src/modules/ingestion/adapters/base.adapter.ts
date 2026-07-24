@@ -3,6 +3,8 @@ import type { IngestionAdapterStatus } from '../normalized-event.types.js';
 export interface IngestionAdapter {
   name: string;
   getStatus(): Promise<IngestionAdapterStatus>;
+  start?(): void;
+  stop?(): void;
 }
 
 export abstract class BaseIngestionAdapter implements IngestionAdapter {

@@ -131,5 +131,16 @@ Documented honestly as not-yet-implemented, rather than partially faked:
   A real implementation would periodically publish the latest hash to independent,
   append-only storage (or a public transparency log).
 - **MFA / WebAuthn** — login is single-factor (password) today.
+- **Azure Sentinel ingestion adapter** — AWS CloudWatch Logs and GCP Cloud Logging are
+  real, working ingestion adapters (`src/modules/ingestion/adapters/`), each with
+  Terraform-provisioned, least-privilege read credentials
+  (`terraform/modules/aws-logging`, `terraform/modules/gcp-logging`) and a real polling
+  loop. Azure Sentinel is deliberately left a stub: unlike the other two, Sentinel has
+  no meaningful free tier (a 31-day trial, then ongoing per-GB ingestion + analysis
+  billing on top of the underlying Log Analytics workspace), so standing one up isn't
+  worth the recurring cost for a portfolio deployment. A real implementation would
+  push normalized events to the Log Analytics Data Collector or Azure Monitor
+  Ingestion API - the same shape as the CloudWatch/GCP adapters, just push instead of
+  pull.
 - **Signed container image provenance** — CI builds and scans the image but doesn't
   sign it (e.g. Sigstore/cosign) or attach SLSA provenance.

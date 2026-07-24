@@ -8,17 +8,14 @@ import { env } from '../../config/index.js';
 import { CloudWatchAdapter } from './adapters/cloudwatch.adapter.js';
 import { GcpLoggingAdapter } from './adapters/gcp-logging.adapter.js';
 import { AzureSentinelAdapter } from './adapters/azure-sentinel.adapter.js';
-import type {
-  NormalizedEvent,
-  IngestionStatus,
-  IngestionAdapterStatus,
-} from './normalized-event.types.js';
+import type { IngestionAdapter } from './adapters/base.adapter.js';
+import type { NormalizedEvent, IngestionStatus } from './normalized-event.types.js';
 import { NormalizedEventStore, type PostgresClient } from './normalized-event.store.js';
 import type { IncidentResponseService } from '../admin/incident-response.service.js';
 
 export class IngestionService {
   private readonly store: NormalizedEventStore;
-  private readonly adapters: Array<{ getStatus: () => Promise<IngestionAdapterStatus> }>;
+  private readonly adapters: IngestionAdapter[];
 
   constructor(
     redis: Redis,
@@ -26,15 +23,43 @@ export class IngestionService {
     postgres?: PostgresClient
   ) {
     this.store = new NormalizedEventStore(redis, postgres);
+    const onEvent = async (event: Omit<NormalizedEvent, 'id'>): Promise<void> => {
+      await this.ingestEvent(event);
+    };
+
     this.adapters = [
-      new CloudWatchAdapter(Boolean(env.ingestion.cloudwatchLogGroup)),
-      new GcpLoggingAdapter(Boolean(env.ingestion.gcpLoggingProject)),
+      new CloudWatchAdapter(
+        env.ingestion.cloudwatchLogGroup,
+        env.ingestion.awsRegion,
+        this.store,
+        onEvent,
+        env.ingestion.pollIntervalMs
+      ),
+      new GcpLoggingAdapter(
+        env.ingestion.gcpLoggingProject,
+        env.ingestion.gcpServiceAccountKey,
+        this.store,
+        onEvent,
+        env.ingestion.pollIntervalMs
+      ),
       new AzureSentinelAdapter(Boolean(env.ingestion.azureSentinelWorkspace)),
     ];
   }
 
   async initialize(): Promise<void> {
     await this.store.initialize();
+  }
+
+  start(): void {
+    for (const adapter of this.adapters) {
+      adapter.start?.();
+    }
+  }
+
+  stop(): void {
+    for (const adapter of this.adapters) {
+      adapter.stop?.();
+    }
   }
 
   async ingestEvent(event: Omit<NormalizedEvent, 'id'> & { id?: string }): Promise<NormalizedEvent> {

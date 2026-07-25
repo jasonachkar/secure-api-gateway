@@ -30,60 +30,76 @@ export interface FixtureDescriptor {
   id: string;
   provider: Exclude<CloudProvider, 'gateway'>;
   fileName: string;
+  /** Absolute, filesystem-resolved path - computed once when the catalogue is built, never from request input. */
+  absolutePath: string;
 }
 
 const FIXTURE_PROVIDERS: Array<Exclude<CloudProvider, 'gateway'>> = ['aws', 'gcp', 'azure'];
+// Only used when walking the known fixture directories to build the catalogue below -
+// never applied to request-supplied strings. Deliberately strict (no dots, no path
+// separators) so a malformed file on disk can't produce a surprising id either.
 const FIXTURE_NAME_RE = /^[A-Za-z0-9_-]+$/;
 
-export function listFixtures(): FixtureDescriptor[] {
+let catalogueCache: Map<string, FixtureDescriptor> | undefined;
+
+/**
+ * Build the exact fixture catalogue by walking the approved provider directories once.
+ * This is the only place that ever turns a filesystem listing into fixture ids/paths -
+ * everywhere else resolves a request-supplied id by exact lookup against this map, never
+ * by reconstructing a path from the id itself. Cached for the process lifetime since the
+ * fixture set is static (built into the image / checked into the repo, not runtime data).
+ */
+function buildCatalogue(): Map<string, FixtureDescriptor> {
+  if (catalogueCache) return catalogueCache;
+
   const root = resolveFixturesRoot();
-  const descriptors: FixtureDescriptor[] = [];
+  const catalogue = new Map<string, FixtureDescriptor>();
 
   for (const provider of FIXTURE_PROVIDERS) {
-    const providerDir = join(root, provider);
+    const providerDir = resolve(root, provider);
     if (!existsSync(providerDir)) continue;
+
     for (const fileName of readdirSync(providerDir)) {
+      // Reject anything that isn't a plain "<safe-name>.json" basename - unknown
+      // extensions, dotfiles, and nested paths (readdirSync doesn't recurse, but a
+      // crafted symlink could still produce a surprising entry) never enter the catalogue.
       if (!fileName.endsWith('.json')) continue;
-      descriptors.push({
-        id: `${provider}/${fileName.replace(/\.json$/, '')}`,
-        provider,
-        fileName,
-      });
+      const name = fileName.slice(0, -'.json'.length);
+      if (!FIXTURE_NAME_RE.test(name)) continue;
+
+      // readdirSync entries are always direct-child basenames (never containing a path
+      // separator), so this can't escape providerDir - the startsWith check is a final
+      // confirmation before the path ever reaches the catalogue.
+      const absolutePath = resolve(providerDir, fileName);
+      if (!absolutePath.startsWith(`${providerDir}${sep}`)) continue;
+
+      const id = `${provider}/${name}`;
+      catalogue.set(id, { id, provider, fileName, absolutePath });
     }
   }
 
-  return descriptors.sort((a, b) => a.id.localeCompare(b.id));
+  catalogueCache = catalogue;
+  return catalogue;
+}
+
+export function listFixtures(): FixtureDescriptor[] {
+  return [...buildCatalogue().values()].sort((a, b) => a.id.localeCompare(b.id));
 }
 
 export function loadFixture(id: string): { provider: Exclude<CloudProvider, 'gateway'>; payload: unknown } {
-  const parts = id.split('/');
-  if (parts.length !== 2) {
+  // Exact allowlist lookup against the pre-built catalogue - the request-supplied id is
+  // never used to construct a filesystem path. Any id not already present in the
+  // catalogue (`..`, extra separators, encoded traversal, absolute paths, unknown
+  // providers/extensions, nested filenames, ids that simply don't exist) is rejected
+  // uniformly as "unknown fixture id".
+  const descriptor = typeof id === 'string' ? buildCatalogue().get(id) : undefined;
+  if (!descriptor) {
     throw new Error(`Unknown fixture id: ${id}`);
-  }
-
-  const [provider, name] = parts;
-  if (
-    !provider ||
-    !name ||
-    !FIXTURE_PROVIDERS.includes(provider as Exclude<CloudProvider, 'gateway'>) ||
-    !FIXTURE_NAME_RE.test(name)
-  ) {
-    throw new Error(`Unknown fixture id: ${id}`);
-  }
-
-  const root = resolveFixturesRoot();
-  const providerRoot = resolve(root, provider);
-  const filePath = resolve(providerRoot, `${name}.json`);
-  if (!(filePath === providerRoot || filePath.startsWith(`${providerRoot}${sep}`))) {
-    throw new Error(`Unknown fixture id: ${id}`);
-  }
-  if (!existsSync(filePath)) {
-    throw new Error(`Fixture not found: ${id}`);
   }
 
   // Some fixture files carry a UTF-8 BOM (saved on Windows); strip it before parsing.
   const BOM = String.fromCharCode(0xfeff);
-  const raw = readFileSync(filePath, 'utf8').replace(new RegExp(`^${BOM}`), '');
+  const raw = readFileSync(descriptor.absolutePath, 'utf8').replace(new RegExp(`^${BOM}`), '');
   const payload = JSON.parse(raw);
-  return { provider: provider as Exclude<CloudProvider, 'gateway'>, payload };
+  return { provider: descriptor.provider, payload };
 }

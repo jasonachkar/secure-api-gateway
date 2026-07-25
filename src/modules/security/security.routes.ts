@@ -69,22 +69,24 @@ export async function registerSecurityRoutes(
 
   const readAuth = [requireAuth, requireAnyRole(['admin', 'security_analyst', 'incident_responder', 'reviewer'])];
   const writeAuth = [requireAuth, requireRole('admin')];
+  const readRateLimitConfig = { rateLimit: { max: 120, timeWindow: '1 minute' } };
+  const writeRateLimitConfig = { rateLimit: { max: 30, timeWindow: '1 minute' } };
 
   app.get(
     '/admin/security/capabilities',
-    { schema: { description: 'Get capability registry summary (honesty status)', tags: ['Security'], security: [{ bearerAuth: [] }] }, preHandler: readAuth },
+    { schema: { description: 'Get capability registry summary (honesty status)', tags: ['Security'], security: [{ bearerAuth: [] }] }, preHandler: readAuth, config: readRateLimitConfig },
     async () => getCapabilitySummary()
   );
 
   app.get(
     '/admin/security/capabilities/list',
-    { schema: { description: 'Get raw capability definitions', tags: ['Security'], security: [{ bearerAuth: [] }] }, preHandler: readAuth },
+    { schema: { description: 'Get raw capability definitions', tags: ['Security'], security: [{ bearerAuth: [] }] }, preHandler: readAuth, config: readRateLimitConfig },
     async () => ({ capabilities: getCapabilities() })
   );
 
   app.get(
     '/admin/security/pipeline-metrics',
-    { schema: { description: 'Get pipeline observability metrics', tags: ['Security'], security: [{ bearerAuth: [] }] }, preHandler: readAuth },
+    { schema: { description: 'Get pipeline observability metrics', tags: ['Security'], security: [{ bearerAuth: [] }] }, preHandler: readAuth, config: readRateLimitConfig },
     async () =>
       pipelineMetrics.getSnapshot({
         awsConfigured: Boolean(env.ingestion.cloudwatchLogGroup),
@@ -95,7 +97,7 @@ export async function registerSecurityRoutes(
 
   app.get(
     '/admin/security/fixtures',
-    { schema: { description: 'List available replay fixtures', tags: ['Security'], security: [{ bearerAuth: [] }] }, preHandler: readAuth },
+    { schema: { description: 'List available replay fixtures', tags: ['Security'], security: [{ bearerAuth: [] }] }, preHandler: readAuth, config: readRateLimitConfig },
     async () => ({ fixtures: listFixtures() })
   );
 
@@ -116,6 +118,7 @@ export async function registerSecurityRoutes(
         },
       },
       preHandler: readAuth,
+      config: readRateLimitConfig,
     },
     async (request: FastifyRequest) => {
       const { provider, limit, offset } = request.query as {

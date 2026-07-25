@@ -78,6 +78,7 @@ export async function registerAuditRoutes(app: FastifyInstance, auditService: Au
         },
       },
       preHandler: [requireAuth, requireRole('admin'), validate(auditQuerySchema, 'query')],
+      config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
     },
     async (request: FastifyRequest<{ Querystring: AuditQuery }>) => {
       const filters = request.query;
@@ -117,6 +118,9 @@ export async function registerAuditRoutes(app: FastifyInstance, auditService: Au
         },
       },
       preHandler: [requireAuth, requireRole('admin')],
+      // Walks the full retained hash chain, so it's more expensive than a typical
+      // read - give it its own tighter ceiling instead of relying on the global limit.
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     },
     async () => {
       return auditService.verifyChain();

@@ -71,6 +71,10 @@ export async function registerSecurityRoutes(
   const writeAuth = [requireAuth, requireRole('admin')];
   const readRateLimitConfig = { rateLimit: { max: 120, timeWindow: '1 minute' } };
   const writeRateLimitConfig = { rateLimit: { max: 30, timeWindow: '1 minute' } };
+  // Evidence export and replay are more expensive (filesystem/aggregation work) than a
+  // typical read/write, so they get a tighter dedicated ceiling rather than relying on
+  // the global rate limiter alone.
+  const expensiveRateLimitConfig = { rateLimit: { max: 20, timeWindow: '1 minute' } };
 
   app.get(
     '/admin/security/capabilities',
@@ -98,7 +102,8 @@ export async function registerSecurityRoutes(
   app.get(
     '/admin/security/fixtures',
     { schema: { description: 'List available replay fixtures', tags: ['Security'], security: [{ bearerAuth: [] }] }, preHandler: readAuth, config: readRateLimitConfig },
-    async () => ({ fixtures: listFixtures() })
+    // Never expose absolutePath - it's server filesystem layout, not something a client needs.
+    async () => ({ fixtures: listFixtures().map(({ id, provider, fileName }) => ({ id, provider, fileName })) })
   );
 
   app.get(
@@ -141,6 +146,7 @@ export async function registerSecurityRoutes(
         params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
       },
       preHandler: readAuth,
+      config: readRateLimitConfig,
     },
     async (request: FastifyRequest) => {
       const { id } = request.params as { id: string };
@@ -167,6 +173,7 @@ export async function registerSecurityRoutes(
         },
       },
       preHandler: readAuth,
+      config: readRateLimitConfig,
     },
     async (request: FastifyRequest) => {
       const { status, limit, offset } = request.query as {
@@ -189,6 +196,7 @@ export async function registerSecurityRoutes(
         params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
       },
       preHandler: readAuth,
+      config: readRateLimitConfig,
     },
     async (request: FastifyRequest) => {
       const { id } = request.params as { id: string };
@@ -212,6 +220,7 @@ export async function registerSecurityRoutes(
         params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
       },
       preHandler: readAuth,
+      config: expensiveRateLimitConfig,
     },
     async (request: FastifyRequest) => {
       const { id } = request.params as { id: string };
@@ -229,6 +238,7 @@ export async function registerSecurityRoutes(
         params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
       },
       preHandler: readAuth,
+      config: readRateLimitConfig,
     },
     async (request: FastifyRequest) => {
       const { id } = request.params as { id: string };
@@ -253,6 +263,7 @@ export async function registerSecurityRoutes(
         security: [{ bearerAuth: [] }],
       },
       preHandler: [...writeAuth, validate(replayBodySchema, 'body')],
+      config: expensiveRateLimitConfig,
     },
     async (request: FastifyRequest<{ Body: z.infer<typeof replayBodySchema> }>) => {
       return replayFixtureThroughPipeline(
@@ -264,7 +275,7 @@ export async function registerSecurityRoutes(
 
   app.post(
     '/admin/security/response/block-ip',
-    { schema: { description: 'Enforce an IP block', tags: ['Security'], security: [{ bearerAuth: [] }] }, preHandler: [...writeAuth, validate(blockIpSchema, 'body')] },
+    { schema: { description: 'Enforce an IP block', tags: ['Security'], security: [{ bearerAuth: [] }] }, preHandler: [...writeAuth, validate(blockIpSchema, 'body')], config: writeRateLimitConfig },
     async (request: FastifyRequest<{ Body: z.infer<typeof blockIpSchema> }>) => {
       const user = (request as unknown as { user: { username: string } }).user;
       const record = await responseService.blockIp({
@@ -283,7 +294,7 @@ export async function registerSecurityRoutes(
 
   app.post(
     '/admin/security/response/unblock-ip',
-    { schema: { description: 'Remove an IP block', tags: ['Security'], security: [{ bearerAuth: [] }] }, preHandler: [...writeAuth, validate(unblockIpSchema, 'body')] },
+    { schema: { description: 'Remove an IP block', tags: ['Security'], security: [{ bearerAuth: [] }] }, preHandler: [...writeAuth, validate(unblockIpSchema, 'body')], config: writeRateLimitConfig },
     async (request: FastifyRequest<{ Body: z.infer<typeof unblockIpSchema> }>) => {
       const user = (request as unknown as { user: { username: string } }).user;
       const record = await responseService.unblockIp({
@@ -298,7 +309,7 @@ export async function registerSecurityRoutes(
 
   app.post(
     '/admin/security/response/revoke-sessions',
-    { schema: { description: 'Enforce session revocation for a user', tags: ['Security'], security: [{ bearerAuth: [] }] }, preHandler: [...writeAuth, validate(revokeSessionsSchema, 'body')] },
+    { schema: { description: 'Enforce session revocation for a user', tags: ['Security'], security: [{ bearerAuth: [] }] }, preHandler: [...writeAuth, validate(revokeSessionsSchema, 'body')], config: writeRateLimitConfig },
     async (request: FastifyRequest<{ Body: z.infer<typeof revokeSessionsSchema> }>) => {
       const user = (request as unknown as { user: { username: string } }).user;
       const record = await responseService.revokeSessions({
@@ -318,7 +329,7 @@ export async function registerSecurityRoutes(
 
   app.post(
     '/admin/security/response/open-ticket',
-    { schema: { description: 'Simulate opening an external ticket (no ITSM integration configured)', tags: ['Security'], security: [{ bearerAuth: [] }] }, preHandler: [...writeAuth, validate(openTicketSchema, 'body')] },
+    { schema: { description: 'Simulate opening an external ticket (no ITSM integration configured)', tags: ['Security'], security: [{ bearerAuth: [] }] }, preHandler: [...writeAuth, validate(openTicketSchema, 'body')], config: writeRateLimitConfig },
     async (request: FastifyRequest<{ Body: z.infer<typeof openTicketSchema> }>) => {
       const user = (request as unknown as { user: { username: string } }).user;
       const record = await responseService.openTicket({

@@ -161,7 +161,7 @@ export async function registerAuthRoutes(
       // Best-effort: attach the user if a still-valid access token is
       // present so its jti can be revoked too, but don't require one -
       // logout must also work once the access token has already expired
-      preHandler: [optionalAuth],
+      preHandler: [authRateLimit, optionalAuth],
     },
     controller.logout.bind(controller)
   );

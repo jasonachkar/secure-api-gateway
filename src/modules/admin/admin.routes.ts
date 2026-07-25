@@ -107,9 +107,18 @@ export async function registerAdminRoutes(
     });
   }
 
-  // Start metrics seeder to generate realistic data
-  const metricsSeeder = new MetricsSeederService(redis, metricsService, threatIntelService);
-  metricsSeeder.start();
+  // Synthetic background data (fabricated requests/logins/threat events on a timer) is
+  // off by default - it must never be mistaken for real telemetry in the default reviewer
+  // experience. Opt in explicitly via ENABLE_SYNTHETIC_BACKGROUND_DATA=true for local demos.
+  // See docs/KNOWN_LIMITATIONS.md.
+  let metricsSeeder: MetricsSeederService | undefined;
+  if (env.features.enableSyntheticBackgroundData) {
+    metricsSeeder = new MetricsSeederService(redis, metricsService, threatIntelService);
+    metricsSeeder.start();
+    app.addHook('onClose', async () => {
+      metricsSeeder?.stop();
+    });
+  }
 
   await adminAuditLogService.initialize();
 
@@ -224,10 +233,16 @@ export async function registerAdminRoutes(
    * Handle CORS preflight for SSE endpoint
    */
   app.options('/admin/metrics/realtime', async (request: FastifyRequest, reply: FastifyReply) => {
-    const origin = request.headers.origin || '*';
-    
-    reply.header('Access-Control-Allow-Origin', origin);
-    reply.header('Access-Control-Allow-Credentials', 'true');
+    // Access-Control-Allow-Credentials: true requires an exact, non-wildcard origin -
+    // reflecting an arbitrary request Origin here would let any site read this SSE
+    // stream using the visitor's cookies/session. Only ever echo back an origin that
+    // is in the same explicit allowlist the main CORS plugin enforces (env.security.corsOrigins).
+    const requestOrigin = request.headers.origin;
+    if (requestOrigin && env.security.corsOrigins.includes(requestOrigin)) {
+      reply.header('Access-Control-Allow-Origin', requestOrigin);
+      reply.header('Access-Control-Allow-Credentials', 'true');
+      reply.header('Vary', 'Origin');
+    }
     reply.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
     reply.header('Access-Control-Allow-Headers', 'Cache-Control, Content-Type, Authorization, Accept');
     reply.code(204).send();

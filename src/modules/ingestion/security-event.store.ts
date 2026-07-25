@@ -10,6 +10,7 @@ import { validateNormalizedSecurityEvent } from './security-event.schema.js';
 import type { PostgresClient } from './normalized-event.store.js';
 import { migrateLegacyNormalizedEvent } from './security-event.schema.js';
 import type { NormalizedEvent } from './normalized-event.types.js';
+import { redactObject } from './redaction.js';
 
 export interface SaveEventResult {
   event: NormalizedSecurityEvent;
@@ -174,7 +175,12 @@ export class SecurityEventStore {
       ingestedAt: failure.ingestedAt ?? new Date().toISOString(),
       error: failure.error,
       provenance: failure.provenance,
-      rawEvent: failure.rawEvent,
+      // A payload that failed to parse is exactly the payload most likely to be
+      // malformed/unexpected in a way that still carries credentials (a raw provider
+      // record that doesn't match any known shape). Redact it with the same treatment
+      // successful events get in security-event.schema.ts, not a weaker one - a parser
+      // failure must never become a way to store secrets unredacted.
+      rawEvent: redactObject(failure.rawEvent),
     };
 
     const key = `${this.FAILURE_KEY_PREFIX}${record.id}`;

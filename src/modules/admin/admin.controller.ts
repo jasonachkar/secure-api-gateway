@@ -47,21 +47,25 @@ export class AdminController {
    * SSE stream of real-time metrics
    */
   async streamRealtimeMetrics(request: FastifyRequest, reply: FastifyReply) {
-    // Get origin from request - allow all origins
-    const origin = request.headers.origin || '*';
-    
     // Set SSE headers BEFORE writing any data
     reply.raw.setHeader('Content-Type', 'text/event-stream');
     reply.raw.setHeader('Cache-Control', 'no-cache');
     reply.raw.setHeader('Connection', 'keep-alive');
     reply.raw.setHeader('X-Accel-Buffering', 'no'); // Disable Nginx buffering
-    
-    // CORS headers for SSE - allow all origins
-    reply.raw.setHeader('Access-Control-Allow-Origin', origin);
-    reply.raw.setHeader('Access-Control-Allow-Credentials', 'true');
+
+    // CORS for SSE: Access-Control-Allow-Credentials: true requires an exact,
+    // non-wildcard origin. Reflecting an arbitrary request Origin here would let any
+    // site read this stream using the visitor's session, so only ever echo back an
+    // origin that is in the same explicit allowlist the main CORS plugin enforces.
+    const requestOrigin = request.headers.origin;
+    if (requestOrigin && env.security.corsOrigins.includes(requestOrigin)) {
+      reply.raw.setHeader('Access-Control-Allow-Origin', requestOrigin);
+      reply.raw.setHeader('Access-Control-Allow-Credentials', 'true');
+      reply.raw.setHeader('Vary', 'Origin');
+    }
     reply.raw.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     reply.raw.setHeader('Access-Control-Allow-Headers', 'Cache-Control, Content-Type, Authorization, Accept');
-    
+
     // Send headers immediately
     reply.raw.flushHeaders();
 

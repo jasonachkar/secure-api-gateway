@@ -16,7 +16,7 @@ import Redis from 'ioredis';
 export class FileAuditStore {
   private logFile: string;
 
-  constructor(logPath: string = './logs/audit-logs.json') {
+  constructor(logPath: string = process.env.AUDIT_LOG_PATH || './logs/audit-logs.json') {
     this.logFile = logPath;
   }
 

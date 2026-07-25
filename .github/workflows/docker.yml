@@ -32,21 +32,47 @@ jobs:
       - name: Build image
         run: docker build -t secure-api-gateway:ci -f Dockerfile .
 
-      - name: Scan image with Trivy
-        uses: aquasecurity/trivy-action@0.28.0
+      # skip-files below excludes one path from Trivy's secret scanner: the synthetic GCP
+      # replay fixture at test/fixtures/gcp/service-account-key-created.json. Trivy's
+      # gcp-service-account rule matches on the `*.iam.gserviceaccount.com` principal
+      # pattern in that fixture's fake audit-log payload; the file contains no
+      # `private_key` or any other credential material (verified by hand) - it's
+      # entirely synthetic (demo-project-123, admin@example.com, RFC 5737 documentation
+      # IP 192.0.2.80). Confirmed false positive, not a dismissal without review.
+      #
+      # Report-only pass: CRITICAL and HIGH findings are always uploaded to the Security
+      # tab so they stay visible, but this step never fails the job.
+      - name: Scan image with Trivy (report)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0, pinned to commit SHA (third-party action)
         with:
           image-ref: secure-api-gateway:ci
           format: sarif
           output: trivy-results.sarif
           severity: 'CRITICAL,HIGH'
-          exit-code: '0' # report, don't block - flip to '1' once the baseline is clean
+          exit-code: '0'
+          skip-files: '/app/dist/fixtures/gcp/service-account-key-created.json'
 
       - name: Upload Trivy results to code scanning
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: trivy-results.sarif
           category: trivy-gateway
+
+      # Blocking gate: documented threshold is CRITICAL only. HIGH findings are tracked
+      # via the SARIF upload above but don't block the build - most HIGH findings here
+      # come from transitive dependencies of the Google Cloud SDK that require a breaking
+      # major-version bump to clear (see docs/KNOWN_LIMITATIONS.md), which isn't something
+      # this gate should force blindly on every run. CRITICAL is small and fixable enough
+      # to hold at zero.
+      - name: Scan image with Trivy (block on CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: secure-api-gateway:ci
+          format: table
+          severity: 'CRITICAL'
+          exit-code: '1'
+          skip-files: '/app/dist/fixtures/gcp/service-account-key-created.json'
 
   build-mock-service:
     name: Build mock-service image

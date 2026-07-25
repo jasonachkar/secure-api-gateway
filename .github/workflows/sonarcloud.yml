@@ -41,27 +41,43 @@ permissions:
 jobs:
   Analysis:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
 
     steps:
-      - name: Analyze with SonarCloud
+      # SonarCloud requires a one-time setup outside this repo (create the SonarCloud
+      # project, then add SONAR_TOKEN plus the project/org keys below as repo secrets -
+      # see https://docs.sonarcloud.io/getting-started/github/). Until that's done, this
+      # job reports a clear skip in the workflow summary instead of failing the run - a
+      # missing optional secret is not a build break.
+      - name: Check SonarCloud configuration
+        id: sonar-config
+        run: |
+          if [ -n "${{ secrets.SONAR_TOKEN }}" ] && [ -n "${{ vars.SONAR_PROJECT_KEY }}" ] && [ -n "${{ vars.SONAR_ORGANIZATION }}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### SonarCloud analysis skipped"
+              echo ""
+              echo "\`SONAR_TOKEN\` and/or the \`SONAR_PROJECT_KEY\`/\`SONAR_ORGANIZATION\` repository variables are not set, so no analysis ran - this is not a quality gate result."
+              echo ""
+              echo "To enable: create the project at https://sonarcloud.io, then add repo secret \`SONAR_TOKEN\` and repo variables \`SONAR_PROJECT_KEY\`/\`SONAR_ORGANIZATION\` (Settings > Secrets and variables > Actions)."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
-        # You can pin the exact commit or the version.
-        # uses: SonarSource/sonarcloud-github-action@v2.2.0
-        uses: SonarSource/sonarcloud-github-action@4006f663ecaf1f8093e8e4abb9227f6041f52216
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}   # Generate a token on Sonarcloud.io, add it to the secrets of this repo with the name SONAR_TOKEN (Settings > Secrets > Actions > add new repository secret)
+      - uses: actions/checkout@v4
+        if: steps.sonar-config.outputs.configured == 'true'
         with:
-          # Additional arguments for the SonarScanner CLI
-          args:
-            # Unique keys of your project and organization. You can find them in SonarCloud > Information (bottom-left menu)
-            # mandatory
-            -Dsonar.projectKey=
-            -Dsonar.organization=
-            # Comma-separated paths to directories containing main source files.
-            #-Dsonar.sources= # optional, default is project base directory
-            # Comma-separated paths to directories containing test source files.
-            #-Dsonar.tests= # optional. For more info about Code Coverage, please refer to https://docs.sonarcloud.io/enriching/test-coverage/overview/
-            # Adds more detail to both client and server-side analysis logs, activating DEBUG mode for the scanner, and adding client-side environment variables and system properties to the server-side log of analysis report processing.
-            #-Dsonar.verbose= # optional, default is false
-          # When you need the analysis to take place in a directory other than the one from which it was launched, default is .
+          fetch-depth: 0 # SonarCloud needs full history for blame/new-code analysis
+
+      - name: Analyze with SonarCloud
+        if: steps.sonar-config.outputs.configured == 'true'
+        uses: SonarSource/sonarcloud-github-action@4006f663ecaf1f8093e8e4abb9227f6041f52216 # v2.2.0, pinned to commit SHA (third-party action)
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
           projectBaseDir: .

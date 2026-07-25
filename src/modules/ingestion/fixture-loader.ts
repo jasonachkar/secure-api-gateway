@@ -7,7 +7,7 @@
  * copy step hasn't run, so this falls back to reading test/fixtures directly.
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import type { CloudProvider } from '../security/types.js';
 
 // This project compiles to CommonJS (see tsconfig "module": "NodeNext" with no
@@ -33,6 +33,7 @@ export interface FixtureDescriptor {
 }
 
 const FIXTURE_PROVIDERS: Array<Exclude<CloudProvider, 'gateway'>> = ['aws', 'gcp', 'azure'];
+const FIXTURE_NAME_RE = /^[A-Za-z0-9_-]+$/;
 
 export function listFixtures(): FixtureDescriptor[] {
   const root = resolveFixturesRoot();
@@ -55,13 +56,27 @@ export function listFixtures(): FixtureDescriptor[] {
 }
 
 export function loadFixture(id: string): { provider: Exclude<CloudProvider, 'gateway'>; payload: unknown } {
-  const [provider, name] = id.split('/');
-  if (!provider || !name || !FIXTURE_PROVIDERS.includes(provider as Exclude<CloudProvider, 'gateway'>)) {
+  const parts = id.split('/');
+  if (parts.length !== 2) {
+    throw new Error(`Unknown fixture id: ${id}`);
+  }
+
+  const [provider, name] = parts;
+  if (
+    !provider ||
+    !name ||
+    !FIXTURE_PROVIDERS.includes(provider as Exclude<CloudProvider, 'gateway'>) ||
+    !FIXTURE_NAME_RE.test(name)
+  ) {
     throw new Error(`Unknown fixture id: ${id}`);
   }
 
   const root = resolveFixturesRoot();
-  const filePath = join(root, provider, `${name}.json`);
+  const providerRoot = resolve(root, provider);
+  const filePath = resolve(providerRoot, `${name}.json`);
+  if (!(filePath === providerRoot || filePath.startsWith(`${providerRoot}${sep}`))) {
+    throw new Error(`Unknown fixture id: ${id}`);
+  }
   if (!existsSync(filePath)) {
     throw new Error(`Fixture not found: ${id}`);
   }

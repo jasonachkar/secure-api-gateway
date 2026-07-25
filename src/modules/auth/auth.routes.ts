@@ -102,6 +102,12 @@ export async function registerAuthRoutes(
           },
         },
       },
+      config: {
+        rateLimit: {
+          max: env.rateLimit.authMax,
+          timeWindow: env.rateLimit.authWindowMs,
+        },
+      },
       preHandler: [authRateLimit],
     },
     controller.demoLogin.bind(controller)

@@ -1,0 +1,13 @@
+{
+  "eventDataId": "az-nsg-001",
+  "eventTimestamp": "2026-07-24T17:10:00Z",
+  "subscriptionId": "11111111-2222-3333-4444-555555555555",
+  "operationName": "Microsoft.Network/networkSecurityGroups/securityRules/write",
+  "status": "Succeeded",
+  "caller": "admin@contoso.com",
+  "resourceId": "/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg/providers/Microsoft.Network/networkSecurityGroups/demo-nsg",
+  "resourceType": "Microsoft.Network/networkSecurityGroups",
+  "resourceLocation": "eastus",
+  "category": "Administrative",
+  "properties": { "ipAddress": "203.0.113.110" }
+}

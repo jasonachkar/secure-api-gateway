@@ -8,9 +8,7 @@ import Redis from 'ioredis';
 import { AdminController } from './admin.controller.js';
 import { AdminService } from './admin.service.js';
 import { MetricsService } from './metrics.service.js';
-import { ThreatIntelService } from './threat-intel.service.js';
 import { ThreatIntelController } from './threat-intel.controller.js';
-import { IncidentResponseService } from './incident-response.service.js';
 import { IncidentResponseController } from './incident-response.controller.js';
 import { ComplianceService } from './compliance.service.js';
 import { ComplianceController } from './compliance.controller.js';
@@ -82,10 +80,12 @@ export async function registerAdminRoutes(
   // Initialize services
   const metricsService = new MetricsService(redis);
   const adminService = new AdminService(redis, auditService);
-  const incidentService = new IncidentResponseService(redis);
+  // Shared instances constructed once in app.ts (also used by the early
+  // IP-block enforcement hook) - reuse them here instead of standing up a
+  // second set operating on the same Redis keyspace.
+  const incidentService = app.incidentService;
+  const threatIntelService = app.threatIntelService;
   const adminAuditLogService = new AdminAuditLogService(redis);
-  // Pass incident service to threat intel for auto-incident creation
-  const threatIntelService = new ThreatIntelService(redis, incidentService);
   const controller = new AdminController(adminService, metricsService, adminAuditLogService);
   const threatController = new ThreatIntelController(threatIntelService);
   const incidentController = new IncidentResponseController(incidentService);
@@ -113,9 +113,11 @@ export async function registerAdminRoutes(
 
   await adminAuditLogService.initialize();
 
-  // All admin routes require admin role
+  // All admin routes require admin role. metricsAuth additionally allows the
+  // read-only reviewer role (see ROLES.reviewer) - metrics/ingestion-status are
+  // informational only, never mutate state.
   const adminAuth = [requireAuth, requireRole('admin')];
-  const metricsAuth = [requireAuth, requireAnyRole(['admin', 'security_analyst'])];
+  const metricsAuth = [requireAuth, requireAnyRole(['admin', 'security_analyst', 'reviewer'])];
   const incidentAuth = [requireAuth, requireAnyRole(['admin', 'incident_responder'])];
 
   app.addHook('onResponse', async (request: FastifyRequest, reply: FastifyReply) => {

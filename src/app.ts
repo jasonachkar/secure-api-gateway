@@ -27,6 +27,18 @@ import { registerMetricsCollection } from './middleware/metrics.js';
 import { registerRequestTelemetry } from './lib/requestTelemetry.js';
 import { TokenStore } from './modules/auth/token.store.js';
 import { ApiKeyStore } from './modules/apikeys/apikey.store.js';
+import { ThreatIntelService } from './modules/admin/threat-intel.service.js';
+import { IncidentResponseService } from './modules/admin/incident-response.service.js';
+import { ResponseService } from './modules/response/response.service.js';
+import { PipelineMetrics } from './modules/security/pipeline-metrics.js';
+import { DetectionEngine } from './modules/detection/engine.js';
+import { DetectionStore } from './modules/detection/detection.store.js';
+import { SecurityEventStore } from './modules/ingestion/security-event.store.js';
+import { InvestigationService } from './modules/investigations/investigation.service.js';
+import { registerSecurityRoutes } from './modules/security/security.routes.js';
+import { registerIpBlockMiddleware } from './middleware/ipBlock.js';
+import { ScenarioService } from './modules/scenarios/scenario.service.js';
+import { registerScenarioRoutes } from './modules/scenarios/scenario.routes.js';
 
 /**
  * Create and configure Fastify application
@@ -59,11 +71,32 @@ export async function createApp(): Promise<FastifyInstance> {
   // Shared API key store (admin routes manage keys, proxy routes accept them)
   const apiKeyStore = new ApiKeyStore(redis);
 
+  // Security control-plane services, constructed here (not inside admin routes)
+  // so the IP-block enforcement hook can run early, ahead of route registration,
+  // and so admin/investigation/scenario routes all share one instance instead of
+  // each standing up their own Redis-backed service.
+  const incidentService = new IncidentResponseService(redis);
+  const threatIntelService = new ThreatIntelService(redis, incidentService);
+  const pipelineMetrics = new PipelineMetrics(redis);
+  const responseService = new ResponseService(redis, threatIntelService, tokenStore, auditService, pipelineMetrics);
+  const securityEventStore = new SecurityEventStore(redis);
+  const detectionEngine = new DetectionEngine(undefined, pipelineMetrics);
+  const detectionStore = new DetectionStore(redis);
+  const investigationService = new InvestigationService(redis, pipelineMetrics);
+
   // Decorate app with services for use in routes
   app.decorate('audit', auditService);
   app.decorate('metrics', metricsService);
   app.decorate('tokenStore', tokenStore);
   app.decorate('apiKeyStore', apiKeyStore);
+  app.decorate('incidentService', incidentService);
+  app.decorate('threatIntelService', threatIntelService);
+  app.decorate('pipelineMetrics', pipelineMetrics);
+  app.decorate('responseService', responseService);
+  app.decorate('securityEventStore', securityEventStore);
+  app.decorate('detectionEngine', detectionEngine);
+  app.decorate('detectionStore', detectionStore);
+  app.decorate('investigationService', investigationService);
 
   // ============================================
   // PLUGINS
@@ -101,6 +134,11 @@ export async function createApp(): Promise<FastifyInstance> {
 
   // Global rate limiting
   await registerGlobalRateLimit(app, redis);
+
+  // Blocked-IP enforcement - runs early, ahead of business logic, so a blocked
+  // IP is rejected before it can reach auth/proxy/admin routes. Real Redis-backed
+  // block set, audited, response-action-tracked (see docs/SECURITY_CONTROLS.md).
+  registerIpBlockMiddleware(app, threatIntelService, auditService, responseService);
 
   // Metrics collection
   await registerMetricsCollection(app, metricsService);
@@ -345,11 +383,40 @@ export async function createApp(): Promise<FastifyInstance> {
   });
 
   // Register module routes
-  await registerAuthRoutes(app, redis, auditService);
+  const authService = await registerAuthRoutes(app, redis, auditService, {
+    detectionEngine,
+    detectionStore,
+    securityEventStore,
+    investigationService,
+    pipelineMetrics,
+  });
   await registerAuditRoutes(app, auditService);
   await registerReportsRoutes(app, redis);
   await registerProxyRoutes(app, redis);
   await registerAdminRoutes(app, redis, auditService);
+  await registerSecurityRoutes(app, {
+    investigationService,
+    securityEventStore,
+    detectionEngine,
+    detectionStore,
+    pipelineMetrics,
+    responseService,
+    auditService,
+  });
+
+  const scenarioService = new ScenarioService({
+    redis,
+    authService,
+    threatIntelService,
+    responseService,
+    securityEventStore,
+    detectionEngine,
+    detectionStore,
+    investigationService,
+    pipelineMetrics,
+  });
+  await registerScenarioRoutes(app, redis, scenarioService);
+  app.decorate('scenarioService', scenarioService);
 
   return app;
 }
@@ -361,5 +428,14 @@ declare module 'fastify' {
     metrics: MetricsService;
     tokenStore: TokenStore;
     apiKeyStore: ApiKeyStore;
+    incidentService: IncidentResponseService;
+    threatIntelService: ThreatIntelService;
+    pipelineMetrics: PipelineMetrics;
+    responseService: ResponseService;
+    securityEventStore: SecurityEventStore;
+    detectionEngine: DetectionEngine;
+    detectionStore: DetectionStore;
+    investigationService: InvestigationService;
+    scenarioService: ScenarioService;
   }
 }

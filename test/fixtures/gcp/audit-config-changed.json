@@ -1,0 +1,15 @@
+{
+  "insertId": "gcp-audit-cfg-001",
+  "timestamp": "2026-07-24T16:20:00Z",
+  "severity": "WARNING",
+  "logName": "projects/demo-project-123/logs/cloudaudit.googleapis.com%2Factivity",
+  "resource": { "type": "logging_sink", "labels": { "project_id": "demo-project-123" } },
+  "protoPayload": {
+    "serviceName": "logging.googleapis.com",
+    "methodName": "google.logging.v2.ConfigServiceV2.UpdateSink",
+    "resourceName": "projects/demo-project-123/sinks/audit-sink",
+    "authenticationInfo": { "principalEmail": "admin@example.com" },
+    "requestMetadata": { "callerIp": "192.0.2.99", "callerSuppliedUserAgent": "gcloud" },
+    "status": { "code": 0 }
+  }
+}

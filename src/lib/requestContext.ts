@@ -62,27 +62,30 @@ export function createRequestContext(request: FastifyRequest): RequestContext {
 }
 
 /**
- * Extract client IP from request headers
- * Handles various proxy header formats (X-Forwarded-For, X-Real-IP)
- * @param request - Fastify request object
- * @returns Client IP address
+ * Extract client IP for security controls (rate limit, IP block, audit).
+ *
+ * Trust model: with `trustProxy: true`, Fastify derives `request.ip` from the
+ * socket peer and trusted forwarding hops. Spoofed `X-Forwarded-For` from a
+ * direct client must not override that identity for enforcement decisions.
+ * We therefore prefer `request.ip` and only fall back to raw headers when
+ * `request.ip` is unavailable.
  */
 export function getClientIp(request: FastifyRequest): string {
-  // Check X-Forwarded-For (comma-separated list, first is client)
-  const forwardedFor = request.headers['x-forwarded-for'] as string | undefined;
-  if (forwardedFor) {
-    const ips = forwardedFor.split(',').map((ip) => ip.trim());
-    return ips[0];
+  if (request.ip && request.ip.trim().length > 0) {
+    return request.ip.trim();
   }
 
-  // Check X-Real-IP
-  const realIp = request.headers['x-real-ip'] as string | undefined;
-  if (realIp) {
-    return realIp;
+  const realIp = request.headers['x-real-ip'];
+  if (typeof realIp === 'string' && realIp.trim()) {
+    return realIp.trim();
   }
 
-  // Fallback to socket IP
-  return request.ip;
+  const forwardedFor = request.headers['x-forwarded-for'];
+  if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
+    return forwardedFor.split(',')[0]?.trim() || '0.0.0.0';
+  }
+
+  return '0.0.0.0';
 }
 
 /**

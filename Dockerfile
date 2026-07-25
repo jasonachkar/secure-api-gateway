@@ -18,8 +18,12 @@ RUN npm ci && \
 
 # Copy source code
 COPY src ./src
+COPY scripts/copy-fixtures.mjs ./scripts/copy-fixtures.mjs
+# Sanitized replay fixtures (guided scenarios, detection rule tests) - not test
+# code itself, just the JSON data files the runtime replay engine reads.
+COPY test/fixtures ./test/fixtures
 
-# Build TypeScript
+# Build TypeScript (also copies test/fixtures -> dist/fixtures, see scripts/copy-fixtures.mjs)
 RUN npm run build
 
 # Production image

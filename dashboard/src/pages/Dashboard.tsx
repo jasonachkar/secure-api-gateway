@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronDown, ChevronUp, ListTree } from 'lucide-react';
+import { ChevronDown, ChevronUp, ListTree, Info } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { MetricCard } from '../components/MetricCard';
 import { RequestRateChart } from '../components/RequestRateChart';
@@ -275,12 +275,19 @@ export function Dashboard() {
         {!infoBannerDismissed && (
           <div className="alert alert--info info-banner">
             <div className="flex-1">
-              <div className="info-banner__title">👋 New to this dashboard?</div>
+              <div className="info-banner__title">
+                <Info size={16} aria-hidden="true" style={{ marginRight: 6, verticalAlign: 'text-bottom' }} />
+                New to this dashboard?
+              </div>
               <div className="info-banner__text">
-                This is a live demonstration of a production-grade API Gateway security monitoring dashboard. Learn
-                more about what each section shows in the{' '}
+                This is a live demonstration of a multi-cloud API security control plane. Learn more about
+                what's genuinely implemented versus simulated in{' '}
+                <Link to="/implementation-status" className="info-banner__link">
+                  Implementation Status
+                </Link>
+                , or how it's built in{' '}
                 <Link to="/about" className="info-banner__link">
-                  About page
+                  Architecture & Evidence
                 </Link>
                 .
               </div>

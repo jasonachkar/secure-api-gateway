@@ -18,8 +18,15 @@ resource "aws_cloudwatch_log_group" "this" {
   tags = var.tags
 }
 
+locals {
+  # log_group_name is a CloudWatch path like "/secure-api-gateway/dev" (slashes are valid
+  # there) but IAM resource names only allow [\w+=,.@-] - no slashes - so derive a
+  # separate, IAM-safe name instead of reusing the log group name directly.
+  iam_safe_name = replace(trim(var.log_group_name, "/"), "/", "-")
+}
+
 resource "aws_iam_user" "reader" {
-  name = "${var.log_group_name}-reader"
+  name = "${local.iam_safe_name}-reader"
   tags = var.tags
 }
 

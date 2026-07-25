@@ -47,6 +47,15 @@ const ROLES = {
     name: 'service',
     permissions: ['read:reports', 'write:reports'],
   },
+  // Read-only reviewer role for the one-click demo entry point (POST /auth/demo-login).
+  // Deliberately excludes write:admin/manage:users - a reviewer can read dashboards and
+  // run the allowlisted guided scenarios (which only ever touch the fixed sim-target
+  // account/RFC 5737 demo IP or replay a checked-in fixture), never block an arbitrary
+  // IP, revoke an arbitrary user's sessions, or change configuration directly.
+  reviewer: {
+    name: 'reviewer',
+    permissions: ['read:admin'],
+  },
 };
 
 /**
@@ -102,6 +111,15 @@ class UserStore {
         username: 'sim-target',
         password: 'SimTarget123!',
         roles: ['user'],
+      },
+      {
+        // Backing account for POST /auth/demo-login (one-click read-only reviewer
+        // entry point). Its password is never exposed to callers - only the server
+        // authenticates as this account, on the caller's behalf. See ROLES.reviewer.
+        userId: 'user-5',
+        username: 'reviewer',
+        password: 'Reviewer123!',
+        roles: ['reviewer'],
       },
     ];
 

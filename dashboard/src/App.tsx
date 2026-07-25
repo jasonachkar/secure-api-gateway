@@ -15,6 +15,10 @@ import { Users } from './pages/Users';
 import { Threats } from './pages/Threats';
 import { Incidents } from './pages/Incidents';
 import { Compliance } from './pages/Compliance';
+import { GuidedScenarios } from './pages/GuidedScenarios';
+import { Investigations } from './pages/Investigations';
+import { CloudCoverage } from './pages/CloudCoverage';
+import { ImplementationStatus } from './pages/ImplementationStatus';
 
 function App() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -65,6 +69,22 @@ function App() {
         <Route
           path="/compliance"
           element={isAuthenticated ? <Compliance /> : <Navigate to="/login" replace />}
+        />
+        <Route
+          path="/guided-scenarios"
+          element={isAuthenticated ? <GuidedScenarios /> : <Navigate to="/login" replace />}
+        />
+        <Route
+          path="/investigations"
+          element={isAuthenticated ? <Investigations /> : <Navigate to="/login" replace />}
+        />
+        <Route
+          path="/cloud-coverage"
+          element={isAuthenticated ? <CloudCoverage /> : <Navigate to="/login" replace />}
+        />
+        <Route
+          path="/implementation-status"
+          element={isAuthenticated ? <ImplementationStatus /> : <Navigate to="/login" replace />}
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

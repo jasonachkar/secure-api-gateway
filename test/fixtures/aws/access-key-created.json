@@ -1,0 +1,13 @@
+{
+  "eventVersion": "1.08",
+  "userIdentity": { "type": "IAMUser", "principalId": "AIDAIAMUSER", "arn": "arn:aws:iam::123456789012:user/alice", "accountId": "123456789012", "userName": "alice" },
+  "eventTime": "2026-07-24T15:10:00Z",
+  "eventSource": "iam.amazonaws.com",
+  "eventName": "CreateAccessKey",
+  "awsRegion": "us-east-1",
+  "sourceIPAddress": "198.51.100.21",
+  "userAgent": "aws-cli/2.0",
+  "requestParameters": { "userName": "svc-deploy" },
+  "eventID": "aws-access-key-001",
+  "recipientAccountId": "123456789012"
+}

@@ -40,6 +40,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: UI copy check (no emoji in dashboard/src)
+        run: npm run check:ui-copy
+
       - name: Typecheck
         run: npm run typecheck
 

@@ -1,0 +1,14 @@
+{
+  "insertId": "gcp-denied-001",
+  "timestamp": "2026-07-24T16:15:00Z",
+  "severity": "ERROR",
+  "logName": "projects/demo-project-123/logs/cloudaudit.googleapis.com%2Fdata_access",
+  "resource": { "type": "gce_instance", "labels": { "project_id": "demo-project-123" } },
+  "protoPayload": {
+    "serviceName": "compute.googleapis.com",
+    "methodName": "compute.instances.get",
+    "authenticationInfo": { "principalEmail": "nobody@example.com" },
+    "requestMetadata": { "callerIp": "203.0.113.90", "callerSuppliedUserAgent": "curl/8.0" },
+    "status": { "code": 7, "message": "PERMISSION_DENIED" }
+  }
+}

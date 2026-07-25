@@ -1,0 +1,14 @@
+{
+  "eventTime": "2026-07-24T15:25:00Z",
+  "eventSource": "apigateway.amazonaws.com",
+  "eventName": "Unauthorized",
+  "eventID": "apigw-auth-fail-001",
+  "awsRegion": "us-east-1",
+  "sourceIPAddress": "192.0.2.55",
+  "userAgent": "curl/8.0",
+  "apiGatewayError": "Unauthorized",
+  "errorCode": "AccessDeniedException",
+  "recipientAccountId": "123456789012",
+  "userIdentity": { "type": "Unknown", "principalId": "anonymous" },
+  "requestContext": { "identity": { "sourceIp": "192.0.2.55", "userAgent": "curl/8.0" } }
+}

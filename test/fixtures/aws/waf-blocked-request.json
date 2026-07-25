@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-07-24T15:20:00Z",
+  "action": "BLOCK",
+  "terminatingRuleId": "AWS-AWSManagedRulesCommonRuleSet",
+  "httpRequest": {
+    "clientIp": "203.0.113.40",
+    "country": "US",
+    "uri": "/admin",
+    "requestId": "waf-blocked-001",
+    "headers": { "userAgent": "sqlmap/1.0" }
+  },
+  "eventID": "waf-blocked-001",
+  "eventSource": "waf.amazonaws.com",
+  "eventName": "BLOCK",
+  "awsRegion": "us-east-1",
+  "accountId": "123456789012"
+}

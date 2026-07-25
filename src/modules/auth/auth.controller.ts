@@ -12,6 +12,9 @@ import { getClientIp, getRequestId } from '../../lib/requestContext.js';
 import { verifyToken } from '../../middleware/auth.js';
 import { env } from '../../config/index.js';
 import { UnauthorizedError, AccountLockedError, InvalidCredentialsError } from '../../lib/errors.js';
+import { evaluateGatewayCredentialAttack, type AuthSecurityPipeline } from '../security/gateway-detection.js';
+
+export type { AuthSecurityPipeline } from '../security/gateway-detection.js';
 
 /**
  * Authentication controller
@@ -19,8 +22,58 @@ import { UnauthorizedError, AccountLockedError, InvalidCredentialsError } from '
 export class AuthController {
   constructor(
     private authService: AuthService,
-    private auditService: AuditService
+    private auditService: AuditService,
+    private securityPipeline?: AuthSecurityPipeline
   ) {}
+
+  /**
+   * Feed a real account-lockout event through the live detection pipeline
+   * (GW-AUTH-001). Optional pipeline so AuthController keeps working in any
+   * context that doesn't construct the security control plane (e.g. tests).
+   */
+  private async evaluateGatewayCredentialAttack(params: { username: string; ip: string }): Promise<void> {
+    if (!this.securityPipeline) return;
+    await evaluateGatewayCredentialAttack(this.securityPipeline, {
+      username: params.username,
+      ip: params.ip,
+      failedLoginCount: env.auth.maxLoginAttempts,
+    });
+  }
+
+  /**
+   * POST /auth/demo-login
+   * One-click read-only reviewer entry point: authenticates as the fixed
+   * "reviewer" demo account server-side. The caller never sees or supplies
+   * a password - the account itself carries no write privileges beyond
+   * running the allowlisted guided scenarios (see ROLES.reviewer).
+   */
+  async demoLogin(request: FastifyRequest, reply: FastifyReply) {
+    const ip = getClientIp(request);
+    const requestId = getRequestId(request);
+
+    const { accessToken, refreshToken, expiresIn, user } = await this.authService.login(
+      'reviewer',
+      'Reviewer123!',
+      ip
+    );
+
+    await this.auditService.logLoginSuccess({
+      userId: user.userId,
+      username: user.username,
+      ip,
+      requestId,
+    });
+
+    reply.setCookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: env.server.isProduction,
+      sameSite: 'strict',
+      path: '/auth/refresh',
+      maxAge: 60 * 60 * 24 * 7,
+    });
+
+    return { accessToken, expiresIn, tokenType: 'Bearer' };
+  }
 
   /**
    * POST /auth/login
@@ -76,6 +129,7 @@ export class AuthController {
           success: false,
           message: 'Account locked due to too many failed login attempts',
         });
+        await this.evaluateGatewayCredentialAttack({ username, ip });
       } else if (error instanceof InvalidCredentialsError) {
         await this.auditService.logLoginFailure({
           username,

@@ -82,27 +82,41 @@ resource "random_password" "jwt_secret" {
   special = false
 }
 
+# Computed once and stored in state (not re-evaluated from timestamp() on every plan),
+# so it gives every Key Vault secret a real expiration_date without causing a perpetual
+# diff. Rotate by tainting this resource (which forces a new expiry on every secret that
+# references it) alongside rotating the secret values themselves.
+resource "time_offset" "key_vault_secret_expiry" {
+  offset_days = 365
+}
+
 resource "azurerm_key_vault_secret" "cookie_secret" {
-  name         = "cookie-secret"
-  value        = random_password.cookie_secret.result
-  key_vault_id = module.key_vault.id
+  name            = "cookie-secret"
+  value           = random_password.cookie_secret.result
+  key_vault_id    = module.key_vault.id
+  content_type    = "text/plain"
+  expiration_date = time_offset.key_vault_secret_expiry.rfc3339
 
   depends_on = [azurerm_role_assignment.deployer_key_vault_secrets_officer]
 }
 
 resource "azurerm_key_vault_secret" "jwt_secret" {
-  name         = "jwt-secret"
-  value        = random_password.jwt_secret.result
-  key_vault_id = module.key_vault.id
+  name            = "jwt-secret"
+  value           = random_password.jwt_secret.result
+  key_vault_id    = module.key_vault.id
+  content_type    = "text/plain"
+  expiration_date = time_offset.key_vault_secret_expiry.rfc3339
 
   depends_on = [azurerm_role_assignment.deployer_key_vault_secrets_officer]
 }
 
 resource "azurerm_key_vault_secret" "redis_password" {
-  count        = var.enable_redis ? 1 : 0
-  name         = "redis-password"
-  value        = module.redis[0].primary_access_key
-  key_vault_id = module.key_vault.id
+  count           = var.enable_redis ? 1 : 0
+  name            = "redis-password"
+  value           = module.redis[0].primary_access_key
+  key_vault_id    = module.key_vault.id
+  content_type    = "text/plain"
+  expiration_date = time_offset.key_vault_secret_expiry.rfc3339
 
   depends_on = [azurerm_role_assignment.deployer_key_vault_secrets_officer]
 }
@@ -134,28 +148,34 @@ module "gcp_logging" {
 }
 
 resource "azurerm_key_vault_secret" "aws_cloudwatch_access_key_id" {
-  count        = var.enable_aws_cloudwatch_ingestion ? 1 : 0
-  name         = "aws-cloudwatch-access-key-id"
-  value        = module.aws_logging[0].access_key_id
-  key_vault_id = module.key_vault.id
+  count           = var.enable_aws_cloudwatch_ingestion ? 1 : 0
+  name            = "aws-cloudwatch-access-key-id"
+  value           = module.aws_logging[0].access_key_id
+  key_vault_id    = module.key_vault.id
+  content_type    = "text/plain"
+  expiration_date = time_offset.key_vault_secret_expiry.rfc3339
 
   depends_on = [azurerm_role_assignment.deployer_key_vault_secrets_officer]
 }
 
 resource "azurerm_key_vault_secret" "aws_cloudwatch_secret_access_key" {
-  count        = var.enable_aws_cloudwatch_ingestion ? 1 : 0
-  name         = "aws-cloudwatch-secret-access-key"
-  value        = module.aws_logging[0].secret_access_key
-  key_vault_id = module.key_vault.id
+  count           = var.enable_aws_cloudwatch_ingestion ? 1 : 0
+  name            = "aws-cloudwatch-secret-access-key"
+  value           = module.aws_logging[0].secret_access_key
+  key_vault_id    = module.key_vault.id
+  content_type    = "text/plain"
+  expiration_date = time_offset.key_vault_secret_expiry.rfc3339
 
   depends_on = [azurerm_role_assignment.deployer_key_vault_secrets_officer]
 }
 
 resource "azurerm_key_vault_secret" "gcp_logging_credentials" {
-  count        = var.enable_gcp_logging_ingestion ? 1 : 0
-  name         = "gcp-logging-credentials"
-  value        = module.gcp_logging[0].service_account_key_json
-  key_vault_id = module.key_vault.id
+  count           = var.enable_gcp_logging_ingestion ? 1 : 0
+  name            = "gcp-logging-credentials"
+  value           = module.gcp_logging[0].service_account_key_json
+  key_vault_id    = module.key_vault.id
+  content_type    = "application/json"
+  expiration_date = time_offset.key_vault_secret_expiry.rfc3339
 
   depends_on = [azurerm_role_assignment.deployer_key_vault_secrets_officer]
 }

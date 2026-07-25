@@ -20,6 +20,14 @@ export interface IngestionAdapterStatus {
   configured: boolean;
   lastSyncAt?: number;
   detail?: string;
+  /** Raw provider records received across all polls (before parsing) - not the same as eventsIngested, which excludes parser failures and duplicates. */
+  eventsReceived?: number;
+  eventsIngested?: number;
+  parserFailures?: number;
+  duplicatesDiscarded?: number;
+  lastEventAt?: number;
+  /** Opaque cursor position (adapter-specific: a timestamp for CloudWatch/GCP), for operator visibility - not meant to be parsed by callers. */
+  cursor?: string | null;
 }
 
 export interface IngestionStorageStatus {

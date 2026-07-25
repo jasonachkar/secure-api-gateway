@@ -36,7 +36,6 @@ import { AuditEventType } from '../audit/audit.types.js';
 import { getClientIp, getRequestId } from '../../lib/requestContext.js';
 import { upstreamCircuitBreaker } from '../../lib/httpClient.js';
 import { getRecentRequests } from '../../lib/requestTelemetry.js';
-import type { PostgresClient } from '../ingestion/normalized-event.store.js';
 
 /**
  * SSE authentication middleware
@@ -63,11 +62,6 @@ async function requireAuthSSE(request: FastifyRequest, reply: FastifyReply) {
   }
 }
 
-async function createPostgresClient(): Promise<PostgresClient> {
-  const { Pool } = await import('pg');
-  return new Pool({ connectionString: env.storage.postgresUrl });
-}
-
 /**
  * Register admin routes
  * All routes require authentication + admin role
@@ -91,21 +85,22 @@ export async function registerAdminRoutes(
   const incidentController = new IncidentResponseController(incidentService);
   const complianceService = new ComplianceService(redis, metricsService, threatIntelService, adminService);
   const complianceController = new ComplianceController(complianceService);
-  const postgresPool = env.storage.postgresUrl ? await createPostgresClient() : undefined;
-  const ingestionService = new IngestionService(redis, incidentService, postgresPool);
-  await ingestionService.initialize();
+  // Live AWS/GCP polling adapters feed the same canonical pipeline everything else uses
+  // (constructed once in app.ts, decorated onto `app` before routes are registered) -
+  // there is no separate legacy ingestion path anymore. See docs/CLOUD_INGESTION.md.
+  const ingestionService = new IngestionService(redis, {
+    securityEventStore: app.securityEventStore,
+    detectionEngine: app.detectionEngine,
+    detectionStore: app.detectionStore,
+    investigationService: app.investigationService,
+    pipelineMetrics: app.pipelineMetrics,
+  });
   ingestionService.start();
   const ingestionController = new IngestionController(ingestionService);
 
   app.addHook('onClose', async () => {
     ingestionService.stop();
   });
-
-  if (postgresPool) {
-    app.addHook('onClose', async () => {
-      await postgresPool.end?.();
-    });
-  }
 
   // Synthetic background data (fabricated requests/logins/threat events on a timer) is
   // off by default - it must never be mistaken for real telemetry in the default reviewer

@@ -210,6 +210,43 @@ export class SecurityEventStore {
     return this.redis.zcard(this.FAILURE_INDEX_KEY);
   }
 
+  /** Storage connectivity + volume, for the ingestion status surface (GET /admin/ingestion/status). */
+  async getStorageStatus(): Promise<{
+    redisConnected: boolean;
+    postgresConnected: boolean;
+    totalEvents: number;
+    lastEventAt?: number;
+  }> {
+    let redisConnected = false;
+    try {
+      redisConnected = (await this.redis.ping()) === 'PONG';
+    } catch (error) {
+      logger.warn({ error }, 'Redis unavailable for ingestion status');
+    }
+
+    let postgresConnected = false;
+    if (this.postgres) {
+      try {
+        await this.postgres.query('SELECT 1');
+        postgresConnected = true;
+      } catch (error) {
+        logger.warn({ error }, 'Postgres unavailable for ingestion status');
+      }
+    }
+
+    let totalEvents = 0;
+    let lastEventAt: number | undefined;
+    try {
+      totalEvents = await this.redis.zcard(this.EVENT_INDEX_KEY);
+      const lastEventResult = await this.redis.zrevrange(this.EVENT_INDEX_KEY, 0, 0, 'WITHSCORES');
+      lastEventAt = lastEventResult.length > 1 ? Number(lastEventResult[1]) : undefined;
+    } catch (error) {
+      logger.warn({ error }, 'Failed to read security-event index from Redis');
+    }
+
+    return { redisConnected, postgresConnected, totalEvents, lastEventAt };
+  }
+
   async migrateLegacyEvent(legacy: NormalizedEvent): Promise<SaveEventResult> {
     const migrated = migrateLegacyNormalizedEvent(legacy);
     return this.saveEvent(migrated);

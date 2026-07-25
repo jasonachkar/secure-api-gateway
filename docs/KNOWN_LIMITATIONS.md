@@ -98,6 +98,20 @@ and gated behind `ENABLE_SYNTHETIC_BACKGROUND_DATA=true` (see `.env.example`) - 
 runs in the default reviewer experience, and its output must never be read as real
 telemetry or factored into any compliance/posture scoring.
 
+## Legacy ingestion path (unused, not yet removed)
+
+Live AWS/GCP polling now feeds the canonical `NormalizedSecurityEvent` pipeline
+end to end - see `docs/CLOUD_INGESTION.md`. Before that, it fed a separate legacy
+pipeline (`NormalizedEvent` schema in `src/modules/ingestion/normalized-event.types.ts`,
+`NormalizedEventStore`'s event-storage methods, and
+`IncidentResponseService.createIncidentFromNormalizedEvent()`), which never touched
+detection rules, investigations, or evidence. Nothing in the live or replay ingestion
+path calls into that legacy code anymore, but it has not been deleted: removing the
+manual/administrative incident-creation capability and reconciling it with the dashboard
+(which still has an Incidents page reading from `IncidentResponseService`) is a larger,
+separate change than unifying ingestion. Do not describe the legacy `NormalizedEvent`
+path as removed - it is dead for ingestion purposes but still present in the codebase.
+
 ## Cloud ingestion
 
 See `docs/CLOUD_INGESTION.md` and the in-app Cloud Coverage page for the current

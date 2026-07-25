@@ -40,6 +40,12 @@ import { registerSecurityRoutes } from './modules/security/security.routes.js';
 import { registerIpBlockMiddleware } from './middleware/ipBlock.js';
 import { ScenarioService } from './modules/scenarios/scenario.service.js';
 import { registerScenarioRoutes } from './modules/scenarios/scenario.routes.js';
+import type { PostgresClient } from './modules/ingestion/normalized-event.store.js';
+
+async function createPostgresClient(): Promise<PostgresClient> {
+  const { Pool } = await import('pg');
+  return new Pool({ connectionString: env.storage.postgresUrl });
+}
 
 /**
  * Create and configure Fastify application
@@ -85,10 +91,22 @@ export async function createApp(): Promise<FastifyInstance> {
   const threatIntelService = new ThreatIntelService(redis, incidentService);
   const pipelineMetrics = new PipelineMetrics(redis);
   const responseService = new ResponseService(redis, threatIntelService, tokenStore, auditService, pipelineMetrics);
-  const securityEventStore = new SecurityEventStore(redis);
+  // Optional durability for the canonical security-event pipeline (Redis is always the
+  // source of truth for reads/dedup; Postgres, when configured, is a durable copy - see
+  // SecurityEventStore). Shared by every consumer of securityEventStore below, including
+  // the live AWS/GCP ingestion adapters wired up in admin.routes.ts.
+  const postgresPool = env.storage.postgresUrl ? await createPostgresClient() : undefined;
+  const securityEventStore = new SecurityEventStore(redis, postgresPool);
+  await securityEventStore.initialize();
   const detectionEngine = new DetectionEngine(undefined, pipelineMetrics);
   const detectionStore = new DetectionStore(redis);
   const investigationService = new InvestigationService(redis, pipelineMetrics);
+
+  if (postgresPool) {
+    app.addHook('onClose', async () => {
+      await postgresPool.end?.();
+    });
+  }
 
   // Decorate app with services for use in routes
   app.decorate('audit', auditService);

@@ -113,36 +113,42 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
     status: 'implemented',
     provenance: 'replay',
     summary:
-      'Provider-independent security event schema with redaction, deduplication, retention, and parser-failure capture. Wired into the live replay/detection pipeline via src/modules/security/security.routes.ts.',
+      'Provider-independent security event schema with redaction, deduplication, retention, and parser-failure capture. Every ingestion path - fixture replay, guided scenarios, and the live AWS/GCP adapters - runs through the single canonical pipeline in src/modules/ingestion/security-ingestion.pipeline.ts.',
     implementationPaths: [
       'src/modules/security/types.ts',
       'src/modules/ingestion/security-event.schema.ts',
+      'src/modules/ingestion/security-ingestion.pipeline.ts',
       'src/modules/ingestion/redaction.ts',
       'src/modules/ingestion/security-event.store.ts',
     ],
     testPaths: [
       'test/security-event.unit.test.ts',
       'test/redaction.unit.test.ts',
+      'test/parser-failure-redaction.unit.test.ts',
     ],
   },
   {
     id: 'aws-cloudwatch-ingestion',
     name: 'AWS CloudWatch / CloudTrail ingestion',
     category: 'cloud-ingestion',
-    status: env.ingestion.cloudwatchLogGroup ? 'partial' : 'implemented',
+    status: 'implemented',
     provenance: env.ingestion.cloudwatchLogGroup ? 'live' : 'replay',
     summary:
-      'CloudWatch adapter polls when credentials and log group are configured. Sanitized CloudTrail/WAF fixtures support deterministic replay without AWS credentials.',
+      'CloudWatchAdapter polls CloudWatch Logs, unwraps each log event into a provider-native CloudTrail/WAF/API Gateway record, and feeds it through the same canonical pipeline as replay (parse -> normalize -> redact -> dedupe -> detect -> correlate) - not a separate legacy path. Runs live once AWS credentials and a log group are configured; sanitized fixtures support deterministic replay without them either way.',
     limitations: [
       'Live polling requires AWS credentials or Roles Anywhere configuration.',
       'Static IAM user keys are legacy/demo-only and disabled by default in Terraform.',
+      'Operational metrics (events received/ingested/parser failures/duplicates/cursor) are tracked per-adapter and exposed via GET /admin/ingestion/status.',
     ],
     implementationPaths: [
       'src/modules/ingestion/adapters/cloudwatch.adapter.ts',
       'src/modules/ingestion/parsers/aws.parser.ts',
+      'src/modules/ingestion/ingestion.service.ts',
+      'src/modules/ingestion/security-ingestion.pipeline.ts',
     ],
     testPaths: [
       'test/cloudwatch-adapter.unit.test.ts',
+      'test/cloudwatch-adapter-pipeline.integration.test.ts',
       'test/detection-rules.unit.test.ts',
     ],
     infrastructurePaths: [
@@ -153,20 +159,24 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
     id: 'gcp-logging-ingestion',
     name: 'GCP Cloud Logging ingestion',
     category: 'cloud-ingestion',
-    status: env.ingestion.gcpLoggingProject ? 'partial' : 'implemented',
+    status: 'implemented',
     provenance: env.ingestion.gcpLoggingProject ? 'live' : 'replay',
     summary:
-      'GCP Logging adapter polls when project credentials are configured. Sanitized audit-log fixtures support deterministic replay. Workload Identity Federation is the preferred credential mode.',
+      'GcpLoggingAdapter polls Cloud Logging, reshapes each entry into the provider-native Cloud Audit Log record shape, and feeds it through the same canonical pipeline as replay (parse -> normalize -> redact -> dedupe -> detect -> correlate) - not a separate legacy path. Runs live once project credentials are configured; sanitized fixtures support deterministic replay without them either way. Workload Identity Federation is the preferred credential mode.',
     limitations: [
       'Service-account JSON keys are legacy/demo-only and disabled by default.',
       'Live federation requires external IdP trust configuration.',
+      'Operational metrics (events received/ingested/parser failures/duplicates/cursor) are tracked per-adapter and exposed via GET /admin/ingestion/status.',
     ],
     implementationPaths: [
       'src/modules/ingestion/adapters/gcp-logging.adapter.ts',
       'src/modules/ingestion/parsers/gcp.parser.ts',
+      'src/modules/ingestion/ingestion.service.ts',
+      'src/modules/ingestion/security-ingestion.pipeline.ts',
     ],
     testPaths: [
       'test/gcp-logging-adapter.unit.test.ts',
+      'test/gcp-logging-adapter-pipeline.integration.test.ts',
       'test/detection-rules.unit.test.ts',
     ],
     infrastructurePaths: [

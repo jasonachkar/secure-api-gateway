@@ -13,6 +13,7 @@ import { env } from './config/index.js';
 import { logger } from './lib/logger.js';
 import { AppError } from './lib/errors.js';
 import { requestIdHook } from './middleware/requestId.js';
+import { resolveTrustProxyOption, logTrustProxyConfig } from './lib/proxyTrust.js';
 import { registerSecurityHeaders } from './middleware/securityHeaders.js';
 import { registerGlobalRateLimit, createRedisClient } from './middleware/rateLimit.js';
 import { registerAuthRoutes } from './modules/auth/auth.routes.js';
@@ -49,9 +50,14 @@ export async function createApp(): Promise<FastifyInstance> {
     loggerInstance: logger,
     bodyLimit: env.server.bodyLimit,
     requestTimeout: env.server.requestTimeout,
-    trustProxy: true, // Trust X-Forwarded-* headers from proxy
+    // Explicit proxy trust boundary - see lib/proxyTrust.ts and docs/PROXY_TRUST.md.
+    // Never `true`: that would trust X-Forwarded-For from any direct client, letting
+    // them spoof the IP every rate limit/lockout/IP-block/audit decision relies on.
+    trustProxy: resolveTrustProxyOption(),
     disableRequestLogging: true, // We use custom request logging
   });
+
+  logTrustProxyConfig();
 
   // Initialize Redis for rate limiting and token storage
   const redis = createRedisClient();

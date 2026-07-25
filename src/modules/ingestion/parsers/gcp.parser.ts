@@ -16,6 +16,14 @@ function str(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
 }
 
+function isGcpServiceAccountEmail(value: string): boolean {
+  const atIndex = value.lastIndexOf('@');
+  if (atIndex <= 0 || atIndex === value.length - 1) return false;
+
+  const domain = value.slice(atIndex + 1).toLowerCase();
+  return domain === 'gserviceaccount.com' || domain.endsWith('.gserviceaccount.com');
+}
+
 export function parseGcpEvent(
   raw: unknown,
   provenance: DataProvenance = 'replay'
@@ -101,7 +109,7 @@ export function parseGcpEvent(
     region: str(labels.location || event.region) || undefined,
     principal: {
       id: principalEmail || undefined,
-      type: principalEmail.includes('.gserviceaccount.com') ? 'serviceAccount' : 'user',
+      type: isGcpServiceAccountEmail(principalEmail) ? 'serviceAccount' : 'user',
       email: principalEmail || undefined,
       displayName: principalEmail || undefined,
     },

@@ -21,6 +21,7 @@ export async function registerScenarioRoutes(
 ): Promise<void> {
   const auth = [requireAuth, requireAnyRole(['admin', 'reviewer', 'security_analyst'])];
   const runRateLimit = createRateLimiter(redis, 10, 60_000);
+  const resetRateLimit = createRateLimiter(redis, 10, 60_000);
 
   app.get(
     '/admin/scenarios',
@@ -58,7 +59,7 @@ export async function registerScenarioRoutes(
         tags: ['Scenarios'],
         security: [{ bearerAuth: [] }],
       },
-      preHandler: [...auth, runRateLimit],
+      preHandler: [...auth, resetRateLimit],
     },
     async () => {
       await scenarioService.resetGatewayScenario();

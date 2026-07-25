@@ -68,6 +68,9 @@ terraform/.schema-probe/
 *.tfstate
 *.tfstate.*
 *.tfplan
+*.tfplan.*
+plan.out
+terraform/plan.out
 crash.log
 crash.*.log
 # Real backend/tfvars files (copied from the tracked .example templates) - never commit

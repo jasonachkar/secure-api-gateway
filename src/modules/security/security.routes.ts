@@ -337,7 +337,11 @@ export async function registerSecurityRoutes(
 
   app.get(
     '/admin/security/response/actions',
-    { schema: { description: 'List recent response actions', tags: ['Security'], security: [{ bearerAuth: [] }] }, preHandler: readAuth },
+    {
+      schema: { description: 'List recent response actions', tags: ['Security'], security: [{ bearerAuth: [] }] },
+      preHandler: readAuth,
+      config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+    },
     async () => ({ actions: await responseService.listActions() })
   );
 }

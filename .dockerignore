@@ -35,6 +35,10 @@ pids/
 coverage/
 .nyc_output/
 test/
+# Dockerfile needs test/fixtures/** - it's sanitized replay data the runtime replay
+# engine reads (guided scenarios, detection rule tests), not test code.
+!test/fixtures/
+!test/fixtures/**
 *.test.ts
 *.spec.ts
 jest.config.js

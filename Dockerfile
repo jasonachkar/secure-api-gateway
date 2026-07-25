@@ -46,7 +46,11 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && \
     npm cache clean --force && \
-    rm -rf /tmp/*
+    rm -rf /tmp/* && \
+    # The runtime only ever execs `node dist/main.js` - npm/npx are never invoked
+    # after this build step, so remove the bundled npm CLI (and its own vendored
+    # dependency tree, e.g. an old `tar`) rather than ship unused attack surface.
+    rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 # Copy built application from builder stage
 COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist

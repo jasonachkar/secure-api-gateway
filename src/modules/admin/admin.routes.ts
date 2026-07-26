@@ -872,7 +872,7 @@ export async function registerAdminRoutes(
     '/admin/incidents/:id/playbook',
     {
       schema: {
-        description: 'Run an incident response playbook action',
+        description: 'Run an incident response playbook action (mocked - writes a timeline entry only, no real user/IP/ticketing integration)',
         tags: ['Incident Response'],
         security: [{ bearerAuth: [] }],
         params: {

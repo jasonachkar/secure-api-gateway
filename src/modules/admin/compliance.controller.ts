@@ -58,21 +58,22 @@ export class ComplianceController {
       }
       
       // Ensure all framework sections exist
+      const missingDataNote = 'Unavailable - compliance service returned no data for this framework.';
       if (!metrics.nist) {
         logger.warn('Missing NIST data, initializing...');
-        metrics.nist = { score: 0, controls: [] };
+        metrics.nist = { score: 0, assessmentBasis: 'static', assessmentNote: missingDataNote, controls: [] };
       }
       if (!metrics.owasp) {
         logger.warn('Missing OWASP data, initializing...');
-        metrics.owasp = { score: 0, top10: [] };
+        metrics.owasp = { score: 0, assessmentBasis: 'static', assessmentNote: missingDataNote, top10: [] };
       }
       if (!metrics.pci) {
         logger.warn('Missing PCI data, initializing...');
-        metrics.pci = { score: 0, requirements: [] };
+        metrics.pci = { score: 0, assessmentBasis: 'static', assessmentNote: missingDataNote, requirements: [] };
       }
       if (!metrics.gdpr) {
         logger.warn('Missing GDPR data, initializing...');
-        metrics.gdpr = { score: 0, principles: [] };
+        metrics.gdpr = { score: 0, assessmentBasis: 'static', assessmentNote: missingDataNote, principles: [] };
       }
       
       // Ensure arrays are initialized (defensive check)

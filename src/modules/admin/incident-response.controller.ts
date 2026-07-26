@@ -270,7 +270,7 @@ export class IncidentResponseController {
           type: 'brute_force' as const,
           severity: 'critical' as const,
           affectedIPs: ['192.168.1.100'],
-          tags: ['auto-generated', 'threat-intelligence', 'brute-force'],
+          tags: ['seed-test-data', 'auto-generated', 'threat-intelligence', 'brute-force'],
         },
         {
           title: 'HIGH: Rate Limit Violations from Multiple IPs',
@@ -278,7 +278,7 @@ export class IncidentResponseController {
           type: 'rate_limit_abuse' as const,
           severity: 'high' as const,
           affectedIPs: ['10.0.0.50', '10.0.0.51'],
-          tags: ['auto-generated', 'rate-limiting'],
+          tags: ['seed-test-data', 'auto-generated', 'rate-limiting'],
         },
         {
           title: 'MEDIUM: Suspicious Activity Pattern',
@@ -286,7 +286,7 @@ export class IncidentResponseController {
           type: 'suspicious_activity' as const,
           severity: 'medium' as const,
           affectedIPs: ['203.0.113.45', '198.51.100.22'],
-          tags: ['suspicious', 'investigation'],
+          tags: ['seed-test-data', 'suspicious', 'investigation'],
         },
         {
           title: 'HIGH: Credential Stuffing Attempt',
@@ -294,7 +294,7 @@ export class IncidentResponseController {
           type: 'credential_stuffing' as const,
           severity: 'high' as const,
           affectedIPs: ['172.16.0.10', '172.16.0.11', '172.16.0.12'],
-          tags: ['auto-generated', 'credential-stuffing'],
+          tags: ['seed-test-data', 'auto-generated', 'credential-stuffing'],
         },
       ];
 

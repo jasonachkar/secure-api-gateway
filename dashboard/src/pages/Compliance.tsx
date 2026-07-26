@@ -15,7 +15,15 @@ import { SectionHeader } from '../components/SectionHeader';
 import { adminApi } from '../api/admin';
 import { NIST_EVIDENCE, OWASP_EVIDENCE, PCI_EVIDENCE, githubUrl, type EvidenceEntry } from '../data/complianceEvidence';
 import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
-import type { SecurityPosture, ComplianceMetrics } from '../types';
+import type { SecurityPosture, ComplianceMetrics, ComplianceAssessmentBasis } from '../types';
+
+function AssessmentBasisNote({ basis, note }: { basis: ComplianceAssessmentBasis; note: string }) {
+  return (
+    <div className="alert alert--warning" style={{ marginBottom: 4 }}>
+      <strong>{basis === 'static' ? 'Static self-assessment' : 'Partially live-assessed'}:</strong> {note}
+    </div>
+  );
+}
 
 function EvidenceNote({ entry }: { entry?: EvidenceEntry }) {
   if (!entry) return null;
@@ -119,17 +127,18 @@ export function Compliance() {
         throw new Error('Failed to fetch compliance metrics data');
       }
 
+      const unavailableNote = 'Unavailable - error building metrics.';
       if (!metricsResponse.nist) {
-        metricsResponse.nist = { score: 0, controls: [] };
+        metricsResponse.nist = { score: 0, assessmentBasis: 'static', assessmentNote: unavailableNote, controls: [] };
       }
       if (!metricsResponse.owasp) {
-        metricsResponse.owasp = { score: 0, top10: [] };
+        metricsResponse.owasp = { score: 0, assessmentBasis: 'static', assessmentNote: unavailableNote, top10: [] };
       }
       if (!metricsResponse.pci) {
-        metricsResponse.pci = { score: 0, requirements: [] };
+        metricsResponse.pci = { score: 0, assessmentBasis: 'static', assessmentNote: unavailableNote, requirements: [] };
       }
       if (!metricsResponse.gdpr) {
-        metricsResponse.gdpr = { score: 0, principles: [] };
+        metricsResponse.gdpr = { score: 0, assessmentBasis: 'static', assessmentNote: unavailableNote, principles: [] };
       }
 
       if (!metricsResponse.nist.controls) {
@@ -271,6 +280,9 @@ export function Compliance() {
                     Overall Score: <strong>{metrics.nist?.score ?? 0}%</strong>
                   </div>
                 </div>
+                {metrics.nist?.assessmentNote && (
+                  <AssessmentBasisNote basis={metrics.nist.assessmentBasis} note={metrics.nist.assessmentNote} />
+                )}
                 <div className="page-stack">
                   {!metrics.nist?.controls || metrics.nist.controls.length === 0 ? (
                     <div className="empty-state">No NIST controls data available</div>
@@ -313,6 +325,9 @@ export function Compliance() {
                     Overall Score: <strong>{metrics.owasp?.score ?? 0}%</strong>
                   </div>
                 </div>
+                {metrics.owasp?.assessmentNote && (
+                  <AssessmentBasisNote basis={metrics.owasp.assessmentBasis} note={metrics.owasp.assessmentNote} />
+                )}
                 <div className="page-stack">
                   {!metrics.owasp?.top10 || metrics.owasp.top10.length === 0 ? (
                     <div className="empty-state">No OWASP Top 10 data available</div>
@@ -344,6 +359,9 @@ export function Compliance() {
                     Overall Score: <strong>{metrics.pci?.score ?? 0}%</strong>
                   </div>
                 </div>
+                {metrics.pci?.assessmentNote && (
+                  <AssessmentBasisNote basis={metrics.pci.assessmentBasis} note={metrics.pci.assessmentNote} />
+                )}
                 <div className="page-stack">
                   {!metrics.pci?.requirements || metrics.pci.requirements.length === 0 ? (
                     <div className="empty-state">No PCI DSS requirements data available</div>
@@ -376,6 +394,9 @@ export function Compliance() {
                     Overall Score: <strong>{metrics.gdpr?.score ?? 0}%</strong>
                   </div>
                 </div>
+                {metrics.gdpr?.assessmentNote && (
+                  <AssessmentBasisNote basis={metrics.gdpr.assessmentBasis} note={metrics.gdpr.assessmentNote} />
+                )}
                 <div className="page-stack">
                   {!metrics.gdpr?.principles || metrics.gdpr.principles.length === 0 ? (
                     <div className="empty-state">No GDPR principles data available</div>

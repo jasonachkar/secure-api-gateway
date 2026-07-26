@@ -138,8 +138,35 @@ use by `ThreatIntelService.createIncidentFromThreat()` for automatic escalation 
 high/critical threat-intel scores, and are still reachable directly via the API for
 administrative/scripted use - but the mocked playbook-action endpoints
 (`POST /admin/incidents/:id/actions`, `POST /admin/incidents/:id/playbook`) should not
-be treated as real enforcement by any caller. Fully removing or replacing the mocked
-playbook-action surface is unstarted follow-up work.
+be treated as real enforcement by any caller. Both now consistently write
+`result: 'mocked'` into the returned/persisted timeline entry and say "(mocked)" in
+their Swagger description, so this is discoverable from the API response itself, not
+just from this document - but fully removing or replacing the mocked playbook-action
+surface is still unstarted follow-up work. The demo-only `POST
+/admin/incidents/seed-test-data` endpoint (404s unless `DEMO_MODE=true`, off by
+default) tags every incident it creates with `seed-test-data` for traceability if
+`DEMO_MODE` is later toggled off in an environment where it already ran.
+
+## Compliance scores mix live telemetry and fixed self-assessment
+
+`GET /admin/compliance/metrics` (the Compliance page's NIST/OWASP/PCI/GDPR tabs) is
+not a live compliance scan or third-party audit. Each framework's response now carries
+an explicit `assessmentBasis` (`'partially-live'` or `'static'`) and `assessmentNote`
+field, rendered as a banner at the top of every tab in the dashboard:
+- **NIST**: partially live - `AC-2` (Account Management) reacts to real account-lockout
+  telemetry; `AC-7`, `SI-4`, `SC-5` are fixed self-assessments.
+- **OWASP Top 10**: fully static - a code-reviewed mapping of implemented mitigations,
+  not a scan or pentest.
+- **PCI DSS**: fully static - most requirements are marked not-applicable/compliant
+  because the gateway does not store cardholder data; not a QSA audit.
+- **GDPR**: fully static - always 100%, a design-intent mapping, not a data-processing
+  audit.
+
+Before this change, all four scores rendered identically regardless of whether they
+reflected runtime behavior or a fixed claim, which is exactly the kind of "static data
+presented as if computed" pattern this document exists to call out. Do not remove the
+`assessmentBasis`/`assessmentNote` fields or the dashboard banner that renders them
+without replacing the underlying scoring with something genuinely live.
 
 ## Cloud ingestion
 

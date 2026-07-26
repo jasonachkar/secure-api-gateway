@@ -230,9 +230,16 @@ export interface SecurityPosture {
   lastUpdated: number;
 }
 
+// 'partially-live' = at least one factor reflects live runtime telemetry;
+// 'static' = a fixed, code-reviewed self-assessment, not a continuous measurement
+// or third-party audit. Always render assessmentNote alongside the score.
+export type ComplianceAssessmentBasis = 'partially-live' | 'static';
+
 export interface ComplianceMetrics {
   nist: {
     score: number;
+    assessmentBasis: ComplianceAssessmentBasis;
+    assessmentNote: string;
     controls: Array<{
       id: string;
       name: string;
@@ -242,6 +249,8 @@ export interface ComplianceMetrics {
   };
   owasp: {
     score: number;
+    assessmentBasis: ComplianceAssessmentBasis;
+    assessmentNote: string;
     top10: Array<{
       risk: string;
       status: 'mitigated' | 'partial' | 'vulnerable';
@@ -250,6 +259,8 @@ export interface ComplianceMetrics {
   };
   pci: {
     score: number;
+    assessmentBasis: ComplianceAssessmentBasis;
+    assessmentNote: string;
     requirements: Array<{
       id: string;
       name: string;
@@ -258,6 +269,8 @@ export interface ComplianceMetrics {
   };
   gdpr: {
     score: number;
+    assessmentBasis: ComplianceAssessmentBasis;
+    assessmentNote: string;
     principles: Array<{
       principle: string;
       status: 'compliant' | 'partial' | 'non-compliant';

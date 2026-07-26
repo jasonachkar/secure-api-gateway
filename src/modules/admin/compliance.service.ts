@@ -62,9 +62,21 @@ export interface SecurityPosture {
   lastUpdated: number;
 }
 
+/**
+ * assessmentBasis distinguishes scores derived from live runtime telemetry
+ * from fixed self-assessments (a code-reviewed mapping of this gateway's
+ * architecture to a framework's controls, not a continuous measurement or
+ * third-party audit). Surfaced in the dashboard so a reviewer does not read
+ * a static claim as if it were a live-computed score - see
+ * docs/KNOWN_LIMITATIONS.md.
+ */
+export type ComplianceAssessmentBasis = 'partially-live' | 'static';
+
 export interface ComplianceMetrics {
   nist: {
     score: number;
+    assessmentBasis: ComplianceAssessmentBasis;
+    assessmentNote: string;
     controls: {
       id: string;
       name: string;
@@ -74,6 +86,8 @@ export interface ComplianceMetrics {
   };
   owasp: {
     score: number;
+    assessmentBasis: ComplianceAssessmentBasis;
+    assessmentNote: string;
     top10: {
       risk: string;
       status: 'mitigated' | 'partial' | 'vulnerable';
@@ -82,6 +96,8 @@ export interface ComplianceMetrics {
   };
   pci: {
     score: number;
+    assessmentBasis: ComplianceAssessmentBasis;
+    assessmentNote: string;
     requirements: {
       id: string;
       name: string;
@@ -90,6 +106,8 @@ export interface ComplianceMetrics {
   };
   gdpr: {
     score: number;
+    assessmentBasis: ComplianceAssessmentBasis;
+    assessmentNote: string;
     principles: {
       principle: string;
       status: 'compliant' | 'partial' | 'non-compliant';
@@ -372,6 +390,9 @@ export class ComplianceService {
       const complianceMetrics = {
         nist: {
           score: nistScore,
+          assessmentBasis: 'partially-live' as ComplianceAssessmentBasis,
+          assessmentNote:
+            'AC-2 (Account Management) reflects live account-lockout telemetry. AC-7, SI-4, and SC-5 are fixed self-assessments based on code review (rate limiting and audit logging are implemented and always scored as satisfying those controls), not continuously measured.',
           controls: [
             {
               id: 'AC-2',
@@ -401,6 +422,9 @@ export class ComplianceService {
         },
         owasp: {
           score: owaspScore,
+          assessmentBasis: 'static' as ComplianceAssessmentBasis,
+          assessmentNote:
+            'Fixed self-assessment: a code-reviewed mapping of implemented mitigations to the OWASP API Security Top 10, not a live scan or penetration test. The score does not change with runtime activity.',
           top10: [
             {
               risk: 'A01:2021 – Broken Access Control',
@@ -451,6 +475,9 @@ export class ComplianceService {
         },
         pci: {
           score: pciScore,
+          assessmentBasis: 'static' as ComplianceAssessmentBasis,
+          assessmentNote:
+            'Fixed self-assessment mapping this API gateway to PCI DSS requirements - most of which are not applicable, since the gateway does not store, process, or transmit cardholder data. Not derived from a QSA audit or a live scan.',
           requirements: [
             {
               id: 'Req 1',
@@ -506,6 +533,9 @@ export class ComplianceService {
         },
         gdpr: {
           score: gdprScore,
+          assessmentBasis: 'static' as ComplianceAssessmentBasis,
+          assessmentNote:
+            'Fixed self-assessment; not derived from a live data-processing audit or a Data Protection Impact Assessment. Presented as a design-intent mapping, not a compliance certification.',
           principles: [
             {
               principle: 'Lawfulness, fairness and transparency',
@@ -558,10 +588,10 @@ export class ComplianceService {
       logger.error({ error, stack: (error as Error).stack }, 'Error building compliance metrics object');
       // Return a minimal valid structure
       return {
-        nist: { score: 0, controls: [] },
-        owasp: { score: 0, top10: [] },
-        pci: { score: 0, requirements: [] },
-        gdpr: { score: 0, principles: [] },
+        nist: { score: 0, assessmentBasis: 'static', assessmentNote: 'Unavailable - error building metrics.', controls: [] },
+        owasp: { score: 0, assessmentBasis: 'static', assessmentNote: 'Unavailable - error building metrics.', top10: [] },
+        pci: { score: 0, assessmentBasis: 'static', assessmentNote: 'Unavailable - error building metrics.', requirements: [] },
+        gdpr: { score: 0, assessmentBasis: 'static', assessmentNote: 'Unavailable - error building metrics.', principles: [] },
       };
     }
   }

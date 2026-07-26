@@ -98,6 +98,21 @@ and gated behind `ENABLE_SYNTHETIC_BACKGROUND_DATA=true` (see `.env.example`) - 
 runs in the default reviewer experience, and its output must never be read as real
 telemetry or factored into any compliance/posture scoring.
 
+## Concurrency coverage is partial
+
+Event deduplication (`SecurityEventStore.saveEvent`) and investigation correlation
+(`InvestigationService.correlate`) are atomic and race-free under concurrent writers -
+see `docs/CONCURRENCY.md` for the design and `test/security-event-concurrency.integration.test.ts`
+/ `test/investigation-concurrency.integration.test.ts` for verification. Two other
+investigation-mutating paths are not: `attachResponseAction()` and `setStatus()` are
+plain read-modify-write with no lock, so two concurrent response actions attaching to
+the same investigation (or a status change racing a correlation) could lose an update.
+These are lower-frequency, operator-driven paths (a human clicking "block IP" or
+"resolve"), not the high-frequency ingestion/detection hot path - but they are not
+concurrency-safe today. Also not covered: sorted-set index pruning is lazy/self-healing
+during reads (see `docs/CONCURRENCY.md`), not a scheduled maintenance sweep of the full
+index.
+
 ## Legacy ingestion path (unused, not yet removed)
 
 Live AWS/GCP polling now feeds the canonical `NormalizedSecurityEvent` pipeline

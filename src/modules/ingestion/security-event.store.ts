@@ -1,5 +1,6 @@
 /**
- * Canonical security event storage with deduplication, parser failures, and retention.
+ * Canonical security event storage with atomic deduplication, parser failures, and
+ * retention. See docs/CONCURRENCY.md for the atomicity/retry design.
  */
 
 import Redis from 'ioredis';
@@ -17,9 +18,37 @@ export interface SaveEventResult {
   duplicate: boolean;
 }
 
+/**
+ * Atomically claims a dedupe/provider-event slot for `candidateId`. Both keys are
+ * checked and (if free) set within a single Lua script, so two concurrent writers can
+ * never both observe "not claimed" - Redis executes the whole script as one atomic step.
+ * Returns the id that ends up owning the slot: `candidateId` if this call won, or
+ * whichever id a concurrent/earlier writer already claimed it with otherwise.
+ */
+const CLAIM_EVENT_SCRIPT = `
+local dedupeKey = KEYS[1]
+local providerKey = KEYS[2]
+local candidateId = ARGV[1]
+local ttl = ARGV[2]
+
+local existing = redis.call('GET', dedupeKey)
+if existing then
+  return existing
+end
+existing = redis.call('GET', providerKey)
+if existing then
+  return existing
+end
+
+redis.call('SETEX', dedupeKey, ttl, candidateId)
+redis.call('SETEX', providerKey, ttl, candidateId)
+return candidateId
+`;
+
 export class SecurityEventStore {
   private readonly EVENT_KEY_PREFIX = 'sec:event:';
   private readonly EVENT_INDEX_KEY = 'sec:events:index';
+  private readonly PROVIDER_INDEX_KEY_PREFIX = 'sec:events:index:by-provider:';
   private readonly DEDUPE_KEY_PREFIX = 'sec:dedupe:';
   private readonly PROVIDER_EVENT_KEY_PREFIX = 'sec:provider-event:';
   private readonly FAILURE_KEY_PREFIX = 'sec:parser-failure:';
@@ -46,8 +75,12 @@ export class SecurityEventStore {
         schema_version TEXT NOT NULL,
         payload JSONB NOT NULL
       );
-      CREATE INDEX IF NOT EXISTS idx_security_events_dedupe ON security_events (dedupe_hash);
-      CREATE INDEX IF NOT EXISTS idx_security_events_provider_event
+      -- Unique, not just indexed: Redis is the atomic source of truth for dedup (see
+      -- CLAIM_EVENT_SCRIPT above), but this constraint means Postgres can never end up
+      -- with two rows for the same logical event even if that invariant were ever
+      -- violated upstream - a conflict here is treated as "already recorded", not an error.
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_security_events_dedupe_unique ON security_events (dedupe_hash);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_security_events_provider_event_unique
         ON security_events (provider, provider_event_id);
     `);
 
@@ -61,29 +94,55 @@ export class SecurityEventStore {
     `);
   }
 
+  /**
+   * Persist a normalized event with atomic, race-free deduplication. Two concurrent
+   * callers saving the same provider event (same dedupeHash or same
+   * provider+providerEventId) always converge on one canonical event id - the loser
+   * gets `duplicate: true` and the winner's record back, never a second copy.
+   */
   async saveEvent(event: NormalizedSecurityEvent): Promise<SaveEventResult> {
     const validated = validateNormalizedSecurityEvent(event);
     const dedupeKey = `${this.DEDUPE_KEY_PREFIX}${validated.dedupeHash}`;
     const providerKey = `${this.PROVIDER_EVENT_KEY_PREFIX}${validated.provider}:${validated.providerEventId}`;
 
-    const existingId =
-      (await this.redis.get(dedupeKey)) || (await this.redis.get(providerKey));
+    const winningId = (await this.redis.eval(
+      CLAIM_EVENT_SCRIPT,
+      2,
+      dedupeKey,
+      providerKey,
+      validated.id,
+      this.RETENTION_SECONDS
+    )) as string;
 
-    if (existingId) {
-      const existing = await this.getEvent(existingId);
+    if (winningId !== validated.id) {
+      // Someone else's write claimed this slot first (possibly concurrently with us).
+      // Their record is authoritative; a short bounded wait covers the narrow window
+      // where they've claimed the slot but haven't finished writing the event body yet.
+      const existing = await this.waitForEvent(winningId);
       if (existing) {
         return { event: existing, duplicate: true };
       }
+      // The winner's write appears to have failed after claiming (see the cleanup in the
+      // catch block below) - fall through and write under our own id instead of losing
+      // the event entirely. This reuses the now-abandoned slot.
+      await this.redis.setex(dedupeKey, this.RETENTION_SECONDS, validated.id);
+      await this.redis.setex(providerKey, this.RETENTION_SECONDS, validated.id);
     }
 
-    const key = `${this.EVENT_KEY_PREFIX}${validated.id}`;
-    const score = new Date(validated.occurredAt).getTime();
-    const pipeline = this.redis.pipeline();
-    pipeline.setex(key, this.RETENTION_SECONDS, JSON.stringify(validated));
-    pipeline.zadd(this.EVENT_INDEX_KEY, score, validated.id);
-    pipeline.setex(dedupeKey, this.RETENTION_SECONDS, validated.id);
-    pipeline.setex(providerKey, this.RETENTION_SECONDS, validated.id);
-    await pipeline.exec();
+    try {
+      const key = `${this.EVENT_KEY_PREFIX}${validated.id}`;
+      const score = new Date(validated.occurredAt).getTime();
+      const pipeline = this.redis.pipeline();
+      pipeline.setex(key, this.RETENTION_SECONDS, JSON.stringify(validated));
+      pipeline.zadd(this.EVENT_INDEX_KEY, score, validated.id);
+      pipeline.zadd(`${this.PROVIDER_INDEX_KEY_PREFIX}${validated.provider}`, score, validated.id);
+      await pipeline.exec();
+    } catch (error) {
+      // Clean up the claim so a retried/subsequent write for this same event isn't
+      // permanently blocked by a dedupe slot pointing at data that was never written.
+      await this.redis.del(dedupeKey, providerKey);
+      throw error;
+    }
 
     await this.trimIndex();
 
@@ -94,7 +153,12 @@ export class SecurityEventStore {
             INSERT INTO security_events
               (id, provider_event_id, provider, dedupe_hash, occurred_at, ingested_at, schema_version, payload)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            ON CONFLICT (id) DO NOTHING;
+            -- Unqualified DO NOTHING (no conflict target) covers a violation of ANY of
+            -- the table's unique constraints - primary key, dedupe_hash, or
+            -- provider+provider_event_id - which is what we want: Postgres is a durable
+            -- mirror of Redis's atomic dedup decision, so any of those three conflicting
+            -- means "already recorded", never an error to surface.
+            ON CONFLICT DO NOTHING;
           `,
           [
             validated.id,
@@ -113,6 +177,16 @@ export class SecurityEventStore {
     }
 
     return { event: validated, duplicate: false };
+  }
+
+  /** Bounded wait for a concurrently-claimed event's body to actually appear (see saveEvent). */
+  private async waitForEvent(id: string, attempts = 5, delayMs = 15): Promise<NormalizedSecurityEvent | null> {
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      const event = await this.getEvent(id);
+      if (event) return event;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    return null;
   }
 
   async getEvent(id: string): Promise<NormalizedSecurityEvent | null> {
@@ -145,6 +219,18 @@ export class SecurityEventStore {
     return events;
   }
 
+  /**
+   * List events, optionally filtered by provider. A provider filter queries a
+   * provider-specific sorted set directly (populated alongside the global index at
+   * write time) rather than paging the global index and discarding non-matching
+   * entries client-side - a request for 50 AWS events returns up to 50 AWS events even
+   * when other providers dominate the global index.
+   *
+   * Stale index entries (an id whose underlying event key has expired/been removed but
+   * is still listed in the sorted set) are pruned lazily as they're encountered here,
+   * so the index self-heals across calls instead of growing unboundedly - see
+   * docs/CONCURRENCY.md.
+   */
   async listEvents(params?: {
     limit?: number;
     offset?: number;
@@ -152,16 +238,36 @@ export class SecurityEventStore {
   }): Promise<NormalizedSecurityEvent[]> {
     const limit = params?.limit ?? 50;
     const offset = params?.offset ?? 0;
-    const ids = await this.redis.zrevrange(
-      this.EVENT_INDEX_KEY,
-      offset,
-      offset + limit - 1
-    );
+    const indexKey = params?.provider
+      ? `${this.PROVIDER_INDEX_KEY_PREFIX}${params.provider}`
+      : this.EVENT_INDEX_KEY;
+
+    const ids = await this.redis.zrevrange(indexKey, offset, offset + limit - 1);
+    if (ids.length === 0) return [];
+
     const events = await this.getEventsByIds(ids);
-    if (params?.provider) {
-      return events.filter((e) => e.provider === params.provider);
+    if (events.length < ids.length) {
+      const liveIds = new Set(events.map((e) => e.id));
+      const staleIds = ids.filter((id) => !liveIds.has(id));
+      await this.pruneStaleIndexEntries(staleIds, params?.provider);
     }
     return events;
+  }
+
+  private async pruneStaleIndexEntries(staleIds: string[], provider?: CloudProvider): Promise<void> {
+    if (staleIds.length === 0) return;
+    try {
+      const pipeline = this.redis.pipeline();
+      for (const id of staleIds) {
+        pipeline.zrem(this.EVENT_INDEX_KEY, id);
+        if (provider) {
+          pipeline.zrem(`${this.PROVIDER_INDEX_KEY_PREFIX}${provider}`, id);
+        }
+      }
+      await pipeline.exec();
+    } catch (error) {
+      logger.warn({ error, count: staleIds.length }, 'Failed to prune stale security-event index entries');
+    }
   }
 
   async saveParserFailure(

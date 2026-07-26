@@ -291,9 +291,10 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
     status: 'implemented',
     provenance: 'live',
     summary:
-      'Three scripted 6-step scenarios (Generate/Replay -> Normalize -> Detect -> Correlate -> Respond -> Verify): gateway credential attack (live - real failed logins against the dedicated sim-target account from an RFC 5737 IP, ending in an enforced IP block), AWS privileged activity (replay), GCP credential persistence (replay). No scenario performs a destructive cloud action or touches the caller\'s own account/IP.',
+      'Three scripted 6-step scenarios (Generate/Replay -> Normalize -> Detect -> Correlate -> Respond -> Verify): gateway credential attack (live), AWS privileged activity (replay), GCP credential persistence (replay). No scenario performs a destructive cloud action or touches the caller\'s own account/IP. The gateway scenario drives its login attempts and verification request through app.inject() - the real Fastify request lifecycle (auth rate limiting, request context, audit hooks, AuthController\'s own GW-AUTH-001 wiring), not a direct AuthService call - and verifies enforcement with a genuine follow-up HTTP request (403/IP_BLOCKED/request id) plus a matching audit entry, not a Redis membership check. Idempotent: re-running without a reset in between recognizes the account/IP are still locked/blocked from the prior run (itself proof enforcement is real and persistent) and reports the existing case rather than erroring or duplicating it.',
     limitations: [
       'No dedicated stepper UI yet - the API returns the full step trace, but the dashboard does not yet render it visually.',
+      'The gateway scenario shares the real auth rate limiter with actual traffic - back-to-back runs against the same demo IP within the rate-limit window can be throttled (HTTP 429), reported honestly as a failed "Generate" step rather than pretending success.',
     ],
     implementationPaths: [
       'src/modules/scenarios/scenario.service.ts',

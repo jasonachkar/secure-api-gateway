@@ -83,16 +83,59 @@ describe('Guided scenarios (Integration)', () => {
     const { result } = response.json();
 
     expect(result.provenance).toBe('live');
+    expect(result.eventIds.length).toBeGreaterThan(0);
+    expect(result.detectionIds.length).toBeGreaterThan(0);
     expect(result.investigationIds.length).toBeGreaterThan(0);
-    expect(result.steps.find((s: { id: string }) => s.id === 'respond').status).toBe('completed');
-    expect(result.steps.find((s: { id: string }) => s.id === 'verify').status).toBe('completed');
+    for (const stepId of ['generate', 'normalize', 'detect', 'correlate', 'respond', 'verify']) {
+      expect(result.steps.find((s: { id: string }) => s.id === stepId).status).toBe('completed');
+    }
 
-    // The scenario's own demo IP should now be genuinely blocked by the gateway.
-    const blocked = await app.threatIntelService.isIPBlocked('203.0.113.50');
-    expect(blocked).toBe(true);
+    // Don't just trust the scenario's own reported step status - independently send a
+    // real HTTP request from the scenario IP and confirm it is genuinely rejected
+    // (403/IP_BLOCKED/a request id), not merely a Redis membership check.
+    const rejected = await app.inject({
+      method: 'GET',
+      url: '/admin/security/capabilities',
+      headers: { authorization: `Bearer ${adminToken}`, 'x-forwarded-for': '203.0.113.50' },
+    });
+    expect(rejected.statusCode).toBe(403);
+    const rejectedBody = rejected.json();
+    expect(rejectedBody.error.code).toBe('IP_BLOCKED');
+    expect(rejectedBody.requestId).toBeTruthy();
+
+    // And confirm the rejection produced a real audit entry, not just an HTTP response.
+    const auditLogs = await app.audit.query({ eventType: 'SECURITY_IP_BLOCKED_REQUEST', limit: 50 });
+    expect(auditLogs.some((entry: { ip: string }) => entry.ip === '203.0.113.50')).toBe(true);
+
+    // Idempotency: re-running immediately, with no reset in between, must not crash or
+    // silently fail just because the account/IP are already locked/blocked. The
+    // scenario's own login attempts are themselves now rejected at the edge by the very
+    // IP-block middleware the first run just enforced - real proof enforcement is
+    // persistent, not an error state - so the rerun should recognize that and report the
+    // already-existing investigation/enforcement rather than generating a redundant
+    // attack (a second `it()` block would need its own fresh lockout sequence first,
+    // which would exhaust the real auth rate limiter for this IP given the previous
+    // block above already spent most of its budget - so this is checked as a direct
+    // continuation instead).
+    const rerun = await app.inject({
+      method: 'POST',
+      url: '/admin/scenarios/gw-credential-attack/run',
+      headers: { authorization: `Bearer ${adminToken}` },
+    });
+    expect(rerun.statusCode).toBe(200);
+    const rerunResult = rerun.json().result;
+    for (const stepId of ['generate', 'normalize', 'detect', 'correlate', 'respond', 'verify']) {
+      expect(rerunResult.steps.find((s: { id: string }) => s.id === stepId).status).toBe('completed');
+    }
+    expect(rerunResult.investigationIds[0]).toBe(result.investigationIds[0]); // same case, not a duplicate
 
     await app.scenarioService.resetGatewayScenario();
-    expect(await app.threatIntelService.isIPBlocked('203.0.113.50')).toBe(false);
+    const afterReset = await app.inject({
+      method: 'GET',
+      url: '/admin/security/capabilities',
+      headers: { authorization: `Bearer ${adminToken}`, 'x-forwarded-for': '203.0.113.50' },
+    });
+    expect(afterReset.statusCode).not.toBe(403);
   });
 
   it('rejects an unknown scenario id', async () => {

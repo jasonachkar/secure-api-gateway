@@ -411,7 +411,7 @@ export async function createApp(): Promise<FastifyInstance> {
   });
 
   // Register module routes
-  const authService = await registerAuthRoutes(app, redis, auditService, {
+  await registerAuthRoutes(app, redis, auditService, {
     detectionEngine,
     detectionStore,
     securityEventStore,
@@ -435,14 +435,16 @@ export async function createApp(): Promise<FastifyInstance> {
 
   const scenarioService = new ScenarioService({
     redis,
-    authService,
     threatIntelService,
     responseService,
+    auditService,
     securityEventStore,
     detectionEngine,
     detectionStore,
     investigationService,
     pipelineMetrics,
+    gatewayAuthTracker,
+    app,
   });
   await registerScenarioRoutes(app, redis, scenarioService);
   app.decorate('scenarioService', scenarioService);

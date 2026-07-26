@@ -12,14 +12,19 @@
  */
 import { nanoid } from 'nanoid';
 import Redis from 'ioredis';
-import { AuthService } from '../auth/auth.service.js';
+import type { FastifyInstance } from 'fastify';
 import type { ThreatIntelService } from '../admin/threat-intel.service.js';
 import type { ResponseService } from '../response/response.service.js';
-import { evaluateGatewayCredentialAttack, type AuthSecurityPipeline } from '../security/gateway-detection.js';
+import type { AuditService } from '../audit/audit.service.js';
+import type { AuthSecurityPipeline } from '../security/gateway-detection.js';
 import { replayFixtureThroughPipeline, type ReplayDeps } from '../ingestion/replay.js';
-import { AccountLockedError } from '../../lib/errors.js';
 import { env } from '../../config/index.js';
 import { logger } from '../../lib/logger.js';
+import type {
+  DetectionResult,
+  NormalizedSecurityEvent,
+  SecurityInvestigation,
+} from '../security/types.js';
 import type { ScenarioDefinition, ScenarioId, ScenarioRunResult, ScenarioStep } from './types.js';
 
 // RFC 5737 TEST-NET-3 - documentation-reserved, never a real routable address.
@@ -87,9 +92,16 @@ export const SCENARIO_DEFINITIONS: ScenarioDefinition[] = [
 
 export interface ScenarioServiceDeps extends ReplayDeps, AuthSecurityPipeline {
   redis: Redis;
-  authService: AuthService;
   threatIntelService: ThreatIntelService;
   responseService: ResponseService;
+  auditService: AuditService;
+  /**
+   * The real Fastify app - the gateway scenario drives its login attempts and
+   * verification request through `app.inject()`, the full request lifecycle (rate
+   * limiting, request context, audit hooks, AuthController's own detection wiring),
+   * not a direct service-layer call. See runGatewayCredentialAttack.
+   */
+  app: FastifyInstance;
 }
 
 export class ScenarioService {
@@ -133,75 +145,131 @@ export class ScenarioService {
   }
 
   /**
-   * Unblocks the scenario's dedicated demo IP and clears its lockout state
-   * so the scenario can be re-run cleanly. Never touches the caller's own
-   * IP or account - the scenario always operates on GATEWAY_SCENARIO_IP /
+   * Unblocks the scenario's dedicated demo IP, clears its lockout state, and resets its
+   * GW-AUTH-001 detection tracker so the scenario can be re-run cleanly and
+   * predictably (a rerun without this would start from an already-elevated failure
+   * count/IP set left over from the prior run). Never touches the caller's own IP or
+   * account - the scenario always operates on GATEWAY_SCENARIO_IP /
    * GATEWAY_SCENARIO_USERNAME only.
    */
   async resetGatewayScenario(): Promise<void> {
     await this.deps.threatIntelService.unblockIP(GATEWAY_SCENARIO_IP);
     await this.deps.redis.del(LOCKOUT_KEY);
+    await this.deps.gatewayAuthTracker?.reset(GATEWAY_SCENARIO_USERNAME);
   }
 
+  /**
+   * Drives the entire attack through the real HTTP request path (`app.inject()` runs
+   * the full Fastify lifecycle - onRequest hooks, the auth rate limiter, request
+   * context, AuthController.login()'s own audit logging and GW-AUTH-001 wiring -
+   * exactly what a real client's requests go through), not a direct
+   * AuthService.login() call. Detection/correlation are a side effect of those real
+   * requests (auth.controller.ts already wires every failed attempt through
+   * GW-AUTH-001 as of the real-signal fix - see docs/DETECTION_RULES.md), looked up
+   * afterward rather than invoked a second time here. Verification sends a genuine
+   * follow-up HTTP request from the now-blocked IP and checks the actual 403 response
+   * plus the resulting audit entry - not a Redis membership check.
+   */
   private async runGatewayCredentialAttack(
     actor: string,
     correlationId: string
   ): ReturnType<ScenarioService['buildGatewayResult']> {
     const steps: ScenarioStep[] = [];
 
-    // 1. Generate: real failed logins against the dedicated demo account.
+    // 1. Generate: real HTTP POST /auth/login requests against the dedicated demo
+    // account, from the dedicated demo IP - never the reviewer's own session.
     let locked = false;
-    for (let attempt = 0; attempt < env.auth.maxLoginAttempts + 1 && !locked; attempt++) {
-      try {
-        await this.deps.authService.login(GATEWAY_SCENARIO_USERNAME, 'intentionally-wrong-password', GATEWAY_SCENARIO_IP);
-      } catch (error) {
-        if (error instanceof AccountLockedError) {
+    let rateLimited = false;
+    let alreadyBlocked = false;
+    let attemptsSent = 0;
+    while (attemptsSent < env.auth.maxLoginAttempts + 1 && !locked && !rateLimited && !alreadyBlocked) {
+      attemptsSent++;
+      const res = await this.deps.app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: { username: GATEWAY_SCENARIO_USERNAME, password: 'intentionally-wrong-password' },
+        headers: { 'x-forwarded-for': GATEWAY_SCENARIO_IP },
+      });
+      if (res.statusCode === 429) {
+        rateLimited = true;
+        break;
+      }
+      if (res.statusCode === 403) {
+        const body = res.json() as { error?: { code?: string } };
+        if (body.error?.code === 'IP_BLOCKED') {
+          // Idempotent rerun without a reset in between: the scenario IP is still
+          // blocked from a previous run's own enforcement, which is *proof* that
+          // enforcement is real and persistent (the IP-block middleware runs ahead of
+          // every route, including this one) - not a scenario failure. The account was
+          // necessarily already locked and reported to GW-AUTH-001 for that block to
+          // exist, so treat this the same as a fresh lockout and move on to looking up
+          // the existing investigation/enforcement below.
+          alreadyBlocked = true;
           locked = true;
         }
-        // InvalidCredentialsError is expected on every attempt before lockout.
+      }
+      if (res.statusCode === 401) {
+        const body = res.json() as { error?: { code?: string } };
+        if (body.error?.code === 'ACCOUNT_LOCKED') {
+          locked = true;
+        }
       }
     }
+
     steps.push({
       id: 'generate',
       label: 'Generate',
       status: locked ? 'completed' : 'failed',
-      summary: locked
-        ? `Account "${GATEWAY_SCENARIO_USERNAME}" locked from ${GATEWAY_SCENARIO_IP} after repeated failed logins.`
-        : 'Lockout was not achieved within the expected attempt count.',
+      summary: alreadyBlocked
+        ? `Account "${GATEWAY_SCENARIO_USERNAME}" and source IP ${GATEWAY_SCENARIO_IP} are still locked/blocked from a previous run (no reset in between) - re-verifying existing enforcement rather than generating a redundant attack.`
+        : locked
+          ? `${attemptsSent} real HTTP POST /auth/login request(s) sent from ${GATEWAY_SCENARIO_IP} through the full Fastify request lifecycle (rate limiting, audit hooks); account "${GATEWAY_SCENARIO_USERNAME}" is now locked.`
+          : rateLimited
+            ? `Stopped after ${attemptsSent} request(s): the gateway's own auth rate limiter rejected further attempts (HTTP 429) before lockout was reached. That is real enforcement working correctly, but this scenario run could not proceed - rerun after the rate-limit window clears.`
+            : 'Lockout was not achieved within the expected attempt count.',
     });
 
     if (!locked) {
-      logger.error({ scenario: 'gw-credential-attack' }, 'Scenario failed to trigger account lockout');
-      return this.buildGatewayResult(steps, null);
+      logger.error({ scenario: 'gw-credential-attack', attemptsSent, rateLimited }, 'Scenario failed to trigger account lockout');
+      return this.buildGatewayResult(steps);
     }
 
-    // 2-3. Normalize + Detect (shared with the real login path).
-    const pipelineResult = await evaluateGatewayCredentialAttack(this.deps, {
-      username: GATEWAY_SCENARIO_USERNAME,
-      ip: GATEWAY_SCENARIO_IP,
-      failedLoginCount: env.auth.maxLoginAttempts,
-    });
+    // 2-3. Normalize + Detect: already happened as a side effect of the real requests
+    // above (auth.controller.ts calls into the canonical pipeline on every failed
+    // attempt) - look up the result instead of re-running detection here, which would
+    // create a redundant second detection for the same attack.
+    const investigations = await this.deps.investigationService.listInvestigations({ limit: 200 });
+    const investigation = investigations.find((inv) =>
+      inv.affectedPrincipals.some((p) => p.id === GATEWAY_SCENARIO_USERNAME) &&
+      inv.sourceIps.includes(GATEWAY_SCENARIO_IP)
+    );
+    const events = investigation
+      ? await this.deps.securityEventStore.getEventsByIds(investigation.eventIds)
+      : [];
+    const latestEvent = events[events.length - 1];
+    const detections = investigation
+      ? await this.deps.detectionStore.getByIds(investigation.detectionIds)
+      : [];
+    const latestDetection = detections[detections.length - 1];
 
     steps.push({
       id: 'normalize',
       label: 'Normalize',
-      status: pipelineResult ? 'completed' : 'failed',
-      summary: pipelineResult
-        ? `Lockout normalized into event ${pipelineResult.event.id} (schema v${pipelineResult.event.schemaVersion}).`
-        : 'Normalization failed - see server logs.',
+      status: latestEvent ? 'completed' : 'failed',
+      summary: latestEvent
+        ? `The failed-login attempt was normalized into canonical event ${latestEvent.id} (schema v${latestEvent.schemaVersion}) by the real authentication controller path.`
+        : 'No canonical event was found for this account/IP - see server logs.',
     });
     steps.push({
       id: 'detect',
       label: 'Detect',
-      status: pipelineResult && pipelineResult.detections.length > 0 ? 'completed' : 'skipped',
-      summary:
-        pipelineResult && pipelineResult.detections.length > 0
-          ? `GW-AUTH-001 matched (severity: ${pipelineResult.detections[0].severity}).`
-          : 'No detection matched (may already be correlated into a prior run).',
+      status: latestDetection ? 'completed' : 'skipped',
+      summary: latestDetection
+        ? `GW-AUTH-001 matched (severity: ${latestDetection.severity}).`
+        : 'No detection matched (may already be correlated into a prior run).',
     });
 
     // 4. Correlate.
-    const investigation = pipelineResult?.investigations[0];
     steps.push({
       id: 'correlate',
       label: 'Correlate',
@@ -211,7 +279,9 @@ export class ScenarioService {
         : 'No investigation produced (no new detection this run).',
     });
 
-    // 5. Respond: real, enforced IP block.
+    // 5. Respond: real, enforced IP block - the scenario's own explicit response
+    // action (what a SOC analyst/automated playbook does after reviewing the
+    // investigation), attached as evidence to that investigation.
     const blockAction = await this.deps.responseService.blockIp({
       ip: GATEWAY_SCENARIO_IP,
       actor,
@@ -229,29 +299,48 @@ export class ScenarioService {
       summary: `IP ${GATEWAY_SCENARIO_IP} block: ${blockAction.result} (mode: ${blockAction.mode}).`,
     });
 
-    // 6. Verify: confirm the block is actually in effect.
-    const stillBlocked = await this.deps.threatIntelService.isIPBlocked(GATEWAY_SCENARIO_IP);
+    // 6. Verify: a genuine follow-up HTTP request from the now-blocked IP - not a
+    // Redis membership check - confirming the gateway's IP-block middleware actually
+    // rejects it with 403/IP_BLOCKED and a request id, and that the rejection produced
+    // a real audit entry.
+    const verifyRes = await this.deps.app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { username: GATEWAY_SCENARIO_USERNAME, password: 'irrelevant-blocked-before-auth-runs' },
+      headers: { 'x-forwarded-for': GATEWAY_SCENARIO_IP },
+    });
+    const verifyBody =
+      verifyRes.statusCode === 403 ? (verifyRes.json() as { error?: { code?: string }; requestId?: string }) : null;
+    const genuinelyBlocked = verifyRes.statusCode === 403 && verifyBody?.error?.code === 'IP_BLOCKED' && Boolean(verifyBody?.requestId);
+
+    let auditConfirmed = false;
+    if (genuinelyBlocked) {
+      const auditLogs = await this.deps.auditService.query({ eventType: 'SECURITY_IP_BLOCKED_REQUEST', limit: 50 });
+      auditConfirmed = auditLogs.some((entry) => entry.ip === GATEWAY_SCENARIO_IP);
+    }
+
     steps.push({
       id: 'verify',
       label: 'Verify evidence',
-      status: stillBlocked ? 'completed' : 'failed',
-      summary: stillBlocked
-        ? `Verified: requests from ${GATEWAY_SCENARIO_IP} are now rejected with 403 by the gateway IP-block middleware.`
-        : 'Verification failed: IP is not showing as blocked.',
+      status: genuinelyBlocked && auditConfirmed ? 'completed' : 'failed',
+      summary: genuinelyBlocked
+        ? `Verified via a real HTTP request: a follow-up request from ${GATEWAY_SCENARIO_IP} was rejected with 403 (code IP_BLOCKED, request id ${verifyBody!.requestId})${auditConfirmed ? ', and a matching audit entry was recorded' : ' - but no matching audit entry was found'}.`
+        : `Verification failed: a follow-up request from ${GATEWAY_SCENARIO_IP} returned status ${verifyRes.statusCode}, not the expected 403/IP_BLOCKED.`,
     });
 
-    return this.buildGatewayResult(steps, pipelineResult, investigation ? [investigation] : []);
+    return this.buildGatewayResult(steps, latestEvent, detections, investigation ? [investigation] : []);
   }
 
   private buildGatewayResult(
     steps: ScenarioStep[],
-    pipelineResult: Awaited<ReturnType<typeof evaluateGatewayCredentialAttack>>,
-    investigations: NonNullable<Awaited<ReturnType<typeof evaluateGatewayCredentialAttack>>>['investigations'] = []
+    event?: NormalizedSecurityEvent,
+    detections: DetectionResult[] = [],
+    investigations: SecurityInvestigation[] = []
   ) {
     return Promise.resolve({
       steps,
-      eventIds: pipelineResult ? [pipelineResult.event.id] : [],
-      detectionIds: pipelineResult ? pipelineResult.detections.map((d) => d.id) : [],
+      eventIds: event ? [event.id] : [],
+      detectionIds: detections.map((d) => d.id),
       investigationIds: investigations.map((i) => i.id),
     });
   }

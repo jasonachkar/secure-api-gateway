@@ -10,6 +10,9 @@ export const gwToken001: DetectionRule = {
   severity: 'high',
   providers: ['gateway'],
   categories: ['authentication', 'authorization', 'malicious-request'],
+  enabled: true,
+  supportedProvenance: ['live'],
+  testPaths: ['test/gw-token-detection.integration.test.ts'],
   severityRationale:
     'Token tampering or privileged JWT misuse is a direct attempt to bypass gateway authorization.',
   falsePositiveNotes: [
@@ -22,29 +25,42 @@ export const gwToken001: DetectionRule = {
   ],
   evaluate(event) {
     if (event.provider !== 'gateway') return null;
+    // Deliberately excludes plain 'jwt.expired' - routine token expiry is expected,
+    // frequent, noisy signal (see falsePositiveNotes) and would otherwise open an
+    // investigation on every normal client refresh cycle. The canonical event for an
+    // expired token is still generated (see middleware/auth.ts) as pipeline evidence;
+    // it simply never matches this rule.
     const signals = [
       'jwt.invalid',
       'jwt.tampered',
       'token.invalid',
+      'token.revoked',
       'privileged_jwt_failure',
     ];
     const matched = signals.some(
       (s) => event.action.includes(s) || event.title.toLowerCase().includes('tampered')
     );
-    if (!matched && event.category !== 'malicious-request') return null;
     if (!matched) return null;
+
+    // A JWT failure against an admin route (middleware/auth.ts tags these
+    // 'privileged_jwt_failure:...') is a materially bigger deal than the same failure
+    // against an ordinary route - someone is specifically probing for privileged access,
+    // not just presenting a stale token to a routine endpoint.
+    const isPrivilegedRoute = event.action.includes('privileged_jwt_failure');
+    const severity = isPrivilegedRoute ? 'critical' : this.severity;
 
     return {
       id: nanoid(),
       ruleId: this.id,
       ruleVersion: this.version,
-      title: 'Invalid or tampered privileged JWT attempt',
+      title: isPrivilegedRoute ? 'Invalid or tampered JWT presented to a privileged route' : 'Invalid or tampered privileged JWT attempt',
       description: event.summary,
-      severity: this.severity,
+      severity,
       matchedFields: {
         action: event.action,
         sourceIp: event.sourceIp,
         outcome: event.outcome,
+        privilegedRoute: isPrivilegedRoute,
       },
       remediation: this.remediation,
       evidenceEventIds: [event.id],

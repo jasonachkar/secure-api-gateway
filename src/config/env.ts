@@ -110,6 +110,10 @@ const envSchema = z
     // Account Security
     MAX_LOGIN_ATTEMPTS: z.coerce.number().int().min(3).max(10).default(5),
     LOCKOUT_DURATION: z.coerce.number().int().min(60000).default(900000), // ms (15min default)
+    // Sliding window for GW-AUTH-001's failed-login-count / distinct-source-IP signal
+    // (gateway-auth-tracker.ts) - independent of LOCKOUT_DURATION, which gates access,
+    // not detection.
+    GW_AUTH_DETECTION_WINDOW_MS: z.coerce.number().int().min(60000).default(900000), // ms (15min default)
 
     // Upstream Services
     UPSTREAM_REPORTS_URL: z.string().url().default('http://mock-service:4000'),
@@ -354,6 +358,7 @@ export const env = {
     bcryptRounds: validatedEnv.BCRYPT_ROUNDS,
     maxLoginAttempts: validatedEnv.MAX_LOGIN_ATTEMPTS,
     lockoutDurationMs: validatedEnv.LOCKOUT_DURATION,
+    gwAuthDetectionWindowMs: validatedEnv.GW_AUTH_DETECTION_WINDOW_MS,
   },
   security: {
     corsOrigins: validatedEnv.CORS_ORIGIN,

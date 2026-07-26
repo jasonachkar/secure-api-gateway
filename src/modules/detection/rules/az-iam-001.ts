@@ -9,6 +9,10 @@ export const azIam001: DetectionRule = {
   severity: 'critical',
   providers: ['azure'],
   categories: ['privilege-escalation', 'authorization'],
+  enabled: true,
+  // Azure has no live connector (see docs/CLOUD_INGESTION.md / azure-sentinel.adapter.ts) - replay only. Do not add 'live' here until a real Azure Monitor/Log Analytics adapter exists and is tested.
+  supportedProvenance: ['replay'],
+  testPaths: ['test/detection-rules.unit.test.ts'],
   severityRationale:
     'Privileged role assignments (e.g. Owner / User Access Administrator) expand control over subscriptions and resources.',
   falsePositiveNotes: [

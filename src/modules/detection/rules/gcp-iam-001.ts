@@ -10,6 +10,13 @@ export const gcpIam001: DetectionRule = {
   severity: 'high',
   providers: ['gcp'],
   categories: ['persistence', 'credential-access'],
+  enabled: true,
+  supportedProvenance: ['replay', 'live'],
+  testPaths: [
+    'test/detection-rules.unit.test.ts',
+    'test/gcp-logging-adapter-pipeline.integration.test.ts',
+    'test/scenarios.integration.test.ts',
+  ],
   severityRationale:
     'Service account JSON keys are long-lived credentials that are difficult to rotate and frequently leaked.',
   falsePositiveNotes: [

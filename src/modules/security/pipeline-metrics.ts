@@ -12,6 +12,12 @@ const PROVIDER_LAST_POLL_KEY = 'sec:metrics:last_poll';
 const PROVIDER_FAILURES_KEY = 'sec:metrics:provider_failures';
 const DELAY_SUM_KEY = 'sec:metrics:delay_sum_ms';
 const DELAY_COUNT_KEY = 'sec:metrics:delay_count';
+const DETECTION_DURATION_SUM_KEY = 'sec:metrics:detection_duration_sum_ms';
+const DETECTION_DURATION_COUNT_KEY = 'sec:metrics:detection_duration_count';
+const CORRELATION_DURATION_SUM_KEY = 'sec:metrics:correlation_duration_sum_ms';
+const CORRELATION_DURATION_COUNT_KEY = 'sec:metrics:correlation_duration_count';
+const END_TO_END_DURATION_SUM_KEY = 'sec:metrics:end_to_end_duration_sum_ms';
+const END_TO_END_DURATION_COUNT_KEY = 'sec:metrics:end_to_end_duration_count';
 
 export interface PipelineMetricsSnapshot {
   eventsIngestedByProvider: Record<string, number>;
@@ -25,7 +31,14 @@ export interface PipelineMetricsSnapshot {
   responseActionSuccess: number;
   responseActionFailure: number;
   deadLetterCount: number;
+  /** Event occurredAt -> canonical-store persisted (ingestion delay). */
   averageIngestionDelayMs: number;
+  /** Time spent evaluating the full ruleset against one persisted event. */
+  averageDetectionDurationMs: number;
+  /** Time spent correlating that event's detections into investigations. */
+  averageCorrelationDurationMs: number;
+  /** Full pipeline: parse -> persist -> detect -> correlate, for one event. Not the same as ingestion delay (which only covers occurredAt -> persisted) - this is the processing-side latency once the payload is in hand. */
+  averageEndToEndDurationMs: number;
   lastSuccessfulProviderPoll: Record<string, number>;
   consecutiveProviderFailures: Record<string, number>;
   healthByProvider: Record<CloudProvider, OperationalHealth>;
@@ -74,6 +87,21 @@ export class PipelineMetrics {
     await this.redis.incr(DELAY_COUNT_KEY);
   }
 
+  async recordDetectionDuration(durationMs: number): Promise<void> {
+    await this.redis.incrby(DETECTION_DURATION_SUM_KEY, Math.max(0, Math.floor(durationMs)));
+    await this.redis.incr(DETECTION_DURATION_COUNT_KEY);
+  }
+
+  async recordCorrelationDuration(durationMs: number): Promise<void> {
+    await this.redis.incrby(CORRELATION_DURATION_SUM_KEY, Math.max(0, Math.floor(durationMs)));
+    await this.redis.incr(CORRELATION_DURATION_COUNT_KEY);
+  }
+
+  async recordEndToEndDuration(durationMs: number): Promise<void> {
+    await this.redis.incrby(END_TO_END_DURATION_SUM_KEY, Math.max(0, Math.floor(durationMs)));
+    await this.redis.incr(END_TO_END_DURATION_COUNT_KEY);
+  }
+
   async recordProviderPollSuccess(provider: CloudProvider): Promise<void> {
     await this.redis.hset(PROVIDER_LAST_POLL_KEY, provider, String(Date.now()));
     await this.redis.hset(PROVIDER_FAILURES_KEY, provider, '0');
@@ -88,16 +116,40 @@ export class PipelineMetrics {
     gcpConfigured?: boolean;
     azureMode?: 'replay' | 'live' | 'not_configured';
   }): Promise<PipelineMetricsSnapshot> {
-    const [counters, ingested, lastPoll, failures, delaySum, delayCount] = await Promise.all([
+    const [
+      counters,
+      ingested,
+      lastPoll,
+      failures,
+      delaySum,
+      delayCount,
+      detectionSum,
+      detectionCount,
+      correlationSum,
+      correlationCount,
+      endToEndSum,
+      endToEndCount,
+    ] = await Promise.all([
       this.redis.hgetall(COUNTERS_KEY),
       this.redis.hgetall(PROVIDER_INGESTED_KEY),
       this.redis.hgetall(PROVIDER_LAST_POLL_KEY),
       this.redis.hgetall(PROVIDER_FAILURES_KEY),
       this.redis.get(DELAY_SUM_KEY),
       this.redis.get(DELAY_COUNT_KEY),
+      this.redis.get(DETECTION_DURATION_SUM_KEY),
+      this.redis.get(DETECTION_DURATION_COUNT_KEY),
+      this.redis.get(CORRELATION_DURATION_SUM_KEY),
+      this.redis.get(CORRELATION_DURATION_COUNT_KEY),
+      this.redis.get(END_TO_END_DURATION_SUM_KEY),
+      this.redis.get(END_TO_END_DURATION_COUNT_KEY),
     ]);
 
     const num = (v: string | undefined) => (v ? Number(v) || 0 : 0);
+    const average = (sum: string | null, count: string | null) => {
+      const sumN = num(sum ?? undefined);
+      const countN = num(count ?? undefined);
+      return countN > 0 ? Math.round(sumN / countN) : 0;
+    };
     const delaySumN = num(delaySum ?? undefined);
     const delayCountN = num(delayCount ?? undefined);
 
@@ -145,6 +197,9 @@ export class PipelineMetrics {
       responseActionFailure: num(counters.responseActionFailure),
       deadLetterCount: num(counters.deadLetterCount),
       averageIngestionDelayMs: delayCountN > 0 ? Math.round(delaySumN / delayCountN) : 0,
+      averageDetectionDurationMs: average(detectionSum, detectionCount),
+      averageCorrelationDurationMs: average(correlationSum, correlationCount),
+      averageEndToEndDurationMs: average(endToEndSum, endToEndCount),
       lastSuccessfulProviderPoll,
       consecutiveProviderFailures,
       healthByProvider,

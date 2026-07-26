@@ -10,6 +10,13 @@ export const gwAuth001: DetectionRule = {
   severity: 'critical',
   providers: ['gateway'],
   categories: ['authentication', 'credential-access'],
+  enabled: true,
+  supportedProvenance: ['live'],
+  testPaths: [
+    'test/detection-rules.unit.test.ts',
+    'test/gw-auth-detection.integration.test.ts',
+    'test/scenarios.integration.test.ts',
+  ],
   severityRationale:
     'Successful credential stuffing or brute force can yield privileged API access.',
   falsePositiveNotes: [

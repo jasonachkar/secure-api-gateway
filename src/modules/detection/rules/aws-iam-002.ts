@@ -19,6 +19,9 @@ export const awsIam002: DetectionRule = {
   severity: 'high',
   providers: ['aws'],
   categories: ['privilege-escalation', 'persistence', 'credential-access'],
+  enabled: true,
+  supportedProvenance: ['replay', 'live'],
+  testPaths: ['test/detection-rules.unit.test.ts', 'test/cloudwatch-adapter-pipeline.integration.test.ts'],
   severityRationale:
     'Policy attachment and long-lived access keys are common privilege-escalation and persistence techniques.',
   falsePositiveNotes: [

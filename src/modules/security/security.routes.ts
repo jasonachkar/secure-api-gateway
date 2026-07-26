@@ -100,6 +100,20 @@ export async function registerSecurityRoutes(
   );
 
   app.get(
+    '/admin/security/rules',
+    {
+      schema: {
+        description: 'Get detection rule health: static metadata (version, severity, providers, supported provenance, test evidence) plus tracked runtime counters (evaluations, matches, errors)',
+        tags: ['Security'],
+        security: [{ bearerAuth: [] }],
+      },
+      preHandler: readAuth,
+      config: readRateLimitConfig,
+    },
+    async () => ({ rules: await detectionEngine.getRuleHealth() })
+  );
+
+  app.get(
     '/admin/security/fixtures',
     { schema: { description: 'List available replay fixtures', tags: ['Security'], security: [{ bearerAuth: [] }] }, preHandler: readAuth, config: readRateLimitConfig },
     // Never expose absolutePath - it's server filesystem layout, not something a client needs.

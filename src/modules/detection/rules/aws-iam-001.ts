@@ -9,6 +9,13 @@ export const awsIam001: DetectionRule = {
   severity: 'critical',
   providers: ['aws'],
   categories: ['privilege-escalation', 'authentication'],
+  enabled: true,
+  supportedProvenance: ['replay', 'live'],
+  testPaths: [
+    'test/detection-rules.unit.test.ts',
+    'test/cloudwatch-adapter-pipeline.integration.test.ts',
+    'test/scenarios.integration.test.ts',
+  ],
   severityRationale:
     'Root account credentials bypass IAM least privilege and MFA-scoped roles; any use is high risk.',
   falsePositiveNotes: [

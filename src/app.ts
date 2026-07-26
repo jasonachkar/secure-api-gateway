@@ -32,7 +32,9 @@ import { ThreatIntelService } from './modules/admin/threat-intel.service.js';
 import { IncidentResponseService } from './modules/admin/incident-response.service.js';
 import { ResponseService } from './modules/response/response.service.js';
 import { PipelineMetrics } from './modules/security/pipeline-metrics.js';
+import { GatewayAuthTracker } from './modules/security/gateway-auth-tracker.js';
 import { DetectionEngine } from './modules/detection/engine.js';
+import { RuleHealthTracker } from './modules/detection/rule-health.js';
 import { DetectionStore } from './modules/detection/detection.store.js';
 import { SecurityEventStore } from './modules/ingestion/security-event.store.js';
 import { InvestigationService } from './modules/investigations/investigation.service.js';
@@ -98,9 +100,11 @@ export async function createApp(): Promise<FastifyInstance> {
   const postgresPool = env.storage.postgresUrl ? await createPostgresClient() : undefined;
   const securityEventStore = new SecurityEventStore(redis, postgresPool);
   await securityEventStore.initialize();
-  const detectionEngine = new DetectionEngine(undefined, pipelineMetrics);
+  const ruleHealthTracker = new RuleHealthTracker(redis);
+  const detectionEngine = new DetectionEngine(undefined, pipelineMetrics, ruleHealthTracker);
   const detectionStore = new DetectionStore(redis);
   const investigationService = new InvestigationService(redis, pipelineMetrics);
+  const gatewayAuthTracker = new GatewayAuthTracker(redis, env.auth.gwAuthDetectionWindowMs);
 
   if (postgresPool) {
     app.addHook('onClose', async () => {
@@ -413,6 +417,7 @@ export async function createApp(): Promise<FastifyInstance> {
     securityEventStore,
     investigationService,
     pipelineMetrics,
+    gatewayAuthTracker,
   });
   await registerAuditRoutes(app, auditService);
   await registerReportsRoutes(app, redis);

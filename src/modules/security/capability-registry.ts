@@ -209,13 +209,20 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
     status: 'implemented',
     provenance: 'live',
     summary:
-      'Documented detection rules (GW-AUTH-001, GW-TOKEN-001, AWS-IAM-001/002, GCP-IAM-001, AZ-IAM-001) evaluate normalized events. Wired into both the live gateway-lockout path (auth.controller.ts) and the fixture replay endpoint (security.routes.ts).',
+      'Documented detection rules (GW-AUTH-001, GW-TOKEN-001, AWS-IAM-001/002, GCP-IAM-001, AZ-IAM-001) evaluate every normalized event through the canonical pipeline. GW-AUTH-001 evaluates on every failed login (middleware/auth.ts -> gateway-auth-tracker.ts), not just the final lockout, with real measured failure counts and distinct source-IP counts - both concentrated and genuinely distributed attacks are detectable. GW-TOKEN-001 evaluates on every JWT verification failure (invalid signature, malformed token, wrong token type, revoked-token reuse, privileged-route failures) - expired tokens generate evidence but deliberately do not alert, to avoid paging on routine expiry. Per-rule health (enabled state, version, evaluation/match/error counts, last evaluated/matched, supported provenance, test evidence) is tracked and exposed via GET /admin/security/rules - see docs/DETECTION_RULES.md. One rule throwing never stops the rest of the ruleset from evaluating.',
     implementationPaths: [
       'src/modules/detection/engine.ts',
+      'src/modules/detection/rule-health.ts',
       'src/modules/detection/rules',
+      'src/modules/security/gateway-auth-tracker.ts',
+      'src/middleware/auth.ts',
     ],
     testPaths: [
       'test/detection-rules.unit.test.ts',
+      'test/rule-health.unit.test.ts',
+      'test/gw-auth-detection.integration.test.ts',
+      'test/gw-token-detection.integration.test.ts',
+      'test/pipeline-metrics-latency.unit.test.ts',
     ],
   },
   {

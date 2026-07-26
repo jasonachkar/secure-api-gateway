@@ -113,6 +113,7 @@ export async function ingestProviderEvent(
   const detections = await deps.detectionEngine.evaluate(saved);
   await deps.detectionStore.saveAll(detections);
   const detectMs = Date.now() - t2;
+  await deps.pipelineMetrics.recordDetectionDuration(detectMs);
 
   const t3 = Date.now();
   const investigations: SecurityInvestigation[] = [];
@@ -120,12 +121,16 @@ export async function ingestProviderEvent(
     investigations.push(await deps.investigationService.correlate(saved, detection));
   }
   const correlateMs = Date.now() - t3;
+  await deps.pipelineMetrics.recordCorrelationDuration(correlateMs);
+
+  const totalMs = Date.now() - t0;
+  await deps.pipelineMetrics.recordEndToEndDuration(totalMs);
 
   return {
     event: saved,
     duplicate: false,
     detections,
     investigations,
-    timings: { parseMs, persistMs, detectMs, correlateMs, totalMs: Date.now() - t0 },
+    timings: { parseMs, persistMs, detectMs, correlateMs, totalMs },
   };
 }

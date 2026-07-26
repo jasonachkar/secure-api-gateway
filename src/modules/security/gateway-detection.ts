@@ -6,6 +6,7 @@
  * through identical detection logic - the scenario is not a separate,
  * simplified simulation of GW-AUTH-001, it drives the same code path.
  */
+import { nanoid } from 'nanoid';
 import { logger } from '../../lib/logger.js';
 import { parseGatewayEvent } from '../ingestion/parsers/gateway.parser.js';
 import type { DetectionEngine } from '../detection/engine.js';
@@ -13,6 +14,7 @@ import type { DetectionStore } from '../detection/detection.store.js';
 import type { SecurityEventStore } from '../ingestion/security-event.store.js';
 import type { InvestigationService } from '../investigations/investigation.service.js';
 import type { PipelineMetrics } from './pipeline-metrics.js';
+import type { GatewayAuthTracker } from './gateway-auth-tracker.js';
 import type { DetectionResult, NormalizedSecurityEvent, SecurityInvestigation } from './types.js';
 
 export interface AuthSecurityPipeline {
@@ -21,6 +23,8 @@ export interface AuthSecurityPipeline {
   securityEventStore: SecurityEventStore;
   investigationService: InvestigationService;
   pipelineMetrics: PipelineMetrics;
+  /** Optional: only the real HTTP login path (auth.controller.ts) needs this - the guided scenario evaluates with fixed, scripted numbers instead. */
+  gatewayAuthTracker?: GatewayAuthTracker;
 }
 
 export interface GatewayCredentialAttackParams {
@@ -53,14 +57,14 @@ export async function evaluateGatewayCredentialAttack(
   try {
     const event = parseGatewayEvent(
       {
-        action: params.action ?? 'gateway.account_lockout',
-        providerEventId: `lockout-${params.username}-${Date.now()}`,
+        action: params.action ?? 'gateway.login_failed',
+        providerEventId: `gw-auth-${params.username}-${nanoid()}`,
         occurredAt: new Date().toISOString(),
         outcome: 'failure',
         category: 'authentication',
         severity: 'high',
-        title: params.title ?? 'Gateway account lockout',
-        summary: params.summary ?? `Account "${params.username}" locked after repeated failed logins`,
+        title: params.title ?? 'Gateway authentication failure',
+        summary: params.summary ?? `Failed login attempt against account "${params.username}"`,
         sourceIp: params.ip,
         principal: { id: params.username, displayName: params.username, type: 'user' },
       },

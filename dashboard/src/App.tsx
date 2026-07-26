@@ -13,7 +13,6 @@ import { AuditLogs } from './pages/AuditLogs';
 import { Sessions } from './pages/Sessions';
 import { Users } from './pages/Users';
 import { Threats } from './pages/Threats';
-import { Incidents } from './pages/Incidents';
 import { Compliance } from './pages/Compliance';
 import { GuidedScenarios } from './pages/GuidedScenarios';
 import { Investigations } from './pages/Investigations';
@@ -61,10 +60,6 @@ function App() {
         <Route
           path="/threats"
           element={isAuthenticated ? <Threats /> : <Navigate to="/login" replace />}
-        />
-        <Route
-          path="/incidents"
-          element={isAuthenticated ? <Incidents /> : <Navigate to="/login" replace />}
         />
         <Route
           path="/compliance"

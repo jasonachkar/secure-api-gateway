@@ -145,10 +145,10 @@ export function About() {
                   'Threat intelligence system that tracks suspicious IP addresses, calculates threat scores based on failed logins and rate limit violations, and automatically blocks high-risk IPs.',
               },
               {
-                title: 'Incidents',
-                path: '/incidents',
+                title: 'Investigations',
+                path: '/investigations',
                 description:
-                  'Auto-generated security incidents created when threats reach high or critical levels. Tracks incident status, response times, and resolution times.',
+                  'Detections correlated into investigations by principal, resource, source IP, account, and a fixed time window. Each one carries the normalized events and rule matches that produced it, plus a downloadable evidence package.',
               },
               {
                 title: 'Compliance',

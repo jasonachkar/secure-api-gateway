@@ -121,11 +121,25 @@ pipeline (`NormalizedEvent` schema in `src/modules/ingestion/normalized-event.ty
 `NormalizedEventStore`'s event-storage methods, and
 `IncidentResponseService.createIncidentFromNormalizedEvent()`), which never touched
 detection rules, investigations, or evidence. Nothing in the live or replay ingestion
-path calls into that legacy code anymore, but it has not been deleted: removing the
-manual/administrative incident-creation capability and reconciling it with the dashboard
-(which still has an Incidents page reading from `IncidentResponseService`) is a larger,
-separate change than unifying ingestion. Do not describe the legacy `NormalizedEvent`
-path as removed - it is dead for ingestion purposes but still present in the codebase.
+path calls into that legacy code anymore, but it has not been deleted. Do not describe
+the legacy `NormalizedEvent` path as removed - it is dead for ingestion purposes but
+still present in the codebase.
+
+The dashboard's `/incidents` page has been removed (it read from
+`IncidentResponseService`, disconnected from the real detection/investigation pipeline
+above, and its "playbook actions" - disable user / block IP / open ticket - wrote a
+hardcoded `result: 'mocked'` into the incident timeline rather than performing any real
+action, which the UI presented no differently from genuine response actions). The
+reviewer-facing case-management surface is now exclusively the Investigations page,
+backed by real correlated detections with real response actions
+(`src/modules/response/response.service.ts`). `IncidentResponseService` and its
+`/admin/incidents*` REST API are still present in the backend - they remain in active
+use by `ThreatIntelService.createIncidentFromThreat()` for automatic escalation of
+high/critical threat-intel scores, and are still reachable directly via the API for
+administrative/scripted use - but the mocked playbook-action endpoints
+(`POST /admin/incidents/:id/actions`, `POST /admin/incidents/:id/playbook`) should not
+be treated as real enforcement by any caller. Fully removing or replacing the mocked
+playbook-action surface is unstarted follow-up work.
 
 ## Cloud ingestion
 

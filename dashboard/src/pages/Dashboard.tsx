@@ -19,7 +19,6 @@ import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { SectionHeader } from '../components/SectionHeader';
 import { useSSE } from '../hooks/useSSE';
-import { useToast } from '../contexts/ToastContext';
 import { adminApi } from '../api/admin';
 import { theme } from '../styles/theme';
 import type { IngestionStatus, SecurityPosture } from '../types';
@@ -105,8 +104,6 @@ export function Dashboard() {
   });
   const [selectedEvent, setSelectedEvent] = useState<SecurityEvent | null>(null);
   const [inspectorExpanded, setInspectorExpanded] = useState(false);
-  const [addingToIncident, setAddingToIncident] = useState(false);
-  const { showToast } = useToast();
 
   const { data, isConnected, error } = useSSE<any>({
     url: `${API_URL}/admin/metrics/realtime`,
@@ -223,27 +220,6 @@ export function Dashboard() {
       setSecurityEvents((prev) => [...prev, ...events].slice(-50));
     }
   }, [data]);
-
-  const handleAddToIncident = async () => {
-    if (!selectedEvent) return;
-    setAddingToIncident(true);
-    try {
-      const severity = selectedEvent.severity === 'critical' ? 'critical' : selectedEvent.severity === 'warning' ? 'medium' : 'low';
-      await adminApi.createIncident({
-        title: `${selectedEvent.type.replace(/_/g, ' ')} - ${new Date(selectedEvent.timestamp).toLocaleString()}`,
-        description: selectedEvent.message,
-        type: selectedEvent.type === 'AUTH_FAILURE' || selectedEvent.type === 'ACCOUNT_LOCKOUT' ? 'brute_force' : selectedEvent.type === 'RATE_LIMIT' ? 'rate_limit_abuse' : 'suspicious_activity',
-        severity,
-        tags: ['from-live-feed'],
-      });
-      showToast('Incident created from this event', 'success');
-      setSelectedEvent(null);
-    } catch (err: any) {
-      showToast('Failed to create incident: ' + err.message, 'error');
-    } finally {
-      setAddingToIncident(false);
-    }
-  };
 
   const statusClass = isConnected ? 'status-pill--success' : 'status-pill--danger';
 
@@ -579,13 +555,6 @@ export function Dashboard() {
         isOpen={selectedEvent !== null}
         title="Event Details"
         onClose={() => setSelectedEvent(null)}
-        footer={
-          selectedEvent && (
-            <Button variant="primary" className="button-full" onClick={handleAddToIncident} isLoading={addingToIncident}>
-              Add to Incident
-            </Button>
-          )
-        }
       >
         {selectedEvent && (
           <>

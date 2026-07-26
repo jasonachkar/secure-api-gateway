@@ -21,7 +21,6 @@ import {
   KeyRound,
   Users as UsersIcon,
   ListChecks,
-  Siren,
   AlertTriangle,
   type LucideIcon,
 } from 'lucide-react';
@@ -49,7 +48,6 @@ const primaryNavItems = [
 const moreNavItems = [
   { path: '/compliance', label: 'Control Evidence', icon: ClipboardCheck },
   { path: '/threats', label: 'Threats', icon: AlertTriangle },
-  { path: '/incidents', label: 'Incidents', icon: Siren },
   { path: '/audit-logs', label: 'Audit Logs', icon: ScrollText },
   { path: '/sessions', label: 'Sessions', icon: KeyRound },
   { path: '/users', label: 'Identity & Access', icon: UsersIcon },

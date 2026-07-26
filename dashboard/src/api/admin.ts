@@ -14,12 +14,6 @@ import type {
   IPThreatInfo,
   AttackPattern,
   ThreatStatistics,
-  Incident,
-  IncidentStatistics,
-  IncidentStatus,
-  IncidentSeverity,
-  IncidentType,
-  IncidentPlaybookAction,
   SecurityPosture,
   ComplianceMetrics,
   IngestionStatus,
@@ -37,7 +31,6 @@ import type {
   EvidencePackage,
   ResponseActionRecord,
 } from '../types';
-import { normalizeIncident, normalizeIncidents } from '../utils/incident';
 
 export const adminApi = {
   // Auth
@@ -164,67 +157,6 @@ export const adminApi = {
   getBlockedIPs: async (): Promise<string[]> => {
     const { data } = await apiClient.get('/admin/threats/blocked');
     return data.blockedIPs;
-  },
-
-  // Incident Response
-  createIncident: async (incident: {
-    title: string;
-    description: string;
-    type: IncidentType;
-    severity: IncidentSeverity;
-    affectedIPs?: string[];
-    affectedUsers?: string[];
-    tags?: string[];
-    metadata?: Record<string, unknown>;
-  }): Promise<Incident> => {
-    const { data } = await apiClient.post('/admin/incidents', incident);
-    return data.incident;
-  },
-
-  getIncidents: async (params?: {
-    status?: IncidentStatus;
-    severity?: IncidentSeverity;
-    type?: IncidentType;
-    limit?: number;
-    offset?: number;
-  }): Promise<Incident[]> => {
-    const { data } = await apiClient.get('/admin/incidents', { params });
-    return normalizeIncidents(data.incidents ?? []);
-  },
-
-  getIncident: async (id: string): Promise<Incident> => {
-    const { data } = await apiClient.get(`/admin/incidents/${id}`);
-    return normalizeIncident(data.incident);
-  },
-
-  updateIncidentStatus: async (id: string, status: IncidentStatus): Promise<Incident> => {
-    const { data } = await apiClient.patch(`/admin/incidents/${id}/status`, { status });
-    return data.incident;
-  },
-
-  assignIncident: async (id: string, assignedTo: string): Promise<Incident> => {
-    const { data } = await apiClient.patch(`/admin/incidents/${id}/assign`, { assignedTo });
-    return data.incident;
-  },
-
-  addIncidentNote: async (id: string, content: string): Promise<Incident> => {
-    const { data } = await apiClient.post(`/admin/incidents/${id}/notes`, { content });
-    return data.incident;
-  },
-
-  runIncidentAction: async (id: string, action: string, target?: string): Promise<Incident> => {
-    const { data } = await apiClient.post(`/admin/incidents/${id}/actions`, { action, target });
-    return data.incident;
-  },
-
-  updateIncident: async (id: string, updates: Partial<Incident>): Promise<Incident> => {
-    const { data } = await apiClient.patch(`/admin/incidents/${id}`, updates);
-    return data.incident;
-  },
-
-  getIncidentStatistics: async (): Promise<IncidentStatistics> => {
-    const { data } = await apiClient.get('/admin/incidents/statistics');
-    return data.statistics;
   },
 
   // Compliance

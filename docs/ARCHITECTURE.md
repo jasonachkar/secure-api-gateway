@@ -47,7 +47,7 @@ The frontend and backend deploy independently and communicate only over HTTPS:
   breakdown and cost table.
 
 APIM is optional (`enable_apim` in Terraform, `false` by default) - see
-[`terraform/README.md`](../terraform/README.md#optional-both-false-by-default) for why
+[`terraform/README.md`](../terraform/README.md#optional-all-false-by-default) for why
 it's not part of the default path. Without it, the Container App is directly
 internet-facing; that's an intentional trust-boundary decision covered in
 [`THREAT_MODEL.md`](THREAT_MODEL.md).
@@ -82,8 +82,8 @@ The gateway follows a layered architecture with clear separation of concerns:
 │  Routes: /auth/*  /admin/*  /reports/*  /upstream/*  /healthz  │
 │                                                                 │
 │  Business logic: auth, audit (hash-chained), API keys,          │
-│  threat intel, incident response, compliance scoring,            │
-│  metrics, ingestion adapters                                      │
+│  threat intel, compliance scoring, metrics, multi-cloud          │
+│  ingestion → detection → investigation → response pipeline        │
 └───────────────────┬─────────────────────┬───────────────────┘
                      │                     │
               ┌──────▼──────┐      ┌───────▼────────┐
@@ -119,20 +119,50 @@ The gateway follows a layered architecture with clear separation of concerns:
 - **`src/modules/audit/`** — hash-chained, tamper-evident audit log (`audit.hash.ts`);
   file store for dev, Redis for production.
 - **`src/modules/admin/`** — metrics, threat intel scoring, AbuseIPDB integration,
-  incident response workflow, compliance scoring, audit log admin API.
-- **`src/modules/ingestion/`** — normalized external security-event pipeline
-  (`NormalizedEventStore`: Redis + optional Postgres). Two adapters are real: AWS
-  CloudWatch Logs and GCP Cloud Logging (`adapters/cloudwatch.adapter.ts`,
-  `adapters/gcp-logging.adapter.ts`) poll their respective APIs on an interval
-  (`INGESTION_POLL_INTERVAL_MS`), tracking a Redis-backed cursor per adapter so a
-  restart doesn't reprocess or lose events, and feed matching entries through
-  `IngestionService.ingestEvent()`. Both are provisioned end-to-end by
+  legacy incident-response API (superseded by Investigations, still used for automatic
+  threat-intel escalation - see [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)),
+  compliance scoring, audit log admin API.
+- **`src/modules/ingestion/`** — the canonical security-event pipeline. Every source
+  (live AWS/GCP polling, replay fixtures, guided scenarios) calls the same
+  `ingestProviderEvent()` function: parse the provider-specific payload
+  (`parsers/aws.parser.ts`, `parsers/gcp.parser.ts`, `parsers/azure.parser.ts`) into a
+  canonical `NormalizedSecurityEvent`, redact sensitive fields, persist with
+  provenance-aware dedup (`security-event.store.ts`), then hand off to detection and
+  correlation - no separate "live" code path that skips steps. Two adapters poll live:
+  AWS CloudWatch Logs and GCP Cloud Logging (`adapters/cloudwatch.adapter.ts`,
+  `adapters/gcp-logging.adapter.ts`), tracking a Redis-backed cursor per adapter so a
+  restart doesn't reprocess or lose events. Both are provisioned end-to-end by
   `terraform/modules/aws-logging` / `terraform/modules/gcp-logging` (opt-in,
   `enable_aws_cloudwatch_ingestion` / `enable_gcp_logging_ingestion` — see
-  `terraform/README.md`), free at demo scale. Azure Sentinel remains a stub (reports
-  "not configured" only) — unlike the other two, Sentinel has no meaningful free tier,
-  so it's an intentionally undone roadmap item rather than a gap; see
-  [`SECURITY_CONTROLS.md`](SECURITY_CONTROLS.md#roadmap).
+  `terraform/README.md`), free at demo scale, with static (not federated) credentials -
+  see [`CLOUD_INGESTION.md#minimal-iam-policy`](CLOUD_INGESTION.md#minimal-iam-policy).
+  Azure is replay-only — no live Sentinel/Monitor connector is implemented, an
+  intentionally undone roadmap item (no meaningful free tier at demo scale) rather than
+  a gap; see [`SECURITY_CONTROLS.md`](SECURITY_CONTROLS.md#roadmap). A legacy, pre-unification
+  event schema (`normalized-event.types.ts`) still exists in the codebase but nothing
+  in the live/replay path calls into it anymore — see `KNOWN_LIMITATIONS.md`.
+- **`src/modules/detection/`** — the detection rule engine: a `DetectionRule` interface
+  (`id`/`severity`/`supportedProvenance`/`testPaths`/`evaluate()`), per-rule error
+  isolation so one broken rule can't take down the others, and a runtime health
+  tracker (evaluation/match/error counts, last-evaluated/matched timestamps) exposed
+  via the API. See [`DETECTION_RULES.md`](DETECTION_RULES.md).
+- **`src/modules/investigations/`** — correlates detections into investigations by
+  principal/resource/source-IP/account within a fixed time window, with atomic,
+  race-free dedup and correlation under concurrent writers (short-TTL token-based
+  Redis locks, not `WATCH`/`MULTI`/`EXEC` - see [`CONCURRENCY.md`](CONCURRENCY.md) for
+  why). Produces the timeline, evidence, and downloadable evidence package the
+  Investigations dashboard page renders.
+- **`src/modules/security/`** — the capability registry (single source of truth for
+  what's live/replay/simulated/planned, exposed via API so docs and UI can't drift from
+  it), plus gateway-specific detection wiring (credential-attack and JWT-failure
+  tracking independent of the cloud parsers above).
+- **`src/modules/scenarios/`** — reviewer-runnable guided scenarios. The gateway
+  credential-attack scenario drives real `app.inject()` HTTP requests through the
+  actual Fastify request lifecycle (rate limiting, IP-block middleware, audit hooks),
+  not a direct service-layer call, and verifies enforcement with a genuine follow-up
+  request and matching audit-log entry.
+- **`src/modules/response/`** — real response actions (block IP, revoke sessions) that
+  investigations and scenarios both call into.
 - **`src/modules/proxy/`, `src/lib/httpClient.ts`** — the actual gateway/reverse-proxy
   pattern: SSRF-defended, DNS-pinned outbound requests with a per-host circuit breaker.
 - **`src/lib/`** — crypto helpers, structured logging (Pino, with redaction), custom

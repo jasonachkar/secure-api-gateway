@@ -6,7 +6,14 @@ follows: **Detect → Contain → Eradicate → Recover → Learn**.
 For the in-app incident workflow (tracking, assignment, timeline, playbook actions)
 see `GET/POST /admin/incidents/*` (`src/modules/admin/incident-response.service.ts`) -
 the steps below are what an operator actually *does*; the in-app workflow is for
-tracking that work.
+tracking that work. This API is no longer surfaced in the reviewer dashboard (see
+[`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md#legacy-ingestion-path-unused-not-yet-removed)) -
+its `status`/`assign`/`notes` endpoints are real, but its playbook-action endpoints
+(`POST .../actions`, `POST .../playbook`) are mocked (`result: 'mocked'`, no real
+user/IP/ticketing integration) and must not be treated as the "Contain"/"Eradicate"
+steps below actually happening. Real containment (IP blocking, session revocation) is
+`src/modules/response/response.service.ts`, called from Investigations and the guided
+scenarios, not from this incident workflow.
 
 ## Secret leaked (JWT secret, cookie secret, Redis password, third-party API key)
 

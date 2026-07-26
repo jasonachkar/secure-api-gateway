@@ -1,17 +1,45 @@
-# Secure API Gateway
+# Secure API Gateway — Multi-Cloud API Security Control Plane
 
-A **production-grade API Gateway** in Fastify + TypeScript, paired with a React
-security-operations dashboard — built to demonstrate real OWASP API Security Top 10
-mitigations, modern auth patterns, and a genuine cloud deployment story, not just a
-local demo.
+A **production-grade API Gateway** in Fastify + TypeScript, in front of a genuine
+**multi-cloud security detection and investigation control plane**: AWS CloudTrail and
+GCP Cloud Logging feed live (Azure replay-only), gateway auth activity is monitored
+directly, everything normalizes into one canonical event schema, gets evaluated
+against documented detection rules, correlates into investigations with real evidence,
+and can trigger real response actions — paired with a React reviewer dashboard, not
+just a local demo.
 
 **Why this exists**: most portfolio API projects stop at "it runs on my machine."
 This one is meant to hold up to the questions a senior cloud/security engineer would
 actually ask: *Where does this run? Who can access what, and how do you know? What
-happens when a dependency fails? What's your story for secrets, for audit, for
-incident response?* Every claim below is backed by code in this repo, not aspirational
-bullet points — and where something genuinely isn't implemented yet, it's called out
-as a roadmap item instead of glossed over.
+happens when a dependency fails? What's live versus replayed versus simulated, and how
+would I tell? What's your story for secrets, for audit, for detection, for incident
+response?* Every claim below is backed by code in this repo, not aspirational bullet
+points — and where something genuinely isn't implemented yet, or is real-but-mocked
+(e.g. the legacy incident playbook actions - see [Known limitations](docs/KNOWN_LIMITATIONS.md)),
+it's called out explicitly instead of glossed over.
+
+## Data provenance: live, replay, and synthetic
+
+Every security event and every score in this system is tagged with where it actually
+came from, and the UI/API never blur that distinction:
+
+- **`live`** — a real event from a real source: AWS CloudTrail via CloudWatch Logs, GCP
+  Cloud Logging, or the gateway's own auth activity (real HTTP requests hitting real
+  rate limiting, real IP blocking, real audit hooks). Detection rules run against these
+  the same way they run against everything else - no separate "demo" code path.
+- **`replay`** — a sanitized, real-shaped fixture (e.g. a CloudTrail record) pushed
+  through the exact same parse → normalize → detect → correlate pipeline as live
+  traffic. Used where standing up a live AWS/GCP account isn't practical for a
+  reviewer (Azure is replay-only; no live Sentinel/Monitor connector exists).
+- **`synthetic`** — fabricated data, off by default (`ENABLE_SYNTHETIC_BACKGROUND_DATA=false`),
+  used only to animate dashboard charts for local visual demos, and never allowed to
+  feed detection, investigations, or compliance scoring.
+
+See [`docs/CLOUD_INGESTION.md`](docs/CLOUD_INGESTION.md) for the pipeline this
+provenance tagging runs through, and [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md)
+for every place a score or feature is real-but-partial (e.g. compliance scores that mix
+live telemetry with fixed self-assessment, or backend endpoints that are intentionally
+mocked) rather than fully live.
 
 ## Architecture
 
@@ -87,16 +115,52 @@ Full architecture detail (component breakdown, data flows, tech-stack rationale)
 - Pino structured logging with field-level redaction (tokens/passwords never appear in
   logs)
 
-### Threat intelligence & incident response (already built, not just planned)
+### Detection, investigation, and multi-cloud ingestion
+- **Canonical detection pipeline** (`src/modules/detection/`): documented rules with
+  `id`/`severity`/`supportedProvenance`/`testPaths`/`evaluate()`, per-rule error
+  isolation (one broken rule can't take down the others), and a runtime health tracker
+  (evaluation/match/error counts) exposed via the API. Covers gateway credential
+  attacks and JWT failure patterns (concentrated + distributed detection, deliberately
+  excluding routine token expiry) plus AWS/GCP/Azure IAM and privilege-escalation
+  patterns — see [`docs/DETECTION_RULES.md`](docs/DETECTION_RULES.md).
+- **Investigations** (`src/modules/investigations/`): detections correlate into
+  investigations by principal/resource/source-IP/account within a fixed time window -
+  deterministic grouping, not an opaque risk score - each with a timeline, the raw
+  normalized events and rule matches that produced it, and a downloadable evidence
+  package. Correlation and event dedup are genuinely race-free under concurrent writers;
+  see [`docs/CONCURRENCY.md`](docs/CONCURRENCY.md) for the Redis-atomicity design (and
+  what's deliberately *not* covered yet).
+- **Multi-cloud ingestion** (`src/modules/ingestion/`): AWS CloudTrail (via CloudWatch
+  Logs) and GCP Cloud Logging poll live; Azure is replay-only. One pipeline
+  (`ingestProviderEvent()`) handles live polling, replay fixtures, and guided
+  scenarios identically - see [`docs/CLOUD_INGESTION.md`](docs/CLOUD_INGESTION.md) and
+  the in-app Cloud Coverage page for current per-provider status.
+- **Guided scenarios** (`src/modules/scenarios/`): reviewer-runnable, end-to-end
+  demonstrations. The gateway credential-attack scenario drives real HTTP requests
+  through the actual rate limiter and IP-block middleware (not a direct service-layer
+  call) and verifies a genuine 403 + audit-log entry afterward, not just a Redis
+  membership check.
 - Per-IP threat scoring with attack-pattern detection (brute force, credential
-  stuffing, rate-limit abuse) — `src/modules/admin/threat-intel.service.ts`
-- AbuseIPDB integration for IP reputation
-- Full incident lifecycle tracking (create/assign/status/timeline/playbook actions) —
-  `src/modules/admin/incident-response.service.ts`
-- Compliance posture scoring (NIST/OWASP/PCI/GDPR-oriented) — directional, not a
-  certification claim; see [`docs/SECURITY_CONTROLS.md`](docs/SECURITY_CONTROLS.md#compliance-mapping)
+  stuffing, rate-limit abuse) and AbuseIPDB reputation lookups —
+  `src/modules/admin/threat-intel.service.ts`.
+- Compliance posture scoring (NIST/OWASP/PCI/GDPR-oriented). Each framework's score now
+  carries an explicit `assessmentBasis` (`partially-live` vs `static`) and note, shown
+  in the dashboard, because most of PCI/OWASP/GDPR and 3 of 4 NIST controls are fixed
+  self-assessments, not continuously measured — see
+  [`docs/SECURITY_CONTROLS.md`](docs/SECURITY_CONTROLS.md#compliance-mapping).
 - Live security dashboard: request/error rates, auth stats, rate-limit violations,
-  response-time percentiles, streamed via SSE
+  response-time percentiles, streamed via SSE.
+
+**What was removed, and why**: the dashboard's `/incidents` page (backed by
+`src/modules/admin/incident-response.service.ts`) has been removed. It read from a
+manual case-management system disconnected from the detection pipeline above, and its
+"playbook actions" (disable user / block IP / open ticket) wrote a hardcoded
+`result: 'mocked'` into the incident timeline without performing any real action - the
+UI didn't visually distinguish that from genuine enforcement. The backend service and
+its `/admin/incidents*` API still exist (still real: automatic escalation for
+high/critical threat-intel scores) but are no longer reviewer-facing; Investigations
+above is the current case-management surface, backed by real correlated detections and
+real response actions. Full detail: [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md).
 
 See [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) for the attack-surface reasoning
 behind these controls, and [`docs/SECURITY_CONTROLS.md`](docs/SECURITY_CONTROLS.md)
@@ -256,20 +320,26 @@ npm run lint
 npm run typecheck
 ```
 
-61 tests across unit (RBAC, rate limiting, token rotation, API keys, audit hash chain,
-SSRF/circuit breaker, CORS, validation) and integration (auth flow, rate limit
-enforcement, CORS) suites. CI (`.github/workflows/ci.yml`) runs all of this plus a
-Redis service container on every push/PR.
+250+ tests across unit (RBAC, rate limiting, token rotation, API keys, audit hash
+chain, SSRF/circuit breaker, CORS, validation, cloud event parsers, detection rules,
+concurrency) and integration (auth flow, rate limit enforcement, CORS, cloud ingestion
+pipelines, gateway detection, guided scenarios end-to-end) suites. CI
+(`.github/workflows/ci.yml`) runs all of this plus a Redis service container on every
+push/PR.
 
 ## CI/CD
 
 | Workflow | What it does |
 |---|---|
 | `ci.yml` | Lint, typecheck, test (with Redis), build - backend, dashboard, mock-service |
-| `docker.yml` | Builds both Dockerfiles, Trivy container scan → SARIF |
-| `terraform.yml` | `fmt -check`, `validate`, tfsec scan → SARIF |
+| `docker.yml` | Builds both Dockerfiles, Trivy container scan → SARIF, blocks on CRITICAL |
+| `terraform.yml` | `fmt -check`, `validate`, tfsec scan → SARIF, blocks on HIGH/CRITICAL |
+| `codeql.yml` | CodeQL static analysis (JS/TS) → GitHub code scanning |
+| `semgrep.yml` | Semgrep static analysis → GitHub code scanning |
+| `sonarcloud.yml` | SonarCloud analysis (quality + security) |
 | `dependency-review.yml` | Dependency Review (PRs), `npm audit`, SBOM generation |
 | `deploy.yml` | Manual (`workflow_dispatch`): build → push to ACR → `az containerapp update` |
+| `deploy-dashboard.yml` | Deploys the dashboard to Azure Static Web Apps when enabled |
 
 All SARIF output uploads to GitHub code scanning. `deploy.yml` documents the exact
 repo secrets it needs and an OIDC federated-credential setup (no long-lived Azure
@@ -282,19 +352,27 @@ secure-api-gateway/
 ├── src/
 │   ├── config/env.ts        # Zod-validated, grouped config (server/auth/redis/...)
 │   ├── lib/                 # crypto, logger, errors, circuit breaker, http client
-│   ├── middleware/           # auth, rbac, rate limiting, validation, security headers
+│   ├── middleware/           # auth, rbac, rate limiting, validation, security headers, IP block
 │   ├── modules/
 │   │   ├── auth/             # login, refresh rotation, token store
 │   │   ├── apikeys/           # scoped API keys
 │   │   ├── audit/              # hash-chained audit log
-│   │   ├── admin/               # metrics, threat intel, incidents, compliance
-│   │   └── proxy/, reports/      # the actual gateway/proxy pattern
+│   │   ├── admin/               # metrics, threat intel, legacy incidents, compliance
+│   │   ├── ingestion/            # canonical pipeline + AWS/GCP/Azure parsers + live adapters
+│   │   ├── detection/             # detection rule engine, rule health, detection store
+│   │   ├── investigations/         # correlation into investigations, evidence export
+│   │   ├── security/                # capability registry, gateway auth/token detection
+│   │   ├── scenarios/                # reviewer-runnable guided scenarios
+│   │   ├── response/                  # real response actions (block IP, revoke sessions)
+│   │   └── proxy/, reports/            # the actual gateway/proxy pattern
 │   ├── app.ts / main.ts
-├── dashboard/                # React + Vite security dashboard → Vercel
+├── dashboard/                # React + Vite reviewer dashboard → Vercel
 ├── mock-service/             # mock upstream for local dev/demo
-├── terraform/                # Azure IaC (see terraform/README.md)
-├── docs/                     # ARCHITECTURE, THREAT_MODEL, SECURITY_CONTROLS, OPERATIONS, INCIDENT_RESPONSE
-├── .github/workflows/        # CI, Docker scan, Terraform scan, deploy
+├── terraform/                # Azure IaC + opt-in AWS/GCP ingestion identity (see terraform/README.md)
+├── docs/                     # ARCHITECTURE, CLOUD_INGESTION, CONCURRENCY, DETECTION_RULES,
+│                             # THREAT_MODEL, SECURITY_CONTROLS, OPERATIONS, INCIDENT_RESPONSE,
+│                             # KNOWN_LIMITATIONS, PROXY_TRUST, owasp-api-top10, DEMO_WALKTHROUGH
+├── .github/workflows/        # CI, Docker scan, Terraform scan, CodeQL, Semgrep, SonarCloud, deploy
 └── legacy/deploy-configs/    # retired Fly.io/Railway/Render/self-host configs
 ```
 
@@ -319,4 +397,6 @@ MIT — see [LICENSE](LICENSE).
 
 Built to be read, not just run — every security claim above traces to a specific file.
 Start with [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) if you want the "why" before
-the "what."
+the "what", [`docs/DEMO_WALKTHROUGH.md`](docs/DEMO_WALKTHROUGH.md) for a guided tour of
+the dashboard, or [`CHANGELOG.md`](CHANGELOG.md) for how this evolved into a
+multi-cloud control plane.

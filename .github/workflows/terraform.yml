@@ -45,7 +45,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run tfsec (SARIF)
+      # Upload SARIF first (if: always() below) so a blocking failure in the next
+      # step still leaves findings visible in the Security tab, then fail the build
+      # on CRITICAL/HIGH - matching docker.yml's Trivy gate. Before this, tfsec only
+      # ever produced a SARIF report and never failed CI regardless of severity.
+      - name: Run tfsec (SARIF, non-blocking - for code scanning upload)
         uses: aquasecurity/tfsec-sarif-action@v0.1.4
         with:
           sarif_file: tfsec.sarif
@@ -57,3 +61,10 @@ jobs:
         with:
           sarif_file: tfsec.sarif
           category: tfsec
+
+      - name: Run tfsec (blocking on CRITICAL/HIGH)
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: terraform
+          soft_fail: false
+          additional_args: --minimum-severity HIGH

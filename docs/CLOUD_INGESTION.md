@@ -85,6 +85,58 @@ account key creation, IAM policy modification, privileged role grants, permissio
 denied, and audit configuration changes - via `GCP-IAM-001` and the parser's field-based
 classification.
 
+## Minimal IAM policy
+
+`terraform/modules/aws-logging` and `terraform/modules/gcp-logging` are the source of
+truth (opt-in, both default `false`) - this section is a portable copy for anyone
+pointing the live adapters at an existing AWS/GCP account without running this repo's
+Terraform.
+
+**AWS** - an IAM identity with exactly this policy, scoped to one log group's ARN, is
+sufficient for `CloudWatchAdapter`:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["logs:FilterLogEvents", "logs:DescribeLogGroups"],
+      "Resource": "arn:aws:logs:<region>:<account-id>:log-group:<your-log-group>:*"
+    }
+  ]
+}
+```
+
+Set `CLOUDWATCH_LOG_GROUP`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+(see `.env.example`). **These are static, long-lived credentials** - the AWS SDK's
+default credential provider chain is used as-is (`src/modules/ingestion/adapters/cloudwatch.adapter.ts`),
+with no STS `AssumeRole`/OIDC federation implemented. This is a deliberate, documented
+tradeoff (see `terraform/README.md` and `docs/KNOWN_LIMITATIONS.md`), not a best-practice
+default - contrast with this project's own Azure deploy pipeline, which does use OIDC
+federation (`.github/workflows/deploy.yml`) precisely because that credential is
+long-lived-secret-free. Rotate this key like any other long-lived secret; it grants
+read-only access to one log group and nothing else.
+
+**GCP** - a service account with only `roles/logging.viewer` on the project (GCP has no
+finer-grained, log-source-scoped role) is sufficient for `GcpLoggingAdapter`:
+
+```bash
+gcloud iam service-accounts create secure-api-gateway-reader \
+  --display-name="secure-api-gateway log reader"
+gcloud projects add-iam-policy-binding <project-id> \
+  --member="serviceAccount:secure-api-gateway-reader@<project-id>.iam.gserviceaccount.com" \
+  --role="roles/logging.viewer"
+gcloud iam service-accounts keys create key.json \
+  --iam-account="secure-api-gateway-reader@<project-id>.iam.gserviceaccount.com"
+```
+
+Set `GCP_LOGGING_PROJECT` and `GCP_SERVICE_ACCOUNT_KEY` (the JSON key file's contents,
+as a single-line string - see `.env.example`). Same tradeoff as AWS above: this is a
+static service-account key passed directly as `credentials`
+(`src/modules/ingestion/adapters/gcp-logging.adapter.ts`), not Application Default
+Credentials or Workload Identity Federation.
+
 ## Azure: replay only
 
 There is no live Azure connector. `AzureSentinelAdapter`

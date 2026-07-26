@@ -7,7 +7,6 @@ import Redis from 'ioredis';
 import { logger } from '../../lib/logger.js';
 import { MetricsService } from './metrics.service.js';
 import { ThreatIntelService } from './threat-intel.service.js';
-import { AdminService } from './admin.service.js';
 
 export interface SecurityPosture {
   overallScore: number; // 0-100
@@ -120,8 +119,7 @@ export class ComplianceService {
   constructor(
     private redis: Redis,
     private metricsService: MetricsService,
-    private threatIntelService: ThreatIntelService,
-    private adminService: AdminService
+    private threatIntelService: ThreatIntelService
   ) {}
 
   /**

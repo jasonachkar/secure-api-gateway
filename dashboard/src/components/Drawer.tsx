@@ -40,7 +40,16 @@ export function Drawer({ isOpen, title, onClose, children, footer }: DrawerProps
           <div id="drawer-title" className="drawer__title">
             {title}
           </div>
-          <button className="modal__close" onClick={onClose} aria-label="Close panel">
+          {/* aria-hidden on the overlay above doesn't remove this button from the tab
+              order by itself - a keyboard user could still Tab into it while the drawer
+              is visually closed (a real axe "aria-hidden-focus" violation). tabIndex
+              keeps it out of the tab order and unclickable via keyboard while closed. */}
+          <button
+            className="modal__close"
+            onClick={onClose}
+            aria-label="Close panel"
+            tabIndex={isOpen ? 0 : -1}
+          >
             ×
           </button>
         </div>

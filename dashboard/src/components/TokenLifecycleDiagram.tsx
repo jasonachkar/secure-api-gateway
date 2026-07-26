@@ -17,7 +17,12 @@ const STEPS = [
 
 export function TokenLifecycleDiagram() {
   return (
-    <div className="token-lifecycle" role="img" aria-label="JWT token lifecycle: login, access token issued, authenticated requests, expiry, refresh with rotation, and manual revoke via logout">
+    <div
+      className="token-lifecycle"
+      role="img"
+      tabIndex={0}
+      aria-label="JWT token lifecycle: login, access token issued, authenticated requests, expiry, refresh with rotation, and manual revoke via logout"
+    >
       {STEPS.map((step, index) => (
         <div className="token-lifecycle__step-wrapper" key={step.label}>
           <div className="token-lifecycle__step">

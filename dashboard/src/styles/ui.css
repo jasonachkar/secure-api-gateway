@@ -432,13 +432,15 @@ body {
 }
 
 .ui-button--danger {
-  background-color: var(--color-error-500);
+  /* var(--color-error-500) with white text measured 3.76:1 (WCAG 2 AA needs 4.5:1
+     for normal text) - error-600 clears it with margin. */
+  background-color: var(--color-error-600);
   color: var(--color-text-inverse);
   box-shadow: var(--shadow-sm);
 }
 
 .ui-button--danger:hover:not(:disabled) {
-  background-color: var(--color-error-600);
+  background-color: var(--color-error-700);
 }
 
 .ui-button--success {
@@ -2168,8 +2170,10 @@ body {
 }
 
 .demo-banner__fill-hint {
-  color: var(--color-primary-600);
-  opacity: 0.8;
+  /* var(--color-primary-600) at opacity 0.8 measured 3.41:1 against the banner
+     background (axe/WCAG 2 AA requires 4.5:1 for normal text) - full-strength
+     primary-700, no opacity, clears it with margin. */
+  color: var(--color-primary-700);
 }
 
 /* ==========================================================================
@@ -2507,8 +2511,10 @@ body {
   font-weight: 600;
 }
 
-.github-status__build--passing { color: var(--color-success-600); }
-.github-status__build--failing { color: var(--color-error-600); }
+/* success-600/error-600 measured 3.14:1 / ~3.8:1 against this card's light background
+   (WCAG 2 AA needs 4.5:1 for normal text) - 700 clears both with margin. */
+.github-status__build--passing { color: var(--color-success-700); }
+.github-status__build--failing { color: var(--color-error-700); }
 .github-status__build--loading,
 .github-status__build--unknown { color: var(--color-text-tertiary); }
 

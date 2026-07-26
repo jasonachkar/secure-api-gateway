@@ -83,7 +83,7 @@ export async function registerAdminRoutes(
   const controller = new AdminController(adminService, metricsService, adminAuditLogService);
   const threatController = new ThreatIntelController(threatIntelService);
   const incidentController = new IncidentResponseController(incidentService);
-  const complianceService = new ComplianceService(redis, metricsService, threatIntelService, adminService);
+  const complianceService = new ComplianceService(redis, metricsService, threatIntelService);
   const complianceController = new ComplianceController(complianceService);
   // Live AWS/GCP polling adapters feed the same canonical pipeline everything else uses
   // (constructed once in app.ts, decorated onto `app` before routes are registered) -

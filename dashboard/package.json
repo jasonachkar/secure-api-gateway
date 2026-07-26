@@ -24,6 +24,7 @@
     "world-atlas": "^2.0.2"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "^1.62.0",
     "@types/d3-scale": "^4.0.9",
     "@types/react": "^18.3.12",

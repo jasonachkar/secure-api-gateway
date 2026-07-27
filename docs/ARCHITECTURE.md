@@ -40,14 +40,14 @@ The frontend and backend deploy independently and communicate only over HTTPS:
 - **`dashboard/`** → Vercel by default. Static build, points at the gateway via
   `VITE_API_URL`. Optionally Azure Static Web Apps instead (`enable_azure_static_web_app`
   in Terraform) if you'd rather keep everything on one cloud - see
-  [`terraform/README.md`](../terraform/README.md#frontend-hosting-vercel-vs-azure-static-web-apps).
+  [`terraform/README.md`](https://github.com/jasonachkar/secure-api-gateway/blob/main/terraform/README.md#frontend-hosting-vercel-vs-azure-static-web-apps).
   Both give you a public HTTPS domain automatically, no custom domain required.
-- **everything else** → Azure, provisioned by [`terraform/`](../terraform). See
-  [`terraform/README.md`](../terraform/README.md) for the resource-by-resource
+- **everything else** → Azure, provisioned by [`terraform/`](https://github.com/jasonachkar/secure-api-gateway/tree/main/terraform). See
+  [`terraform/README.md`](https://github.com/jasonachkar/secure-api-gateway/blob/main/terraform/README.md) for the resource-by-resource
   breakdown and cost table.
 
 APIM is optional (`enable_apim` in Terraform, `false` by default) - see
-[`terraform/README.md`](../terraform/README.md#optional-all-false-by-default) for why
+[`terraform/README.md`](https://github.com/jasonachkar/secure-api-gateway/blob/main/terraform/README.md#optional-all-false-by-default) for why
 it's not part of the default path. Without it, the Container App is directly
 internet-facing; that's an intentional trust-boundary decision covered in
 [`THREAT_MODEL.md`](THREAT_MODEL.md).

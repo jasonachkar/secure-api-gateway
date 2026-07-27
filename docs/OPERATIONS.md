@@ -1,8 +1,8 @@
 # Operations
 
 Primary deployment target: **Azure Container Apps**, provisioned via
-[`terraform/`](../terraform). This doc covers day-to-day operation of that deployment;
-for provisioning/destroying infrastructure see [`terraform/README.md`](../terraform/README.md).
+[`terraform/`](https://github.com/jasonachkar/secure-api-gateway/tree/main/terraform). This doc covers day-to-day operation of that deployment;
+for provisioning/destroying infrastructure see [`terraform/README.md`](https://github.com/jasonachkar/secure-api-gateway/blob/main/terraform/README.md).
 
 ## Startup & health checks
 
@@ -139,7 +139,7 @@ docker compose up --build
 ```
 
 Starts the gateway (`:3000`), mock upstream service (`:4000`), Redis (`:6379`), and the
-dashboard (`:5173`) together. See the root [`README.md`](../README.md) for the full
+dashboard (`:5173`) together. See the root [`README.md`](https://github.com/jasonachkar/secure-api-gateway/blob/main/README.md) for the full
 local setup walkthrough, including running components individually without Compose.
 
 ## Backup & recovery
@@ -164,7 +164,7 @@ platform-specific assumptions, so it should also run with minimal changes on:
 - **Docker Swarm** — `docker service create` with the same image and env vars;
   configure Traefik or another LB for TLS termination.
 - **Fly.io / Railway / Render / a bare VPS** — previously-supported paths, now
-  unsupported and archived to [`legacy/deploy-configs/`](../legacy/deploy-configs)
+  unsupported and archived to [`legacy/deploy-configs/`](https://github.com/jasonachkar/secure-api-gateway/tree/main/legacy/deploy-configs)
   with notes on what's there.
 
 None of these are tested or maintained as part of this repo's CI - treat them as a

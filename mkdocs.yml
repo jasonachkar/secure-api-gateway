@@ -1,0 +1,81 @@
+site_name: Secure API Gateway
+site_description: Multi-Cloud API Security Control Plane - architecture, detection rules, threat model, and API reference
+site_url: https://jasonachkar.github.io/secure-api-gateway/
+repo_url: https://github.com/jasonachkar/secure-api-gateway
+repo_name: jasonachkar/secure-api-gateway
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+  features:
+    - navigation.tabs
+    - navigation.top
+    - navigation.indexes
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+  icon:
+    repo: fontawesome/brands/github
+
+nav:
+  - Home: index.md
+  - Architecture:
+      - Overview: ARCHITECTURE.md
+      - Multi-Cloud Ingestion: CLOUD_INGESTION.md
+      - Concurrency Model: CONCURRENCY.md
+  - Security:
+      - Threat Model: THREAT_MODEL.md
+      - Security Controls: SECURITY_CONTROLS.md
+      - Detection Rules: DETECTION_RULES.md
+      - OWASP API Security Top 10: owasp-api-top10.md
+      - Known Limitations: KNOWN_LIMITATIONS.md
+  - Operations:
+      - Operations Guide: OPERATIONS.md
+      - Incident Response Runbooks: INCIDENT_RESPONSE.md
+      - Proxy Trust Model: PROXY_TRUST.md
+  - Reviewer Guide: DEMO_WALKTHROUGH.md
+  - API Reference: api-reference.md
+
+plugins:
+  - search
+  - render_swagger:
+      allow_arbitrary_locations: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - tables
+  - toc:
+      permalink: true
+  - attr_list
+  - md_in_html
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg

@@ -1,0 +1,13 @@
+{
+  "eventDataId": "az-authz-fail-001",
+  "eventTimestamp": "2026-07-24T17:15:00Z",
+  "subscriptionId": "11111111-2222-3333-4444-555555555555",
+  "operationName": "Microsoft.Storage/storageAccounts/listKeys/action",
+  "status": "Failed",
+  "caller": "nobody@contoso.com",
+  "resourceId": "/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg/providers/Microsoft.Storage/storageAccounts/demo",
+  "resourceType": "Microsoft.Storage/storageAccounts",
+  "resourceLocation": "eastus",
+  "category": "Administrative",
+  "properties": { "ipAddress": "192.0.2.120", "statusMessage": "AuthorizationFailed" }
+}

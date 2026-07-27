@@ -175,85 +175,14 @@ export interface ThreatStatistics {
   topCountries: Array<{ country: string; count: number }>;
 }
 
-// Incident Response Types
-
-export type IncidentStatus = 'open' | 'investigating' | 'contained' | 'resolved' | 'closed';
-export type IncidentSeverity = 'low' | 'medium' | 'high' | 'critical';
-export type IncidentType = 
-  | 'brute_force'
-  | 'credential_stuffing'
-  | 'rate_limit_abuse'
-  | 'account_lockout'
-  | 'suspicious_activity'
-  | 'data_breach'
-  | 'ddos'
-  | 'malware'
-  | 'unauthorized_access'
-  | 'other';
-export type IncidentTimelineEntryType = 'note' | 'status_change' | 'assignment' | 'action';
-export type IncidentPlaybookAction = 'disable_user' | 'block_ip' | 'open_ticket';
-
-export interface IncidentTimelineEntry {
-  id: string;
-  type: IncidentTimelineEntryType;
-  timestamp: number;
-  actor: string;
-  summary: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface Incident {
-  id: string;
-  title: string;
-  description: string;
-  type: IncidentType;
-  severity: IncidentSeverity;
-  status: IncidentStatus;
-  createdAt: number;
-  updatedAt: number;
-  resolvedAt?: number;
-  reportedBy: string;
-  assignedTo?: string;
-  affectedIPs: string[];
-  affectedUsers?: string[];
-  responseTime?: number;
-  resolutionTime?: number;
-  notes: Array<{
-    timestamp: number;
-    author: string;
-    content: string;
-  }>;
-  timeline: IncidentTimelineEntry[];
-  tags: string[];
-  metadata?: Record<string, unknown>;
-}
-
-export interface IncidentStatistics {
-  totalIncidents: number;
-  openIncidents: number;
-  resolvedIncidents: number;
-  averageResponseTime: number;
-  averageResolutionTime: number;
-  bySeverity: {
-    critical: number;
-    high: number;
-    medium: number;
-    low: number;
-  };
-  byType: Record<IncidentType, number>;
-  byStatus: Record<IncidentStatus, number>;
-  recentTrends: Array<{
-    date: string;
-    opened: number;
-    resolved: number;
-  }>;
-}
-
 // Compliance Types
 
 export interface SecurityPosture {
   overallScore: number;
   grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  // auditLogging's score is a fixed baseline, not a live measurement - see
+  // docs/KNOWN_LIMITATIONS.md. Every other factor's score reflects live telemetry.
+  assessmentNote: string;
   factors: {
     authentication: {
       score: number;
@@ -261,8 +190,8 @@ export interface SecurityPosture {
       details: {
         failedLoginRate: number;
         accountLockouts: number;
+        // Accurate, not a placeholder: MFA genuinely isn't implemented yet.
         mfaEnabled: boolean;
-        sessionSecurity: number;
       };
     };
     threatIntelligence: {
@@ -271,7 +200,6 @@ export interface SecurityPosture {
       details: {
         criticalThreats: number;
         blockedIPs: number;
-        threatResponseTime: number;
       };
     };
     rateLimiting: {
@@ -279,16 +207,12 @@ export interface SecurityPosture {
       status: 'excellent' | 'good' | 'fair' | 'poor';
       details: {
         violations: number;
-        coverage: number;
       };
     };
     auditLogging: {
       score: number;
       status: 'excellent' | 'good' | 'fair' | 'poor';
-      details: {
-        logCoverage: number;
-        retentionDays: number;
-      };
+      details: Record<string, never>;
     };
     incidentResponse: {
       score: number;
@@ -304,9 +228,16 @@ export interface SecurityPosture {
   lastUpdated: number;
 }
 
+// 'partially-live' = at least one factor reflects live runtime telemetry;
+// 'static' = a fixed, code-reviewed self-assessment, not a continuous measurement
+// or third-party audit. Always render assessmentNote alongside the score.
+export type ComplianceAssessmentBasis = 'partially-live' | 'static';
+
 export interface ComplianceMetrics {
   nist: {
     score: number;
+    assessmentBasis: ComplianceAssessmentBasis;
+    assessmentNote: string;
     controls: Array<{
       id: string;
       name: string;
@@ -316,6 +247,8 @@ export interface ComplianceMetrics {
   };
   owasp: {
     score: number;
+    assessmentBasis: ComplianceAssessmentBasis;
+    assessmentNote: string;
     top10: Array<{
       risk: string;
       status: 'mitigated' | 'partial' | 'vulnerable';
@@ -324,6 +257,8 @@ export interface ComplianceMetrics {
   };
   pci: {
     score: number;
+    assessmentBasis: ComplianceAssessmentBasis;
+    assessmentNote: string;
     requirements: Array<{
       id: string;
       name: string;
@@ -332,10 +267,219 @@ export interface ComplianceMetrics {
   };
   gdpr: {
     score: number;
+    assessmentBasis: ComplianceAssessmentBasis;
+    assessmentNote: string;
     principles: Array<{
       principle: string;
       status: 'compliant' | 'partial' | 'non-compliant';
       description: string;
     }>;
   };
+}
+
+// ── Security control plane (capabilities, detection, investigations, scenarios) ──
+
+export type DataProvenance = 'live' | 'replay' | 'synthetic' | 'planned';
+export type ResponseExecutionMode = 'enforced' | 'simulated' | 'manual' | 'disabled';
+export type CloudProvider = 'azure' | 'aws' | 'gcp' | 'gateway';
+export type SecuritySeverity = 'informational' | 'low' | 'medium' | 'high' | 'critical';
+export type CapabilityStatus = 'implemented' | 'simulated' | 'partial' | 'planned';
+export type CapabilityCategory =
+  | 'gateway-protection'
+  | 'cloud-ingestion'
+  | 'detection'
+  | 'response'
+  | 'evidence'
+  | 'platform-security';
+
+export interface CapabilityDefinition {
+  id: string;
+  name: string;
+  category: CapabilityCategory;
+  status: CapabilityStatus;
+  provenance?: DataProvenance;
+  summary: string;
+  limitations?: string[];
+  implementationPaths: string[];
+  testPaths: string[];
+  infrastructurePaths?: string[];
+}
+
+export interface CapabilitySummary {
+  total: number;
+  counts: Record<CapabilityStatus, number>;
+  capabilities: CapabilityDefinition[];
+  jwtAlgorithm: string;
+  demoMode: boolean;
+  cloudSources: {
+    aws: { mode: string; logGroupConfigured: boolean };
+    gcp: { mode: string; projectConfigured: boolean };
+    azure: { mode: string; sentinelConnected: boolean; note: string };
+  };
+}
+
+export interface NormalizedSecurityEvent {
+  id: string;
+  schemaVersion: string;
+  providerEventId: string;
+  provider: CloudProvider;
+  sourceService: string;
+  occurredAt: string;
+  ingestedAt: string;
+  ingestionDelayMs: number;
+  accountOrProjectId?: string;
+  region?: string;
+  principal?: { id?: string; type?: string; displayName?: string; email?: string };
+  resource?: { id?: string; type?: string; name?: string; accountOrProjectId?: string; region?: string };
+  action: string;
+  outcome: 'success' | 'failure' | 'unknown';
+  sourceIp?: string;
+  userAgent?: string;
+  severity: SecuritySeverity;
+  category: string;
+  title: string;
+  summary: string;
+  provenance: DataProvenance;
+  correlationId?: string;
+  detectionRuleIds: string[];
+  evidence: Array<{ type: string; label: string; reference: string }>;
+  dedupeHash: string;
+  rawEvent: Record<string, unknown>;
+}
+
+export interface DetectionResult {
+  id: string;
+  ruleId: string;
+  ruleVersion: string;
+  title: string;
+  description: string;
+  severity: SecuritySeverity;
+  matchedFields: Record<string, unknown>;
+  remediation: string[];
+  evidenceEventIds: string[];
+  correlationKey?: string;
+  falsePositiveNotes?: string[];
+  severityRationale?: string;
+  createdAt: string;
+  provenance: DataProvenance;
+}
+
+export type InvestigationStatus = 'open' | 'investigating' | 'contained' | 'resolved' | 'closed';
+
+export interface InvestigationTimelineEntry {
+  id: string;
+  timestamp: string;
+  type: string;
+  summary: string;
+  actor: string;
+  provenance: DataProvenance;
+  source?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ResponseActionRecord {
+  id: string;
+  action: string;
+  mode: ResponseExecutionMode;
+  target?: string;
+  actor: string;
+  reason: string;
+  result: 'success' | 'failure' | 'skipped';
+  correlationId?: string;
+  investigationId?: string;
+  timestamp: string;
+  details?: Record<string, unknown>;
+}
+
+export interface SecurityInvestigation {
+  id: string;
+  title: string;
+  severity: SecuritySeverity;
+  status: InvestigationStatus;
+  createdAt: string;
+  updatedAt: string;
+  providerScopes: CloudProvider[];
+  eventIds: string[];
+  detectionIds: string[];
+  affectedPrincipals: Array<{ id?: string; type?: string; displayName?: string; email?: string }>;
+  affectedResources: Array<{ id?: string; type?: string; name?: string }>;
+  sourceIps: string[];
+  provenance: DataProvenance;
+  correlationKey: string;
+  correlationExplanation: string;
+  timeline: InvestigationTimelineEntry[];
+  responseActions: ResponseActionRecord[];
+  evidence: Array<{ type: string; label: string; reference: string }>;
+  summary: string;
+  whyItMatters: string;
+}
+
+export type OperationalHealth = 'healthy' | 'degraded' | 'unavailable' | 'replay_only' | 'not_configured';
+
+export interface PipelineMetricsSnapshot {
+  eventsIngestedByProvider: Record<string, number>;
+  eventsNormalized: number;
+  duplicatesDiscarded: number;
+  parserFailures: number;
+  detectionEvaluations: number;
+  detectionMatches: number;
+  investigationsCreated: number;
+  investigationDeduplications: number;
+  responseActionSuccess: number;
+  responseActionFailure: number;
+  deadLetterCount: number;
+  averageIngestionDelayMs: number;
+  lastSuccessfulProviderPoll: Record<string, number>;
+  consecutiveProviderFailures: Record<string, number>;
+  healthByProvider: Record<CloudProvider, OperationalHealth>;
+}
+
+export type ScenarioId = 'gw-credential-attack' | 'aws-privileged-activity' | 'gcp-credential-persistence';
+export type ScenarioStepId = 'generate' | 'normalize' | 'detect' | 'correlate' | 'respond' | 'verify';
+
+export interface ScenarioStep {
+  id: ScenarioStepId;
+  label: string;
+  status: 'completed' | 'skipped' | 'failed';
+  summary: string;
+  detail?: Record<string, unknown>;
+}
+
+export interface ScenarioDefinition {
+  id: ScenarioId;
+  name: string;
+  description: string;
+  provenance: DataProvenance;
+  provider: CloudProvider;
+  steps: Array<{ id: ScenarioStepId; label: string; description: string }>;
+  expectedOutcome: string;
+  safeForReviewer: boolean;
+}
+
+export interface ScenarioRunResult {
+  scenarioId: ScenarioId;
+  provenance: DataProvenance;
+  startedAt: string;
+  completedAt: string;
+  correlationId: string;
+  steps: ScenarioStep[];
+  eventIds: string[];
+  detectionIds: string[];
+  investigationIds: string[];
+}
+
+export interface EvidencePackage {
+  'investigation.json': SecurityInvestigation;
+  'normalized-events.json': NormalizedSecurityEvent[];
+  'detections.json': DetectionResult[];
+  'response-actions.json': ResponseActionRecord[];
+  'audit-verification.json': {
+    chainValid: boolean;
+    entriesVerified: number;
+    firstInvalidEntryId: string | null;
+    tamperEvidenceModel: string;
+    limitation: string;
+    relatedAuditEntries: AuditLogEntry[];
+  };
+  'README.txt': string;
 }

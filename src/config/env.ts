@@ -81,9 +81,39 @@ const envSchema = z
     COOKIE_SECRET: z.string().min(32),
     BCRYPT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
 
+    // Proxy trust boundary - controls which `X-Forwarded-For` entries Fastify treats as
+    // authoritative for `request.ip`, which in turn is the ONLY source getClientIp() uses
+    // (see lib/requestContext.ts). This directly gates rate limiting, account lockout,
+    // IP blocking, and audit evidence - see docs/PROXY_TRUST.md.
+    //   none     - trust nothing; request.ip is always the direct TCP peer address.
+    //              Correct when the app is reachable directly (local dev, no proxy).
+    //   hopcount - trust exactly PROXY_TRUST_HOP_COUNT proxy hops, read from the right
+    //              (nearest) end of X-Forwarded-For. Correct behind a known, fixed
+    //              number of reverse proxies (e.g. Azure Container Apps' own ingress).
+    //   cidr     - trust only forwarders whose address falls in PROXY_TRUST_CIDRS.
+    //   azure    - preset alias for "hopcount" with PROXY_TRUST_HOP_COUNT defaulting to
+    //              1 (Azure Container Apps' front-end ingress is the one hop that sets
+    //              X-Forwarded-For before the container ever sees the request). Increase
+    //              PROXY_TRUST_HOP_COUNT if a CDN/Front Door sits in front of it too.
+    PROXY_TRUST_MODE: z.enum(['none', 'hopcount', 'cidr', 'azure']).default('none'),
+    PROXY_TRUST_HOP_COUNT: z.coerce.number().int().min(1).max(10).default(1),
+    PROXY_TRUST_CIDRS: z
+      .string()
+      .default('')
+      .transform((val) =>
+        val
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      ),
+
     // Account Security
     MAX_LOGIN_ATTEMPTS: z.coerce.number().int().min(3).max(10).default(5),
     LOCKOUT_DURATION: z.coerce.number().int().min(60000).default(900000), // ms (15min default)
+    // Sliding window for GW-AUTH-001's failed-login-count / distinct-source-IP signal
+    // (gateway-auth-tracker.ts) - independent of LOCKOUT_DURATION, which gates access,
+    // not detection.
+    GW_AUTH_DETECTION_WINDOW_MS: z.coerce.number().int().min(60000).default(900000), // ms (15min default)
 
     // Upstream Services
     UPSTREAM_REPORTS_URL: z.string().url().default('http://mock-service:4000'),
@@ -117,6 +147,15 @@ const envSchema = z
       .pipe(z.boolean())
       .optional(),
     DEMO_MODE: z
+      .string()
+      .transform((val) => val === 'true')
+      .pipe(z.boolean())
+      .default('false'),
+    // Off by default: generates fabricated requests/logins/threat events on a timer
+    // purely for visual demo purposes. Never enable this in the default reviewer
+    // experience - it must not be confused with real telemetry or feed compliance/
+    // posture scoring. See docs/KNOWN_LIMITATIONS.md.
+    ENABLE_SYNTHETIC_BACKGROUND_DATA: z
       .string()
       .transform((val) => val === 'true')
       .pipe(z.boolean())
@@ -191,6 +230,28 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['SSRF_ALLOW_PRIVATE_IPS'],
         message: 'SSRF_ALLOW_PRIVATE_IPS must not be enabled in production - it is a local-dev-only escape hatch',
+      });
+    }
+
+    // This project's documented production target (Azure Container Apps, see
+    // Dockerfile/terraform) always sits behind a platform ingress - "none" would make
+    // getClientIp() resolve to the platform's internal address for every request rather
+    // than the real caller, silently breaking per-client rate limiting/IP blocking/audit
+    // evidence (not a spoofing hole, since headers still wouldn't be trusted, but a
+    // meaningful functional misconfiguration). Require an explicit trust mode instead.
+    if (data.PROXY_TRUST_MODE === 'none') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['PROXY_TRUST_MODE'],
+        message:
+          'PROXY_TRUST_MODE=none is not valid in production - set "azure" (Container Apps ingress), "hopcount", or "cidr" explicitly. See docs/PROXY_TRUST.md.',
+      });
+    }
+    if (data.PROXY_TRUST_MODE === 'cidr' && data.PROXY_TRUST_CIDRS.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['PROXY_TRUST_CIDRS'],
+        message: 'PROXY_TRUST_CIDRS must list at least one address/CIDR when PROXY_TRUST_MODE=cidr',
       });
     }
   });
@@ -297,10 +358,16 @@ export const env = {
     bcryptRounds: validatedEnv.BCRYPT_ROUNDS,
     maxLoginAttempts: validatedEnv.MAX_LOGIN_ATTEMPTS,
     lockoutDurationMs: validatedEnv.LOCKOUT_DURATION,
+    gwAuthDetectionWindowMs: validatedEnv.GW_AUTH_DETECTION_WINDOW_MS,
   },
   security: {
     corsOrigins: validatedEnv.CORS_ORIGIN,
     cookieSecret: validatedEnv.COOKIE_SECRET,
+    proxyTrust: {
+      mode: validatedEnv.PROXY_TRUST_MODE,
+      hopCount: validatedEnv.PROXY_TRUST_HOP_COUNT,
+      cidrs: validatedEnv.PROXY_TRUST_CIDRS,
+    },
   },
   rateLimit: {
     globalMax: validatedEnv.RATE_LIMIT_GLOBAL_MAX,
@@ -326,6 +393,7 @@ export const env = {
   features: {
     enableSwagger,
     demoMode: validatedEnv.DEMO_MODE,
+    enableSyntheticBackgroundData: validatedEnv.ENABLE_SYNTHETIC_BACKGROUND_DATA,
   },
   ingestion: {
     cloudwatchLogGroup: validatedEnv.CLOUDWATCH_LOG_GROUP,

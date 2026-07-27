@@ -4,7 +4,7 @@
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { KeyRound } from 'lucide-react';
+import { KeyRound, ShieldCheck, Eye } from 'lucide-react';
 import { adminApi } from '../api/admin';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button';
@@ -19,6 +19,7 @@ export function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -50,17 +51,49 @@ export function Login() {
     }
   };
 
+  const handleDemoLogin = async () => {
+    setError('');
+    setDemoLoading(true);
+    try {
+      const response = await adminApi.demoLogin();
+      login(response.accessToken);
+      navigate('/', { replace: true });
+    } catch (err: any) {
+      setError(err.message || 'Could not start the reviewer demo session.');
+    } finally {
+      setDemoLoading(false);
+    }
+  };
+
   return (
     <div className="auth-page">
       <div className="auth-container">
         <div className="auth-card">
-          <h1 className="auth-card__title">🔒 Security Dashboard</h1>
+          <h1 className="auth-card__title">
+            <ShieldCheck size={22} aria-hidden="true" /> Secure API Gateway
+          </h1>
           <p className="auth-card__subtitle">Sign in to access the admin panel</p>
+
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleDemoLogin}
+            disabled={demoLoading}
+            isLoading={demoLoading}
+            className="button-full"
+          >
+            <Eye size={16} aria-hidden="true" style={{ marginRight: 8 }} />
+            {demoLoading ? 'Starting reviewer session...' : 'Enter read-only demo'}
+          </Button>
+          <p className="text-sm text-muted" style={{ marginTop: 8, marginBottom: 20 }}>
+            No credentials needed. Read-only reviewer access: can view everything and run the guided
+            scenarios, cannot block arbitrary IPs, revoke sessions, or change configuration.
+          </p>
 
           <div className="demo-banner" role="note">
             <KeyRound size={18} className="demo-banner__icon" aria-hidden="true" />
             <div className="demo-banner__content">
-              <div className="demo-banner__title">Demo credentials — no signup required</div>
+              <div className="demo-banner__title">Or sign in with a demo account</div>
               <div className="demo-banner__accounts">
                 {DEMO_ACCOUNTS.map((account) => (
                   <button

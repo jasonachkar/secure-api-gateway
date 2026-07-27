@@ -5,6 +5,7 @@
  */
 
 import { Link } from 'react-router-dom';
+import { KeyRound, ShieldCheck, BarChart3, Zap } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -17,8 +18,8 @@ export function About() {
     <Layout>
       <div className="content-width page-stack">
         <SectionHeader
-          title="About Secure API Gateway"
-          subtitle="A comprehensive production-grade API Gateway implementation demonstrating enterprise-level security patterns, OWASP API Top 10 mitigations, and modern authentication/authorization flows."
+          title="Architecture & Evidence"
+          subtitle="How the gateway and multi-cloud detection pipeline are built, and where to find the code, tests, and Terraform behind each claim - see Implementation Status for the honest per-capability breakdown."
         />
 
         <Card className="page-stack">
@@ -55,7 +56,7 @@ export function About() {
             {[
               {
                 title: 'Authentication & Authorization',
-                icon: '🔐',
+                icon: KeyRound,
                 features: [
                   'JWT-based authentication with RS256 asymmetric signing',
                   'Access tokens (short-lived, 15min) + Refresh tokens (long-lived, 7d)',
@@ -67,7 +68,7 @@ export function About() {
               },
               {
                 title: 'Security & OWASP Mitigations',
-                icon: '🛡️',
+                icon: ShieldCheck,
                 features: [
                   'Full OWASP API Security Top 10 coverage',
                   'Redis-backed rate limiting with sliding window algorithm',
@@ -81,7 +82,7 @@ export function About() {
               },
               {
                 title: 'Observability & Compliance',
-                icon: '📊',
+                icon: BarChart3,
                 features: [
                   'Structured logging with Pino (request IDs, log redaction)',
                   'Audit logging for security events',
@@ -94,7 +95,7 @@ export function About() {
               },
               {
                 title: 'Gateway Pattern',
-                icon: '⚡',
+                icon: Zap,
                 features: [
                   'Reverse proxy to upstream services',
                   'Request/response transformation',
@@ -106,7 +107,7 @@ export function About() {
             ].map((category, idx) => (
               <div key={idx} className="feature-card">
                 <div className="feature-card__title">
-                  <span>{category.icon}</span>
+                  <category.icon size={16} aria-hidden="true" />
                   <span>{category.title}</span>
                 </div>
                 <ul className="feature-list">
@@ -144,10 +145,10 @@ export function About() {
                   'Threat intelligence system that tracks suspicious IP addresses, calculates threat scores based on failed logins and rate limit violations, and automatically blocks high-risk IPs.',
               },
               {
-                title: 'Incidents',
-                path: '/incidents',
+                title: 'Investigations',
+                path: '/investigations',
                 description:
-                  'Auto-generated security incidents created when threats reach high or critical levels. Tracks incident status, response times, and resolution times.',
+                  'Detections correlated into investigations by principal, resource, source IP, account, and a fixed time window. Each one carries the normalized events and rule matches that produced it, plus a downloadable evidence package.',
               },
               {
                 title: 'Compliance',

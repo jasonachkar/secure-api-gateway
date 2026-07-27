@@ -4,6 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
+import { Ban } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { MetricCard } from '../components/MetricCard';
 import { Button } from '../components/Button';
@@ -187,7 +188,12 @@ export function Threats() {
                         <div className="threat-card__header">
                           <div className="threat-card__identity">
                             <div className="text-mono section-title">{threat.ip}</div>
-                            {threat.isBlocked && <Badge className="badge-critical">🚫 BLOCKED</Badge>}
+                            {threat.isBlocked && (
+                              <Badge className="badge-critical">
+                                <Ban size={12} aria-hidden="true" style={{ marginRight: 4, verticalAlign: 'text-bottom' }} />
+                                BLOCKED
+                              </Badge>
+                            )}
                             <Badge className={threatLevelBadgeClass[threat.threatLevel]}>
                               {threat.threatLevel.toUpperCase()}
                             </Badge>

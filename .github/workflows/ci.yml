@@ -10,10 +10,15 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   backend:
     name: Backend (lint, typecheck, test, build)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     services:
       redis:
@@ -40,6 +45,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: UI copy check (no emoji in dashboard/src)
+        run: npm run check:ui-copy
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -56,6 +64,8 @@ jobs:
   mock-service:
     name: Mock service (build)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -74,6 +84,8 @@ jobs:
   dashboard:
     name: Dashboard (lint deps, build)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 

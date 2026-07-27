@@ -20,4 +20,13 @@ resource "azurerm_static_web_app" "dashboard" {
   sku_size            = var.sku_tier
 
   tags = var.tags
+
+  lifecycle {
+    # repository_branch/repository_url got set on the real resource out-of-band (e.g. via
+    # the Azure Portal's "link to GitHub" flow) - this config never sets them, on purpose
+    # (see the module comment above), so ignore drift on both instead of nulling them out
+    # on every apply. Same "don't fight out-of-band changes" pattern as the Container
+    # App's image (modules/container-app).
+    ignore_changes = [repository_branch, repository_url]
+  }
 }

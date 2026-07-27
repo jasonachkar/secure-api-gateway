@@ -12,8 +12,9 @@ name: Deploy Dashboard (Azure Static Web Apps)
 #   Repo variable VITE_API_URL                    = terraform output -raw container_app_url
 # (Settings -> Secrets and variables -> Actions -> "Secrets" tab / "Variables" tab)
 #
-# Without AZURE_STATIC_WEB_APPS_API_TOKEN set, every run of this workflow will fail at
-# the deploy step - that's expected until the secret above is added.
+# Without AZURE_STATIC_WEB_APPS_API_TOKEN set, this workflow skips cleanly (see the
+# "Check Azure Static Web Apps configuration" step) instead of failing - that's expected
+# until the secret above is added.
 
 on:
   push:
@@ -38,11 +39,31 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
+      # This deploy path is optional (see the header comment above) - a missing token
+      # means the dashboard simply isn't provisioned on Azure Static Web Apps, not that
+      # this build is broken. Skip cleanly with a clear summary instead of failing.
+      - name: Check Azure Static Web Apps configuration
+        id: swa-config
+        run: |
+          if [ -n "${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Azure Static Web Apps deploy skipped"
+              echo ""
+              echo "\`AZURE_STATIC_WEB_APPS_API_TOKEN\` is not set, so no deploy ran - this is not a build failure."
+              echo "The dashboard's live deploy is Vercel's own GitHub integration; this workflow is only relevant if you provisioned the dashboard via Terraform's \`enable_azure_static_web_app = true\`. See terraform/README.md#frontend-hosting-vercel-vs-azure-static-web-apps."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.swa-config.outputs.configured == 'true'
         with:
           submodules: false
 
       - name: Deploy to Azure Static Web Apps
+        if: steps.swa-config.outputs.configured == 'true'
         uses: Azure/static-web-apps-deploy@v1
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL }}
@@ -58,8 +79,14 @@ jobs:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
     runs-on: ubuntu-latest
     steps:
+      - name: Check Azure Static Web Apps configuration
+        id: swa-config
+        run: echo "configured=${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+
       - name: Close Azure Static Web Apps preview environment
+        if: steps.swa-config.outputs.configured == 'true'
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          app_location: '/dashboard'
           action: 'close'

@@ -1,5 +1,5 @@
 /**
- * Shaped loading skeleton for card-list pages (Threats, Incidents, Sessions, Users,
+ * Shaped loading skeleton for card-list pages (Threats, Investigations, Sessions, Users,
  * Compliance) - replaces plain "Loading..." text with placeholders matching the actual
  * content shape. Respects prefers-reduced-motion via the shared .skeleton class
  * (src/styles/global.css).

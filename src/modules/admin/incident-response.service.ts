@@ -574,22 +574,27 @@ export class IncidentResponseService {
       details = `${details} (${target})`;
     }
 
+    // No real ITSM/IdP/firewall integration backs this action - it only ever writes
+    // a timeline entry. `result: 'mocked'` matches the sibling executePlaybookAction()
+    // method and must stay in-band on every response so no caller mistakes this for
+    // real enforcement (see docs/KNOWN_LIMITATIONS.md).
     const metadata: Record<string, unknown> = {
       action,
       target,
       status: 'completed',
+      result: 'mocked',
       details,
     };
 
     if (action === 'open_ticket') {
-      metadata.ticketId = `INC-${Math.floor(1000 + Math.random() * 9000)}`;
+      metadata.ticketId = `MOCK-INC-${Math.floor(1000 + Math.random() * 9000)}`;
     }
 
     this.addTimelineEntry(incident, {
       timestamp: now,
       type: 'action',
       actor: updatedBy,
-      summary: `Playbook action executed: ${actionLabels[action]}`,
+      summary: `Playbook action (mocked, no real integration): ${actionLabels[action]}`,
       metadata,
     });
 

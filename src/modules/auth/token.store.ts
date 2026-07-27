@@ -14,6 +14,7 @@ export class TokenStore {
   private readonly PREFIX = 'token';
   private readonly FAMILY_PREFIX = 'token:family';
   private readonly BLACKLIST_PREFIX = 'token:blacklist';
+  private readonly USER_INDEX_PREFIX = 'token:user';
 
   constructor(private redis: Redis) {}
 
@@ -25,9 +26,14 @@ export class TokenStore {
    */
   async store(jti: string, metadata: RefreshTokenMetadata, ttlSeconds: number): Promise<void> {
     const key = `${this.PREFIX}:${jti}`;
+    const userIndexKey = `${this.USER_INDEX_PREFIX}:${metadata.userId}`;
 
     try {
-      await this.redis.setex(key, ttlSeconds, JSON.stringify(metadata));
+      const pipeline = this.redis.pipeline();
+      pipeline.setex(key, ttlSeconds, JSON.stringify(metadata));
+      pipeline.sadd(userIndexKey, jti);
+      pipeline.expire(userIndexKey, ttlSeconds);
+      await pipeline.exec();
       logger.debug({ jti, userId: metadata.userId }, 'Refresh token stored');
     } catch (error) {
       logger.error({ error, jti }, 'Failed to store refresh token');
@@ -82,17 +88,56 @@ export class TokenStore {
     const key = `${this.BLACKLIST_PREFIX}:${jti}`;
 
     try {
+      const metadata = await this.get(jti);
+
       // Remove from active tokens
       await this.redis.del(`${this.PREFIX}:${jti}`);
 
       // Add to blacklist
       await this.redis.setex(key, ttlSeconds, '1');
 
+      if (metadata?.userId) {
+        await this.redis.srem(`${this.USER_INDEX_PREFIX}:${metadata.userId}`, jti);
+      }
+
       logger.info({ jti }, 'Refresh token revoked');
     } catch (error) {
       logger.error({ error, jti }, 'Failed to revoke refresh token');
       throw error;
     }
+  }
+
+  /**
+   * Blacklist an access-token JTI so it cannot be used before natural expiry.
+   */
+  async blacklistAccessToken(jti: string, ttlSeconds: number): Promise<void> {
+    await this.redis.setex(`${this.BLACKLIST_PREFIX}:${jti}`, ttlSeconds, '1');
+  }
+
+  /**
+   * Revoke all refresh tokens (and families) for a user via the user index.
+   * Returns the number of JTIs revoked.
+   */
+  async revokeAllForUser(userId: string, ttlSeconds = 7 * 24 * 60 * 60): Promise<number> {
+    const userIndexKey = `${this.USER_INDEX_PREFIX}:${userId}`;
+    const jtis = await this.redis.smembers(userIndexKey);
+    const families = new Set<string>();
+
+    for (const jti of jtis) {
+      const metadata = await this.get(jti);
+      if (metadata?.family) {
+        families.add(metadata.family);
+      }
+      await this.revoke(jti, ttlSeconds);
+    }
+
+    for (const family of families) {
+      await this.revokeFamily(family, ttlSeconds);
+    }
+
+    await this.redis.del(userIndexKey);
+    logger.warn({ userId, count: jtis.length }, 'All sessions revoked for user');
+    return jtis.length;
   }
 
   /**

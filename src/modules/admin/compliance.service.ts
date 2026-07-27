@@ -7,11 +7,15 @@ import Redis from 'ioredis';
 import { logger } from '../../lib/logger.js';
 import { MetricsService } from './metrics.service.js';
 import { ThreatIntelService } from './threat-intel.service.js';
-import { AdminService } from './admin.service.js';
 
 export interface SecurityPosture {
   overallScore: number; // 0-100
   grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  // auditLogging.score is a fixed baseline (see calculateAuditScore) - every other
+  // factor's score reflects live telemetry. This note exists so the UI can disclose
+  // that rather than rendering all five factors identically, the same problem Phase 7
+  // fixed for the NIST/OWASP/PCI/GDPR tabs - see docs/KNOWN_LIMITATIONS.md.
+  assessmentNote: string;
   factors: {
     authentication: {
       score: number;
@@ -19,8 +23,10 @@ export interface SecurityPosture {
       details: {
         failedLoginRate: number;
         accountLockouts: number;
+        // Accurate, not a placeholder: MFA genuinely isn't implemented yet (see
+        // README's Roadmap section) - this is always false because the feature
+        // doesn't exist, not an unmeasured guess at a real value.
         mfaEnabled: boolean;
-        sessionSecurity: number;
       };
     };
     threatIntelligence: {
@@ -29,7 +35,6 @@ export interface SecurityPosture {
       details: {
         criticalThreats: number;
         blockedIPs: number;
-        threatResponseTime: number;
       };
     };
     rateLimiting: {
@@ -37,16 +42,12 @@ export interface SecurityPosture {
       status: 'excellent' | 'good' | 'fair' | 'poor';
       details: {
         violations: number;
-        coverage: number; // % of endpoints protected
       };
     };
     auditLogging: {
       score: number;
       status: 'excellent' | 'good' | 'fair' | 'poor';
-      details: {
-        logCoverage: number;
-        retentionDays: number;
-      };
+      details: Record<string, never>;
     };
     incidentResponse: {
       score: number;
@@ -62,9 +63,21 @@ export interface SecurityPosture {
   lastUpdated: number;
 }
 
+/**
+ * assessmentBasis distinguishes scores derived from live runtime telemetry
+ * from fixed self-assessments (a code-reviewed mapping of this gateway's
+ * architecture to a framework's controls, not a continuous measurement or
+ * third-party audit). Surfaced in the dashboard so a reviewer does not read
+ * a static claim as if it were a live-computed score - see
+ * docs/KNOWN_LIMITATIONS.md.
+ */
+export type ComplianceAssessmentBasis = 'partially-live' | 'static';
+
 export interface ComplianceMetrics {
   nist: {
     score: number;
+    assessmentBasis: ComplianceAssessmentBasis;
+    assessmentNote: string;
     controls: {
       id: string;
       name: string;
@@ -74,6 +87,8 @@ export interface ComplianceMetrics {
   };
   owasp: {
     score: number;
+    assessmentBasis: ComplianceAssessmentBasis;
+    assessmentNote: string;
     top10: {
       risk: string;
       status: 'mitigated' | 'partial' | 'vulnerable';
@@ -82,6 +97,8 @@ export interface ComplianceMetrics {
   };
   pci: {
     score: number;
+    assessmentBasis: ComplianceAssessmentBasis;
+    assessmentNote: string;
     requirements: {
       id: string;
       name: string;
@@ -90,6 +107,8 @@ export interface ComplianceMetrics {
   };
   gdpr: {
     score: number;
+    assessmentBasis: ComplianceAssessmentBasis;
+    assessmentNote: string;
     principles: {
       principle: string;
       status: 'compliant' | 'partial' | 'non-compliant';
@@ -102,8 +121,7 @@ export class ComplianceService {
   constructor(
     private redis: Redis,
     private metricsService: MetricsService,
-    private threatIntelService: ThreatIntelService,
-    private adminService: AdminService
+    private threatIntelService: ThreatIntelService
   ) {}
 
   /**
@@ -225,6 +243,11 @@ export class ComplianceService {
     return {
       overallScore,
       grade,
+      assessmentNote:
+        "The auditLogging factor's score is a fixed baseline, not a live measurement " +
+        '(this codebase does not yet compute real audit log coverage or enforce a ' +
+        'specific retention period). Authentication, threat intelligence, rate ' +
+        'limiting, and incident response scores all reflect live telemetry.',
       factors: {
         authentication: {
           score: authScore,
@@ -232,8 +255,7 @@ export class ComplianceService {
           details: {
             failedLoginRate: metrics.authStats?.failedLogins ?? 0,
             accountLockouts: metrics.authStats?.accountLockouts ?? 0,
-            mfaEnabled: false, // TODO: Check if MFA is enabled
-            sessionSecurity: 85, // TODO: Calculate based on session management
+            mfaEnabled: false, // Accurate: MFA is not implemented (see README Roadmap), not a guess
           },
         },
         threatIntelligence: {
@@ -242,7 +264,6 @@ export class ComplianceService {
           details: {
             criticalThreats: threatStats.criticalThreats,
             blockedIPs: threatStats.blockedIPs,
-            threatResponseTime: 0, // TODO: Calculate from threat creation to block time
           },
         },
         rateLimiting: {
@@ -250,16 +271,12 @@ export class ComplianceService {
           status: this.getStatus(rateLimitScore),
           details: {
             violations: metrics.rateLimitStats?.violations ?? 0,
-            coverage: 90, // TODO: Calculate actual coverage
           },
         },
         auditLogging: {
           score: auditScore,
           status: this.getStatus(auditScore),
-          details: {
-            logCoverage: 95, // TODO: Calculate actual coverage
-            retentionDays: 90, // TODO: Get from config
-          },
+          details: {},
         },
         incidentResponse: {
           score: incidentScore,
@@ -330,26 +347,27 @@ export class ComplianceService {
       posture = {
         overallScore: 0,
         grade: 'F',
+        assessmentNote: 'Unavailable - error calculating security posture.',
         factors: {
           authentication: {
             score: 0,
             status: 'poor',
-            details: { failedLoginRate: 0, accountLockouts: 0, mfaEnabled: false, sessionSecurity: 0 },
+            details: { failedLoginRate: 0, accountLockouts: 0, mfaEnabled: false },
           },
           threatIntelligence: {
             score: 0,
             status: 'poor',
-            details: { criticalThreats: 0, blockedIPs: 0, threatResponseTime: 0 },
+            details: { criticalThreats: 0, blockedIPs: 0 },
           },
           rateLimiting: {
             score: 0,
             status: 'poor',
-            details: { violations: 0, coverage: 0 },
+            details: { violations: 0 },
           },
           auditLogging: {
             score: 0,
             status: 'poor',
-            details: { logCoverage: 0, retentionDays: 0 },
+            details: {},
           },
           incidentResponse: {
             score: 0,
@@ -372,6 +390,9 @@ export class ComplianceService {
       const complianceMetrics = {
         nist: {
           score: nistScore,
+          assessmentBasis: 'partially-live' as ComplianceAssessmentBasis,
+          assessmentNote:
+            'AC-2 (Account Management) reflects live account-lockout telemetry. AC-7, SI-4, and SC-5 are fixed self-assessments based on code review (rate limiting and audit logging are implemented and always scored as satisfying those controls), not continuously measured.',
           controls: [
             {
               id: 'AC-2',
@@ -401,6 +422,9 @@ export class ComplianceService {
         },
         owasp: {
           score: owaspScore,
+          assessmentBasis: 'static' as ComplianceAssessmentBasis,
+          assessmentNote:
+            'Fixed self-assessment: a code-reviewed mapping of implemented mitigations to the OWASP API Security Top 10, not a live scan or penetration test. The score does not change with runtime activity.',
           top10: [
             {
               risk: 'A01:2021 – Broken Access Control',
@@ -451,6 +475,9 @@ export class ComplianceService {
         },
         pci: {
           score: pciScore,
+          assessmentBasis: 'static' as ComplianceAssessmentBasis,
+          assessmentNote:
+            'Fixed self-assessment mapping this API gateway to PCI DSS requirements - most of which are not applicable, since the gateway does not store, process, or transmit cardholder data. Not derived from a QSA audit or a live scan.',
           requirements: [
             {
               id: 'Req 1',
@@ -506,6 +533,9 @@ export class ComplianceService {
         },
         gdpr: {
           score: gdprScore,
+          assessmentBasis: 'static' as ComplianceAssessmentBasis,
+          assessmentNote:
+            'Fixed self-assessment; not derived from a live data-processing audit or a Data Protection Impact Assessment. Presented as a design-intent mapping, not a compliance certification.',
           principles: [
             {
               principle: 'Lawfulness, fairness and transparency',
@@ -558,10 +588,10 @@ export class ComplianceService {
       logger.error({ error, stack: (error as Error).stack }, 'Error building compliance metrics object');
       // Return a minimal valid structure
       return {
-        nist: { score: 0, controls: [] },
-        owasp: { score: 0, top10: [] },
-        pci: { score: 0, requirements: [] },
-        gdpr: { score: 0, principles: [] },
+        nist: { score: 0, assessmentBasis: 'static', assessmentNote: 'Unavailable - error building metrics.', controls: [] },
+        owasp: { score: 0, assessmentBasis: 'static', assessmentNote: 'Unavailable - error building metrics.', top10: [] },
+        pci: { score: 0, assessmentBasis: 'static', assessmentNote: 'Unavailable - error building metrics.', requirements: [] },
+        gdpr: { score: 0, assessmentBasis: 'static', assessmentNote: 'Unavailable - error building metrics.', principles: [] },
       };
     }
   }

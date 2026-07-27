@@ -62,27 +62,24 @@ export function createRequestContext(request: FastifyRequest): RequestContext {
 }
 
 /**
- * Extract client IP from request headers
- * Handles various proxy header formats (X-Forwarded-For, X-Real-IP)
- * @param request - Fastify request object
- * @returns Client IP address
+ * Extract client IP for every security control that needs one (rate limiting, account
+ * lockout, IP blocking, threat scoring, audit evidence, guided scenarios). This is the
+ * single shared resolver - nothing else in the app should read
+ * `x-forwarded-for`/`x-real-ip` directly.
+ *
+ * Trust model: `request.ip` is computed by Fastify from the explicit proxy trust
+ * configuration (see lib/proxyTrust.ts + docs/PROXY_TRUST.md), not by trusting every
+ * direct client's headers. A client that isn't behind a trusted proxy hop can send any
+ * `X-Forwarded-For` it likes - Fastify simply won't use it. The fallback below only
+ * covers the (practically unreachable outside tests) case where `request.ip` is empty;
+ * it reads the raw socket peer address, never a header, so it can't be spoofed either.
  */
 export function getClientIp(request: FastifyRequest): string {
-  // Check X-Forwarded-For (comma-separated list, first is client)
-  const forwardedFor = request.headers['x-forwarded-for'] as string | undefined;
-  if (forwardedFor) {
-    const ips = forwardedFor.split(',').map((ip) => ip.trim());
-    return ips[0];
+  if (request.ip && request.ip.trim().length > 0) {
+    return request.ip.trim();
   }
 
-  // Check X-Real-IP
-  const realIp = request.headers['x-real-ip'] as string | undefined;
-  if (realIp) {
-    return realIp;
-  }
-
-  // Fallback to socket IP
-  return request.ip;
+  return request.socket.remoteAddress?.trim() || '0.0.0.0';
 }
 
 /**

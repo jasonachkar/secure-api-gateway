@@ -13,16 +13,22 @@ import { optionalAuth } from '../../middleware/auth.js';
 import { createRateLimiter } from '../../middleware/rateLimit.js';
 import { env } from '../../config/index.js';
 import Redis from 'ioredis';
+import type { AuthSecurityPipeline } from './auth.controller.js';
 
 /**
  * Register authentication routes
  */
-export async function registerAuthRoutes(app: FastifyInstance, redis: Redis, auditService: AuditService) {
+export async function registerAuthRoutes(
+  app: FastifyInstance,
+  redis: Redis,
+  auditService: AuditService,
+  securityPipeline?: AuthSecurityPipeline
+): Promise<AuthService> {
   // Initialize auth service
   const authService = new AuthService(redis);
   await authService.initialize();
 
-  const controller = new AuthController(authService, auditService);
+  const controller = new AuthController(authService, auditService, securityPipeline);
 
   // Stricter rate limit for auth endpoints (prevent brute force)
   const authRateLimit = createRateLimiter(
@@ -75,6 +81,39 @@ export async function registerAuthRoutes(app: FastifyInstance, redis: Redis, aud
   );
 
   /**
+   * POST /auth/demo-login
+   * One-click read-only reviewer login (no credentials required from the caller).
+   * Shares the auth rate limiter so it can't be used to bypass brute-force protection.
+   */
+  app.post(
+    '/auth/demo-login',
+    {
+      schema: {
+        description: 'One-click read-only reviewer login',
+        tags: ['Authentication'],
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              accessToken: { type: 'string' },
+              expiresIn: { type: 'number' },
+              tokenType: { type: 'string', enum: ['Bearer'] },
+            },
+          },
+        },
+      },
+      config: {
+        rateLimit: {
+          max: env.rateLimit.authMax,
+          timeWindow: env.rateLimit.authWindowMs,
+        },
+      },
+      preHandler: [authRateLimit],
+    },
+    controller.demoLogin.bind(controller)
+  );
+
+  /**
    * POST /auth/refresh
    * Refresh access token using refresh token cookie
    */
@@ -122,8 +161,10 @@ export async function registerAuthRoutes(app: FastifyInstance, redis: Redis, aud
       // Best-effort: attach the user if a still-valid access token is
       // present so its jti can be revoked too, but don't require one -
       // logout must also work once the access token has already expired
-      preHandler: [optionalAuth],
+      preHandler: [authRateLimit, optionalAuth],
     },
     controller.logout.bind(controller)
   );
+
+  return authService;
 }

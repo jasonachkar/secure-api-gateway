@@ -5,6 +5,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { RefreshCw } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { Button } from '../components/Button';
 import { MetricCard } from '../components/MetricCard';
@@ -158,7 +159,8 @@ export function AuditLogs() {
           <div style={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'flex-start' }}>
             <AuditReportExport />
             <Button variant="ghost" onClick={() => fetchLogs()} disabled={loading}>
-              🔄 Refresh
+              <RefreshCw size={14} aria-hidden="true" style={{ marginRight: 6 }} />
+              Refresh
             </Button>
           </div>
         </div>

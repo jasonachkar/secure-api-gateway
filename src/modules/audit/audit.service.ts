@@ -8,6 +8,7 @@ import { AuditLogEntry, AuditEventType } from './audit.types.js';
 import { FileAuditStore, RedisAuditStore } from './audit.store.js';
 import { GENESIS_HASH, computeEntryHash, verifyEntryChain, type ChainVerificationResult } from './audit.hash.js';
 import { logger } from '../../lib/logger.js';
+import { redactObject } from '../ingestion/redaction.js';
 
 /**
  * Audit service
@@ -38,13 +39,16 @@ export class AuditService {
     const entry: AuditLogEntry = { ...unhashed, hash: computeEntryHash(unhashed) };
 
     try {
+      // The append-only store is the authoritative, access-controlled audit record and
+      // keeps the entry as-is. The operational logger fans out to a broader-access sink
+      // (stdout/log aggregation), and `metadata` can carry caller-supplied values (e.g.
+      // an incident "reason" field) - redact it before it reaches that sink.
       await this.store.append(entry);
 
-      // Also log to application logger for aggregation
       logger.info(
         {
           audit: true,
-          ...entry,
+          ...redactObject(entry as unknown as Record<string, unknown>),
         },
         `Audit: ${entry.eventType}`
       );

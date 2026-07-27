@@ -6,6 +6,7 @@
 
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
+import { Info, AlertTriangle, Siren } from 'lucide-react';
 
 export interface SecurityEvent {
   timestamp: number;
@@ -23,9 +24,9 @@ interface LiveEventFeedProps {
 }
 
 const severityIcons = {
-  info: 'ℹ️',
-  warning: '⚠️',
-  critical: '🚨',
+  info: Info,
+  warning: AlertTriangle,
+  critical: Siren,
 };
 
 export function LiveEventFeed({ events, maxEvents = 10, onSelectEvent }: LiveEventFeedProps) {
@@ -52,7 +53,7 @@ export function LiveEventFeed({ events, maxEvents = 10, onSelectEvent }: LiveEve
           <div className="empty-state">Waiting for events...</div>
         ) : (
           displayEvents.map((event, index) => {
-            const icon = severityIcons[event.severity];
+            const Icon = severityIcons[event.severity];
             const itemClasses = [
               'live-feed__item',
               `live-feed__item--${event.severity}`,
@@ -70,7 +71,7 @@ export function LiveEventFeed({ events, maxEvents = 10, onSelectEvent }: LiveEve
               >
                 <div className="live-feed__item-header">
                   <span className="live-feed__item-icon" aria-hidden="true">
-                    {icon}
+                    <Icon size={16} />
                   </span>
                   <div className="live-feed__item-body">
                     <div className="live-feed__item-meta">

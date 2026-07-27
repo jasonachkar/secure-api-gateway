@@ -14,6 +14,74 @@ import {
 } from '../lib/errors.js';
 import { JWTPayload, AuthUser } from '../types/index.js';
 import { logger } from '../lib/logger.js';
+import { getClientIp } from '../lib/requestContext.js';
+import { parseGatewayEvent } from '../modules/ingestion/parsers/gateway.parser.js';
+import type { SecurityIngestionPipelineDeps } from '../modules/ingestion/security-ingestion.pipeline.js';
+
+/**
+ * Feed a real JWT verification failure (GW-TOKEN-001) through the canonical pipeline.
+ * Best-effort: errors are logged, never thrown, so this can never turn a 401 into a 500.
+ * Never includes the raw token or any header content - only route/method/error-class
+ * metadata, matching parser/rule expectations that gateway events carry no credentials.
+ * The canonical pipeline deps are read off `request.server` (decorated once in app.ts,
+ * shared with every other route) rather than threaded through every requireAuth call
+ * site, so this stays a drop-in preHandler with an unchanged signature.
+ */
+async function evaluateTokenFailure(
+  request: FastifyRequest,
+  params: { action: string; title: string; summary: string }
+): Promise<void> {
+  const server = request.server as unknown as Partial<SecurityIngestionPipelineDeps>;
+  if (
+    !server.securityEventStore ||
+    !server.detectionEngine ||
+    !server.detectionStore ||
+    !server.investigationService ||
+    !server.pipelineMetrics
+  ) {
+    return; // no security control plane wired (e.g. some test contexts) - skip silently
+  }
+
+  try {
+    const routePath = request.routeOptions?.url ?? request.url;
+    // Routine expiry never gets the privileged-route escalation, on any route - it's
+    // benign/expected regardless of route sensitivity (see gw-token-001.ts's own
+    // exclusion of plain expiry), so tagging it 'privileged_jwt_failure' here would
+    // silently defeat that exclusion for every admin-route request with a stale token.
+    const isPrivilegedRoute = params.action !== 'jwt.expired' && routePath.startsWith('/admin/');
+    const action = isPrivilegedRoute ? `privileged_jwt_failure:${params.action}` : params.action;
+
+    const event = parseGatewayEvent(
+      {
+        action,
+        providerEventId: `gw-token-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+        occurredAt: new Date().toISOString(),
+        outcome: 'failure',
+        category: 'authentication',
+        severity: isPrivilegedRoute ? 'critical' : 'high',
+        title: params.title,
+        summary: `${params.summary} (${request.method} ${routePath})`,
+        sourceIp: getClientIp(request),
+      },
+      'live'
+    );
+
+    const { event: saved, duplicate } = await server.securityEventStore.saveEvent(event);
+    await server.pipelineMetrics.recordIngested('gateway');
+    if (duplicate) {
+      await server.pipelineMetrics.recordDuplicate();
+      return;
+    }
+
+    const detections = await server.detectionEngine.evaluate(saved, {});
+    await server.detectionStore.saveAll(detections);
+    for (const detection of detections) {
+      await server.investigationService.correlate(saved, detection);
+    }
+  } catch (error) {
+    logger.error({ error }, 'Failed to evaluate gateway token-failure detection');
+  }
+}
 
 /**
  * Extract JWT token from Authorization header
@@ -132,10 +200,40 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply) 
   }
 
   // Verify token
-  const payload = verifyToken(token);
+  let payload: JWTPayload;
+  try {
+    payload = verifyToken(token);
+  } catch (error) {
+    if (error instanceof TokenExpiredError) {
+      // Generates a canonical event (pipeline evidence) but deliberately does not match
+      // GW-TOKEN-001 - see the rule's own comment for why routine expiry isn't alerted on.
+      // Awaited (not fire-and-forget): the detection write must land before the 401 is
+      // sent, so evidence is never racing the response - a failed/incomplete write is
+      // swallowed internally by evaluateTokenFailure's own try/catch either way.
+      await evaluateTokenFailure(request, {
+        action: 'jwt.expired',
+        title: 'Expired JWT presented',
+        summary: 'Access token verification failed: expired',
+      });
+    } else {
+      const message = error instanceof TokenInvalidError ? error.message : '';
+      const tampered = /signature/i.test(message);
+      await evaluateTokenFailure(request, {
+        action: tampered ? 'jwt.tampered' : 'jwt.invalid',
+        title: tampered ? 'Tampered JWT (invalid signature) presented' : 'Invalid or malformed JWT presented',
+        summary: `Access token verification failed: ${message || 'invalid token'}`,
+      });
+    }
+    throw error;
+  }
 
   // Check token type
   if (payload.type !== 'access') {
+    await evaluateTokenFailure(request, {
+      action: 'token.invalid_type',
+      title: 'Invalid JWT token type presented',
+      summary: `A "${payload.type}" token was presented where an access token is required`,
+    });
     throw new TokenInvalidError('Invalid token type');
   }
 
@@ -144,6 +242,13 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply) 
   const tokenStore = request.server.tokenStore;
   if (tokenStore && (await tokenStore.isRevoked(payload.jti))) {
     logger.warn({ jti: payload.jti }, 'Attempted to use revoked access token');
+    // jti (JWT ID) is a random identifier, not the token itself - safe to record, same
+    // as the existing logger.warn above.
+    await evaluateTokenFailure(request, {
+      action: 'token.revoked',
+      title: 'Revoked access token reuse attempt',
+      summary: `A revoked access token (jti ${payload.jti}) was presented`,
+    });
     throw new TokenRevokedError();
   }
 

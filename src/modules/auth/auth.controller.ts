@@ -12,6 +12,9 @@ import { getClientIp, getRequestId } from '../../lib/requestContext.js';
 import { verifyToken } from '../../middleware/auth.js';
 import { env } from '../../config/index.js';
 import { UnauthorizedError, AccountLockedError, InvalidCredentialsError } from '../../lib/errors.js';
+import { evaluateGatewayCredentialAttack, type AuthSecurityPipeline } from '../security/gateway-detection.js';
+
+export type { AuthSecurityPipeline } from '../security/gateway-detection.js';
 
 /**
  * Authentication controller
@@ -19,8 +22,75 @@ import { UnauthorizedError, AccountLockedError, InvalidCredentialsError } from '
 export class AuthController {
   constructor(
     private authService: AuthService,
-    private auditService: AuditService
+    private auditService: AuditService,
+    private securityPipeline?: AuthSecurityPipeline
   ) {}
+
+  /**
+   * Feed every failed login attempt - not just the final lockout - through the live
+   * detection pipeline (GW-AUTH-001), with the real measured failure count and distinct
+   * source-IP count for this account (gateway-auth-tracker.ts), not a hardcoded
+   * threshold value. This is what lets GW-AUTH-001 actually detect a concentrated attack
+   * before lockout is reached, and a distributed attack (many source IPs against one
+   * account) at all - a rule that only ever saw a single post-lockout event with a fixed
+   * failedLoginCount could never legitimately claim either. Optional pipeline so
+   * AuthController keeps working in any context that doesn't construct the security
+   * control plane (e.g. tests).
+   */
+  private async evaluateGatewayCredentialAttack(params: {
+    username: string;
+    ip: string;
+    lockedOut: boolean;
+  }): Promise<void> {
+    if (!this.securityPipeline?.gatewayAuthTracker) return;
+    const signal = await this.securityPipeline.gatewayAuthTracker.recordFailure(params.username, params.ip);
+    await evaluateGatewayCredentialAttack(this.securityPipeline, {
+      username: params.username,
+      ip: params.ip,
+      failedLoginCount: signal.failedLoginCount,
+      distinctSourceIps: signal.distinctSourceIps,
+      action: params.lockedOut ? 'gateway.account_lockout' : 'gateway.login_failed',
+      title: params.lockedOut ? 'Gateway account lockout' : 'Gateway authentication failure',
+      summary: params.lockedOut
+        ? `Account "${params.username}" locked after ${signal.failedLoginCount} failed logins across ${signal.distinctSourceIps} source IP(s)`
+        : `Failed login attempt against account "${params.username}" (${signal.failedLoginCount} in the current window across ${signal.distinctSourceIps} source IP(s))`,
+    });
+  }
+
+  /**
+   * POST /auth/demo-login
+   * One-click read-only reviewer entry point: authenticates as the fixed
+   * "reviewer" demo account server-side. The caller never sees or supplies
+   * a password - the account itself carries no write privileges beyond
+   * running the allowlisted guided scenarios (see ROLES.reviewer).
+   */
+  async demoLogin(request: FastifyRequest, reply: FastifyReply) {
+    const ip = getClientIp(request);
+    const requestId = getRequestId(request);
+
+    const { accessToken, refreshToken, expiresIn, user } = await this.authService.login(
+      'reviewer',
+      'Reviewer123!',
+      ip
+    );
+
+    await this.auditService.logLoginSuccess({
+      userId: user.userId,
+      username: user.username,
+      ip,
+      requestId,
+    });
+
+    reply.setCookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: env.server.isProduction,
+      sameSite: 'strict',
+      path: '/auth/refresh',
+      maxAge: 60 * 60 * 24 * 7,
+    });
+
+    return { accessToken, expiresIn, tokenType: 'Bearer' };
+  }
 
   /**
    * POST /auth/login
@@ -49,6 +119,11 @@ export class AuthController {
         ip,
         requestId,
       });
+      // Clean slate for the GW-AUTH-001 detection signal, mirroring the lockout
+      // counter's own reset-on-success behavior (auth.service.ts) - proven legitimate
+      // access shouldn't leave a stale failure count primed to fire on a later,
+      // unrelated failed attempt.
+      await this.securityPipeline?.gatewayAuthTracker?.reset(username);
 
       // Set refresh token as httpOnly cookie
       reply.setCookie('refreshToken', refreshToken, {
@@ -76,6 +151,7 @@ export class AuthController {
           success: false,
           message: 'Account locked due to too many failed login attempts',
         });
+        await this.evaluateGatewayCredentialAttack({ username, ip, lockedOut: true });
       } else if (error instanceof InvalidCredentialsError) {
         await this.auditService.logLoginFailure({
           username,
@@ -83,6 +159,7 @@ export class AuthController {
           requestId,
           reason: 'Invalid credentials',
         });
+        await this.evaluateGatewayCredentialAttack({ username, ip, lockedOut: false });
       } else {
         await this.auditService.logLoginFailure({
           username,

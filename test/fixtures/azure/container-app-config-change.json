@@ -1,0 +1,13 @@
+{
+  "eventDataId": "az-ca-001",
+  "eventTimestamp": "2026-07-24T17:20:00Z",
+  "subscriptionId": "11111111-2222-3333-4444-555555555555",
+  "operationName": "Microsoft.App/containerApps/write",
+  "status": "Succeeded",
+  "caller": "deploy@contoso.com",
+  "resourceId": "/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg/providers/Microsoft.App/containerApps/secure-api-gateway",
+  "resourceType": "Microsoft.App/containerApps",
+  "resourceLocation": "eastus",
+  "category": "Administrative",
+  "properties": { "ipAddress": "198.51.100.130" }
+}

@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronDown, ChevronUp, ListTree } from 'lucide-react';
+import { ChevronDown, ChevronUp, ListTree, Info } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { MetricCard } from '../components/MetricCard';
 import { RequestRateChart } from '../components/RequestRateChart';
@@ -19,7 +19,6 @@ import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { SectionHeader } from '../components/SectionHeader';
 import { useSSE } from '../hooks/useSSE';
-import { useToast } from '../contexts/ToastContext';
 import { adminApi } from '../api/admin';
 import { theme } from '../styles/theme';
 import type { IngestionStatus, SecurityPosture } from '../types';
@@ -105,8 +104,6 @@ export function Dashboard() {
   });
   const [selectedEvent, setSelectedEvent] = useState<SecurityEvent | null>(null);
   const [inspectorExpanded, setInspectorExpanded] = useState(false);
-  const [addingToIncident, setAddingToIncident] = useState(false);
-  const { showToast } = useToast();
 
   const { data, isConnected, error } = useSSE<any>({
     url: `${API_URL}/admin/metrics/realtime`,
@@ -224,27 +221,6 @@ export function Dashboard() {
     }
   }, [data]);
 
-  const handleAddToIncident = async () => {
-    if (!selectedEvent) return;
-    setAddingToIncident(true);
-    try {
-      const severity = selectedEvent.severity === 'critical' ? 'critical' : selectedEvent.severity === 'warning' ? 'medium' : 'low';
-      await adminApi.createIncident({
-        title: `${selectedEvent.type.replace(/_/g, ' ')} - ${new Date(selectedEvent.timestamp).toLocaleString()}`,
-        description: selectedEvent.message,
-        type: selectedEvent.type === 'AUTH_FAILURE' || selectedEvent.type === 'ACCOUNT_LOCKOUT' ? 'brute_force' : selectedEvent.type === 'RATE_LIMIT' ? 'rate_limit_abuse' : 'suspicious_activity',
-        severity,
-        tags: ['from-live-feed'],
-      });
-      showToast('Incident created from this event', 'success');
-      setSelectedEvent(null);
-    } catch (err: any) {
-      showToast('Failed to create incident: ' + err.message, 'error');
-    } finally {
-      setAddingToIncident(false);
-    }
-  };
-
   const statusClass = isConnected ? 'status-pill--success' : 'status-pill--danger';
 
   return (
@@ -275,12 +251,19 @@ export function Dashboard() {
         {!infoBannerDismissed && (
           <div className="alert alert--info info-banner">
             <div className="flex-1">
-              <div className="info-banner__title">👋 New to this dashboard?</div>
+              <div className="info-banner__title">
+                <Info size={16} aria-hidden="true" style={{ marginRight: 6, verticalAlign: 'text-bottom' }} />
+                New to this dashboard?
+              </div>
               <div className="info-banner__text">
-                This is a live demonstration of a production-grade API Gateway security monitoring dashboard. Learn
-                more about what each section shows in the{' '}
+                This is a live demonstration of a multi-cloud API security control plane. Learn more about
+                what's genuinely implemented versus simulated in{' '}
+                <Link to="/implementation-status" className="info-banner__link">
+                  Implementation Status
+                </Link>
+                , or how it's built in{' '}
                 <Link to="/about" className="info-banner__link">
-                  About page
+                  Architecture & Evidence
                 </Link>
                 .
               </div>
@@ -331,6 +314,9 @@ export function Dashboard() {
               <div className="posture-summary__value">{posture.overallScore}/100</div>
               <div className="posture-summary__meta">
                 {posture.recommendations.length > 0 && `${posture.recommendations.length} recommendation(s)`}
+              </div>
+              <div className="posture-summary__meta text-muted">
+                Partially live-assessed - see Control Evidence for details
               </div>
             </div>
             <Link to="/compliance">
@@ -572,13 +558,6 @@ export function Dashboard() {
         isOpen={selectedEvent !== null}
         title="Event Details"
         onClose={() => setSelectedEvent(null)}
-        footer={
-          selectedEvent && (
-            <Button variant="primary" className="button-full" onClick={handleAddToIncident} isLoading={addingToIncident}>
-              Add to Incident
-            </Button>
-          )
-        }
       >
         {selectedEvent && (
           <>

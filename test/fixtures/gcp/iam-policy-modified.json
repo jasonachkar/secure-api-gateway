@@ -1,0 +1,15 @@
+{
+  "insertId": "gcp-iam-policy-001",
+  "timestamp": "2026-07-24T16:05:00Z",
+  "severity": "NOTICE",
+  "logName": "projects/demo-project-123/logs/cloudaudit.googleapis.com%2Factivity",
+  "resource": { "type": "project", "labels": { "project_id": "demo-project-123" } },
+  "protoPayload": {
+    "serviceName": "cloudresourcemanager.googleapis.com",
+    "methodName": "SetIamPolicy",
+    "resourceName": "projects/demo-project-123",
+    "authenticationInfo": { "principalEmail": "admin@example.com" },
+    "requestMetadata": { "callerIp": "198.51.100.80", "callerSuppliedUserAgent": "terraform" },
+    "status": { "code": 0 }
+  }
+}

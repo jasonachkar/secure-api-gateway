@@ -21,6 +21,19 @@ process.env.COOKIE_SECRET = 'test-cookie-secret-min-32-chars-long';
 process.env.CORS_ORIGIN = 'http://localhost:3000';
 process.env.ENABLE_SWAGGER = 'false';
 process.env.UPSTREAM_REPORTS_URL = 'http://localhost:4000';
+// Same reasoning as REDIS_DB above: the file-based audit store (used whenever NODE_ENV
+// isn't 'production') writes to a single shared file by default, which isn't safe for
+// Jest's parallel worker processes - two workers running different integration test
+// files that both hit an audited route race on the same file and corrupt/drop entries.
+// Partition it per worker the same way.
+process.env.AUDIT_LOG_PATH = `./logs/audit-logs.test-worker-${process.env.JEST_WORKER_ID || '0'}.json`;
+// Most integration tests simulate a single trusted reverse proxy in front of the app
+// (they set X-Forwarded-For directly on the injected request to represent distinct
+// client IPs) - hopcount:1 is what makes that an explicit, intentional trust decision
+// rather than the old blanket `trustProxy: true`. Tests that specifically exercise the
+// proxy trust *boundary* itself (test/proxyTrust.unit.test.ts) override this per test.
+process.env.PROXY_TRUST_MODE = 'hopcount';
+process.env.PROXY_TRUST_HOP_COUNT = '1';
 
 // Set reasonable test timeouts
 jest.setTimeout(10000);

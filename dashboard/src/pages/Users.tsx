@@ -3,6 +3,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { Lock } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
@@ -76,7 +77,12 @@ export function Users() {
                   <div className="threat-card__header">
                     <div className="threat-card__identity">
                       <div className="section-title">{user.username}</div>
-                      {user.lockout?.isLocked && <Badge className="badge-critical">🔒 LOCKED</Badge>}
+                      {user.lockout?.isLocked && (
+                        <Badge className="badge-critical">
+                          <Lock size={12} aria-hidden="true" style={{ marginRight: 4, verticalAlign: 'text-bottom' }} />
+                          LOCKED
+                        </Badge>
+                      )}
                     </div>
                     {user.lockout?.isLocked && (
                       <Button

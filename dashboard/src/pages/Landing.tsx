@@ -34,7 +34,7 @@ export function Landing() {
       <header className="landing-header">
         <div className="landing-container landing-nav">
           <div className="landing-brand">
-            <span>🔒</span>
+            <ShieldCheck size={20} aria-hidden="true" />
             <span>Secure API Gateway</span>
           </div>
           <Link to="/login">
@@ -49,8 +49,8 @@ export function Landing() {
         <div className="landing-hero__copy">
           <h1 className="landing-hero__title landing-hero__title--left">Production-Grade API Security — Live Demo</h1>
           <p className="landing-hero__subtitle landing-hero__subtitle--left">
-            A working API gateway with real JWT auth, RBAC, rate limiting, threat intelligence, and incident response
-            - not screenshots. Sign in and watch it react to real traffic in real time.
+            A working API gateway with real JWT auth, RBAC, rate limiting, multi-cloud threat detection, and
+            correlated investigations - not screenshots. Sign in and watch it react to real traffic in real time.
           </p>
           <div className="landing-actions landing-actions--left">
             <Link to="/login">
@@ -75,14 +75,16 @@ export function Landing() {
           <h2 className="landing-section__title">What is This?</h2>
           <div className="landing-section__text">
             <p className="paragraph">
-              This is a <strong>production-grade API Gateway implementation</strong> that showcases enterprise-level
-              security best practices and modern microservices architecture patterns. It serves as a comprehensive
-              demonstration of how to build secure, scalable, and observable API infrastructure.
+              This is a multi-cloud API security control plane: a gateway that normalizes Azure, AWS, and GCP
+              security telemetry into one canonical schema, evaluates it against documented detection rules,
+              correlates matches into investigations, and executes real (or clearly labeled simulated) response
+              actions - with the raw evidence, normalized event, rule logic, and audit trail all inspectable.
             </p>
             <p>
-              The project demonstrates real-world implementation of security controls, compliance frameworks, threat
-              detection, and operational monitoring—everything you need to understand API Gateway security in a
-              production environment.
+              Some of it runs on real cloud telemetry today; some of it replays sanitized fixtures. Both are
+              labeled explicitly throughout - see{' '}
+              <Link to="/implementation-status">Implementation Status</Link> after signing in for the honest,
+              capability-by-capability breakdown.
             </p>
           </div>
         </div>
@@ -164,7 +166,7 @@ export function Landing() {
               },
               {
                 title: 'Real-time Monitoring',
-                items: ['Live metrics streaming', 'Threat detection', 'Incident management', 'Audit trails'],
+                items: ['Live metrics streaming', 'Threat detection', 'Correlated investigations', 'Audit trails'],
               },
               {
                 title: 'Compliance & Audit',

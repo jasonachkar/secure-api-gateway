@@ -1,0 +1,14 @@
+{
+  "eventVersion": "1.08",
+  "userIdentity": { "type": "IAMUser", "principalId": "AIDAIAMUSER", "arn": "arn:aws:iam::123456789012:user/alice", "accountId": "123456789012", "userName": "alice" },
+  "eventTime": "2026-07-24T15:05:00Z",
+  "eventSource": "iam.amazonaws.com",
+  "eventName": "AttachUserPolicy",
+  "awsRegion": "us-east-1",
+  "sourceIPAddress": "198.51.100.20",
+  "userAgent": "aws-cli/2.0",
+  "requestParameters": { "userName": "bob", "policyArn": "arn:aws:iam::aws:policy/AdministratorAccess" },
+  "resources": [{ "ARN": "arn:aws:iam::123456789012:user/bob", "type": "AWS::IAM::User" }],
+  "eventID": "aws-iam-attach-001",
+  "recipientAccountId": "123456789012"
+}

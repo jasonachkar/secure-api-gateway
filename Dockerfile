@@ -18,8 +18,12 @@ RUN npm ci && \
 
 # Copy source code
 COPY src ./src
+COPY scripts/copy-fixtures.mjs ./scripts/copy-fixtures.mjs
+# Sanitized replay fixtures (guided scenarios, detection rule tests) - not test
+# code itself, just the JSON data files the runtime replay engine reads.
+COPY test/fixtures ./test/fixtures
 
-# Build TypeScript
+# Build TypeScript (also copies test/fixtures -> dist/fixtures, see scripts/copy-fixtures.mjs)
 RUN npm run build
 
 # Production image
@@ -42,7 +46,11 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && \
     npm cache clean --force && \
-    rm -rf /tmp/*
+    rm -rf /tmp/* && \
+    # The runtime only ever execs `node dist/main.js` - npm/npx are never invoked
+    # after this build step, so remove the bundled npm CLI (and its own vendored
+    # dependency tree, e.g. an old `tar`) rather than ship unused attack surface.
+    rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 # Copy built application from builder stage
 COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist

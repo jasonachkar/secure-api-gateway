@@ -1,0 +1,13 @@
+{
+  "eventDataId": "az-role-001",
+  "eventTimestamp": "2026-07-24T17:00:00Z",
+  "subscriptionId": "11111111-2222-3333-4444-555555555555",
+  "operationName": "Microsoft.Authorization/roleAssignments/write",
+  "status": "Succeeded",
+  "caller": "admin@contoso.com",
+  "resourceId": "/subscriptions/11111111-2222-3333-4444-555555555555/providers/Microsoft.Authorization/roleAssignments/aaaa",
+  "resourceType": "Microsoft.Authorization/roleAssignments",
+  "resourceLocation": "eastus",
+  "category": "Administrative",
+  "properties": { "ipAddress": "192.0.2.110", "roleDefinition": "Owner" }
+}

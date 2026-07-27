@@ -1,0 +1,15 @@
+{
+  "eventVersion": "1.08",
+  "userIdentity": { "type": "Root", "principalId": "AIDAROOTEXAMPLE", "arn": "arn:aws:iam::123456789012:root", "accountId": "123456789012", "userName": "root" },
+  "eventTime": "2026-07-24T15:00:00Z",
+  "eventSource": "signin.amazonaws.com",
+  "eventName": "ConsoleLogin",
+  "awsRegion": "us-east-1",
+  "sourceIPAddress": "192.0.2.10",
+  "userAgent": "Mozilla/5.0",
+  "requestParameters": null,
+  "responseElements": { "ConsoleLogin": "Success" },
+  "eventID": "aws-root-console-001",
+  "eventType": "AwsConsoleSignIn",
+  "recipientAccountId": "123456789012"
+}

@@ -18,6 +18,10 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 6.0"
     }
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.12"
+    }
   }
 
   # Configure via `terraform init -backend-config=environments/<env>.backend.hcl`,

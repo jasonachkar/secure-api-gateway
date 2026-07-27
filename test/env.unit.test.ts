@@ -17,6 +17,7 @@ const BASE_PROD_ENV: Record<string, string> = {
   COOKIE_SECRET: 'a-genuinely-random-32-plus-character-cookie-secret-value',
   CORS_ORIGIN: 'https://dashboard.example.com',
   ENABLE_SWAGGER: 'false',
+  PROXY_TRUST_MODE: 'azure',
 };
 
 describe('env.ts production fail-fast validation', () => {
@@ -78,6 +79,26 @@ describe('env.ts production fail-fast validation', () => {
 
   it('refuses SSRF_ALLOW_PRIVATE_IPS=true in production (Docker Compose escape hatch only)', () => {
     const load = loadEnvWith({ SSRF_ALLOW_PRIVATE_IPS: 'true' });
+    expect(load).toThrow(/process\.exit/);
+  });
+
+  it('refuses PROXY_TRUST_MODE=none in production (Container Apps always sits behind an ingress)', () => {
+    const load = loadEnvWith({ PROXY_TRUST_MODE: 'none' });
+    expect(load).toThrow(/process\.exit/);
+  });
+
+  it('accepts PROXY_TRUST_MODE=hopcount in production with a hop count set', () => {
+    const load = loadEnvWith({ PROXY_TRUST_MODE: 'hopcount', PROXY_TRUST_HOP_COUNT: '2' });
+    expect(load).not.toThrow();
+  });
+
+  it('accepts PROXY_TRUST_MODE=cidr in production with at least one CIDR configured', () => {
+    const load = loadEnvWith({ PROXY_TRUST_MODE: 'cidr', PROXY_TRUST_CIDRS: '10.0.0.0/8' });
+    expect(load).not.toThrow();
+  });
+
+  it('refuses PROXY_TRUST_MODE=cidr in production with no CIDRs configured', () => {
+    const load = loadEnvWith({ PROXY_TRUST_MODE: 'cidr', PROXY_TRUST_CIDRS: '' });
     expect(load).toThrow(/process\.exit/);
   });
 

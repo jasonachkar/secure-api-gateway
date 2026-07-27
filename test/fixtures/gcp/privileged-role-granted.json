@@ -1,0 +1,16 @@
+{
+  "insertId": "gcp-priv-role-001",
+  "timestamp": "2026-07-24T16:10:00Z",
+  "severity": "WARNING",
+  "logName": "projects/demo-project-123/logs/cloudaudit.googleapis.com%2Factivity",
+  "resource": { "type": "project", "labels": { "project_id": "demo-project-123" } },
+  "protoPayload": {
+    "serviceName": "cloudresourcemanager.googleapis.com",
+    "methodName": "SetIamPolicy",
+    "resourceName": "projects/demo-project-123",
+    "authenticationInfo": { "principalEmail": "admin@example.com" },
+    "requestMetadata": { "callerIp": "198.51.100.81", "callerSuppliedUserAgent": "console" },
+    "request": { "policy": { "bindings": [{ "role": "roles/owner", "members": ["user:attacker@example.com"] }] } },
+    "status": { "code": 0 }
+  }
+}

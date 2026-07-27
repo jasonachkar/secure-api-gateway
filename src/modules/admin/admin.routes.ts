@@ -8,9 +8,7 @@ import Redis from 'ioredis';
 import { AdminController } from './admin.controller.js';
 import { AdminService } from './admin.service.js';
 import { MetricsService } from './metrics.service.js';
-import { ThreatIntelService } from './threat-intel.service.js';
 import { ThreatIntelController } from './threat-intel.controller.js';
-import { IncidentResponseService } from './incident-response.service.js';
 import { IncidentResponseController } from './incident-response.controller.js';
 import { ComplianceService } from './compliance.service.js';
 import { ComplianceController } from './compliance.controller.js';
@@ -38,7 +36,6 @@ import { AuditEventType } from '../audit/audit.types.js';
 import { getClientIp, getRequestId } from '../../lib/requestContext.js';
 import { upstreamCircuitBreaker } from '../../lib/httpClient.js';
 import { getRecentRequests } from '../../lib/requestTelemetry.js';
-import type { PostgresClient } from '../ingestion/normalized-event.store.js';
 
 /**
  * SSE authentication middleware
@@ -65,11 +62,6 @@ async function requireAuthSSE(request: FastifyRequest, reply: FastifyReply) {
   }
 }
 
-async function createPostgresClient(): Promise<PostgresClient> {
-  const { Pool } = await import('pg');
-  return new Pool({ connectionString: env.storage.postgresUrl });
-}
-
 /**
  * Register admin routes
  * All routes require authentication + admin role
@@ -82,18 +74,27 @@ export async function registerAdminRoutes(
   // Initialize services
   const metricsService = new MetricsService(redis);
   const adminService = new AdminService(redis, auditService);
-  const incidentService = new IncidentResponseService(redis);
+  // Shared instances constructed once in app.ts (also used by the early
+  // IP-block enforcement hook) - reuse them here instead of standing up a
+  // second set operating on the same Redis keyspace.
+  const incidentService = app.incidentService;
+  const threatIntelService = app.threatIntelService;
   const adminAuditLogService = new AdminAuditLogService(redis);
-  // Pass incident service to threat intel for auto-incident creation
-  const threatIntelService = new ThreatIntelService(redis, incidentService);
   const controller = new AdminController(adminService, metricsService, adminAuditLogService);
   const threatController = new ThreatIntelController(threatIntelService);
   const incidentController = new IncidentResponseController(incidentService);
-  const complianceService = new ComplianceService(redis, metricsService, threatIntelService, adminService);
+  const complianceService = new ComplianceService(redis, metricsService, threatIntelService);
   const complianceController = new ComplianceController(complianceService);
-  const postgresPool = env.storage.postgresUrl ? await createPostgresClient() : undefined;
-  const ingestionService = new IngestionService(redis, incidentService, postgresPool);
-  await ingestionService.initialize();
+  // Live AWS/GCP polling adapters feed the same canonical pipeline everything else uses
+  // (constructed once in app.ts, decorated onto `app` before routes are registered) -
+  // there is no separate legacy ingestion path anymore. See docs/CLOUD_INGESTION.md.
+  const ingestionService = new IngestionService(redis, {
+    securityEventStore: app.securityEventStore,
+    detectionEngine: app.detectionEngine,
+    detectionStore: app.detectionStore,
+    investigationService: app.investigationService,
+    pipelineMetrics: app.pipelineMetrics,
+  });
   ingestionService.start();
   const ingestionController = new IngestionController(ingestionService);
 
@@ -101,21 +102,26 @@ export async function registerAdminRoutes(
     ingestionService.stop();
   });
 
-  if (postgresPool) {
+  // Synthetic background data (fabricated requests/logins/threat events on a timer) is
+  // off by default - it must never be mistaken for real telemetry in the default reviewer
+  // experience. Opt in explicitly via ENABLE_SYNTHETIC_BACKGROUND_DATA=true for local demos.
+  // See docs/KNOWN_LIMITATIONS.md.
+  let metricsSeeder: MetricsSeederService | undefined;
+  if (env.features.enableSyntheticBackgroundData) {
+    metricsSeeder = new MetricsSeederService(redis, metricsService, threatIntelService);
+    metricsSeeder.start();
     app.addHook('onClose', async () => {
-      await postgresPool.end?.();
+      metricsSeeder?.stop();
     });
   }
 
-  // Start metrics seeder to generate realistic data
-  const metricsSeeder = new MetricsSeederService(redis, metricsService, threatIntelService);
-  metricsSeeder.start();
-
   await adminAuditLogService.initialize();
 
-  // All admin routes require admin role
+  // All admin routes require admin role. metricsAuth additionally allows the
+  // read-only reviewer role (see ROLES.reviewer) - metrics/ingestion-status are
+  // informational only, never mutate state.
   const adminAuth = [requireAuth, requireRole('admin')];
-  const metricsAuth = [requireAuth, requireAnyRole(['admin', 'security_analyst'])];
+  const metricsAuth = [requireAuth, requireAnyRole(['admin', 'security_analyst', 'reviewer'])];
   const incidentAuth = [requireAuth, requireAnyRole(['admin', 'incident_responder'])];
 
   app.addHook('onResponse', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -222,10 +228,16 @@ export async function registerAdminRoutes(
    * Handle CORS preflight for SSE endpoint
    */
   app.options('/admin/metrics/realtime', async (request: FastifyRequest, reply: FastifyReply) => {
-    const origin = request.headers.origin || '*';
-    
-    reply.header('Access-Control-Allow-Origin', origin);
-    reply.header('Access-Control-Allow-Credentials', 'true');
+    // Access-Control-Allow-Credentials: true requires an exact, non-wildcard origin -
+    // reflecting an arbitrary request Origin here would let any site read this SSE
+    // stream using the visitor's cookies/session. Only ever echo back an origin that
+    // is in the same explicit allowlist the main CORS plugin enforces (env.security.corsOrigins).
+    const requestOrigin = request.headers.origin;
+    if (requestOrigin && env.security.corsOrigins.includes(requestOrigin)) {
+      reply.header('Access-Control-Allow-Origin', requestOrigin);
+      reply.header('Access-Control-Allow-Credentials', 'true');
+      reply.header('Vary', 'Origin');
+    }
     reply.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
     reply.header('Access-Control-Allow-Headers', 'Cache-Control, Content-Type, Authorization, Accept');
     reply.code(204).send();
@@ -860,7 +872,7 @@ export async function registerAdminRoutes(
     '/admin/incidents/:id/playbook',
     {
       schema: {
-        description: 'Run an incident response playbook action',
+        description: 'Run an incident response playbook action (mocked - writes a timeline entry only, no real user/IP/ticketing integration)',
         tags: ['Incident Response'],
         security: [{ bearerAuth: [] }],
         params: {

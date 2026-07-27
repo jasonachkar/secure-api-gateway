@@ -6,6 +6,47 @@ security detection and investigation control plane. Entries are phases, not indi
 commits - each phase landed as one or more reviewable commits, was validated (tests,
 build, CI), and pushed before the next started. See `git log` for exact commits.
 
+## Phase 10 — Testing strategy
+
+- Added `test/compliance-service.unit.test.ts` (against a real Redis connection,
+  matching this project's established pattern) verifying Phase 7's `assessmentBasis`
+  honesty distinction actually holds under test, not just by inspection. Found and
+  removed an unused `adminService` constructor dependency on `ComplianceService` while
+  writing it.
+- Expanded the dashboard's single smoke test into a real accessibility suite
+  (`@axe-core/playwright`) across every nav page, plus genuine interaction tests for
+  Investigations' filters and Compliance's assessmentBasis banners. Running it against
+  a live local stack (not writing it blind) surfaced and fixed four real bugs: two
+  WCAG 2 AA color-contrast failures (Logout button, login page hint text), a keyboard-
+  accessibility bug in `Drawer.tsx` (a "closed" drawer's close button was still
+  reachable by Tab), and an unfocusable scrollable region in `TokenLifecycleDiagram`.
+  Also found a real nav/permission mismatch - the "Control Evidence" nav item is shown
+  to every authenticated user but its backing endpoint is admin-only - documented
+  rather than silently changing backend permissions as a test-writing side effect.
+- Discovered and fixed a test-design bug of its own: the first draft of the e2e suite
+  called the real demo-login endpoint once per test and blew through
+  `RATE_LIMIT_AUTH_MAX` by the fourth test. Fixed with a `global-setup.ts` that logs in
+  once and reuses the session via Playwright's `storageState`.
+
+## Phase 9 — Documentation overhaul
+
+- README.md described the pre-transformation, single-service gateway story - zero
+  mentions of detection, investigations, guided scenarios, or cloud coverage anywhere
+  in it, despite Phases 1-8 making those the actual core of the product. Rewrote it:
+  a "Data provenance" section (live/replay/synthetic), a rebuilt features section
+  describing the real architecture, and an explicit disclosure of what was removed
+  (the Incidents page) and why, rather than presenting the legacy incident system as a
+  current highlight the way the old README did.
+- `docs/ARCHITECTURE.md`'s ingestion component breakdown still described the legacy
+  pre-Phase-2 architecture (a separate pipeline feeding
+  `IncidentResponseService.createIncidentFromNormalizedEvent()`). Rewritten to
+  describe the current unified `ingestProviderEvent()` pipeline and the
+  detection/investigations/security/scenarios/response modules that didn't exist in
+  this doc before. Also fixed a broken anchor link.
+- Added `docs/DEMO_WALKTHROUGH.md` and this changelog - neither existed before,
+  leaving `git log` as the only record of how significantly this branch changed the
+  project.
+
 ## Phase 8 — Cloud identity & infrastructure quality
 
 - `terraform.yml`'s tfsec step was report-only (SARIF upload, never failed the build

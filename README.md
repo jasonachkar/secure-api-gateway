@@ -332,6 +332,7 @@ push/PR.
 | Workflow | What it does |
 |---|---|
 | `ci.yml` | Lint, typecheck, test (with Redis), build - backend, dashboard, mock-service |
+| `e2e.yml` | Boots the real backend + dashboard preview and runs the reviewer-journey + axe accessibility Playwright suite against them |
 | `docker.yml` | Builds both Dockerfiles, Trivy container scan → SARIF, blocks on CRITICAL |
 | `terraform.yml` | `fmt -check`, `validate`, tfsec scan → SARIF, blocks on HIGH/CRITICAL |
 | `codeql.yml` | CodeQL static analysis (JS/TS) → GitHub code scanning |

@@ -100,8 +100,9 @@ test.describe('Reviewer journey (one-click demo)', () => {
   // pressure from many short-lived connections churning through 17+ prior tests, not an
   // application bug: it passes reliably in isolation every time, and the retry loop below
   // rides out a genuinely transient failure the same way a reviewer clicking Refresh would.
-  // This suite isn't part of CI (see docs/DEMO_WALKTHROUGH.md) - only run manually - so a
-  // clean CI runner's isolation isn't available here to rule this out further.
+  // This suite does run in CI (.github/workflows/e2e.yml), against a fresh container with
+  // none of that accumulated local port pressure - if it becomes flaky there too, that's a
+  // real signal to reopen this rather than assume the same local-machine explanation.
   test('Compliance page discloses assessmentBasis for every framework tab, not just Security Posture', async ({ browser }) => {
     // /admin/compliance/metrics is admin-only (requireRole('admin')), not reviewer-readable
     // like most of the "More" nav - the reviewer role gets a real 403 here (rendered as an

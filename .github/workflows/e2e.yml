@@ -1,0 +1,131 @@
+name: E2E
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  reviewer-journey:
+    name: Reviewer journey + accessibility (Playwright)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: development
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+      JWT_ALGORITHM: HS256
+      # CI-only value, never used outside this ephemeral job - not a real secret.
+      JWT_SECRET: e2e-ci-only-secret-not-used-anywhere-else-min-32-chars
+      COOKIE_SECRET: e2e-ci-only-cookie-secret-min-32-chars-long
+      ENABLE_SWAGGER: 'false'
+      DEMO_MODE: 'false'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install backend dependencies
+        run: npm ci
+
+      - name: Build backend
+        run: npm run build
+
+      - name: Start backend
+        run: nohup node dist/main.js > backend.log 2>&1 &
+
+      - name: Wait for backend readiness
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/healthz > /dev/null; then
+              echo "Backend is up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Backend did not become ready in time"
+          cat backend.log
+          exit 1
+
+      - name: Install dashboard dependencies
+        run: npm ci
+        working-directory: dashboard
+
+      - name: Build dashboard
+        run: npm run build
+        working-directory: dashboard
+        env:
+          # Baked in at build time (Vite) - the backend this job just started.
+          VITE_API_URL: http://localhost:3000
+
+      - name: Start dashboard preview server
+        run: nohup npx vite preview --port 5173 --strictPort > dashboard.log 2>&1 &
+        working-directory: dashboard
+
+      - name: Wait for dashboard readiness
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:5173/ > /dev/null; then
+              echo "Dashboard is up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Dashboard did not become ready in time"
+          cat dashboard.log
+          exit 1
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: dashboard
+
+      - name: Run reviewer-journey + accessibility suite
+        run: npx playwright test
+        working-directory: dashboard
+        env:
+          E2E_BASE_URL: http://localhost:5173
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            dashboard/playwright-report/
+            dashboard/test-results/
+          retention-days: 7
+
+      - name: Upload backend/dashboard logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-logs
+          path: |
+            backend.log
+            dashboard/dashboard.log
+          retention-days: 7

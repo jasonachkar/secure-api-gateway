@@ -285,7 +285,7 @@ export function Dashboard() {
 
         {posture && (
           <div style={{
-            backgroundColor: theme.colors.background.primary,
+            backgroundColor: 'var(--color-bg-primary)',
             padding: theme.spacing.lg,
             borderRadius: theme.borderRadius.lg,
             boxShadow: theme.shadows.md,
@@ -337,7 +337,7 @@ export function Dashboard() {
             }}>
               <div>
                 <h2 style={{ ...theme.typography.h3 }}>Ingestion Status</h2>
-                <p style={{ ...theme.typography.small, color: theme.colors.text.secondary }}>
+                <p style={{ ...theme.typography.small, color: 'var(--color-text-secondary)' }}>
                   Normalized event pipeline health and adapter readiness
                 </p>
               </div>
@@ -388,11 +388,11 @@ export function Dashboard() {
             }}>
               {ingestionStatus.adapters.map(adapter => (
                 <div key={adapter.provider} style={{
-                  backgroundColor: theme.colors.background.primary,
+                  backgroundColor: 'var(--color-bg-primary)',
                   padding: theme.spacing.md,
                   borderRadius: theme.borderRadius.lg,
                   boxShadow: theme.shadows.sm,
-                  border: `1px solid ${theme.colors.border.light}`,
+                  border: '1px solid var(--color-border-light)',
                 }}>
                   <div style={{
                     display: 'flex',
@@ -416,7 +416,7 @@ export function Dashboard() {
                   </div>
                   <div style={{
                     ...theme.typography.small,
-                    color: theme.colors.text.secondary,
+                    color: 'var(--color-text-secondary)',
                   }}>
                     {adapter.detail || 'Status unavailable'}
                   </div>

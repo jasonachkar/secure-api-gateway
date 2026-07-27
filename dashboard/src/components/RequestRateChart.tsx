@@ -5,7 +5,6 @@
 
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { format } from 'date-fns';
-import { theme } from '../styles/theme';
 import { ChartTooltip } from './ChartTooltip';
 
 interface DataPoint {
@@ -42,11 +41,11 @@ export function RequestRateChart({ data, title = 'Request Rate', isLoading = fal
           <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
           <XAxis
             dataKey="time"
-            stroke={theme.colors.text.tertiary}
+            stroke="var(--color-text-tertiary)"
             tick={{ className: 'chart-axis-tick' }}
           />
           <YAxis
-            stroke={theme.colors.text.tertiary}
+            stroke="var(--color-text-tertiary)"
             tick={{ className: 'chart-axis-tick' }}
             label={{ 
               value: 'Requests/sec', 

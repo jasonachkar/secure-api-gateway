@@ -179,6 +179,13 @@ export function Layout({ children }: LayoutProps) {
           )}
         </nav>
 
+        {/* Fixed (non-theme-reactive) colors below are intentional: the sidebar itself
+            always renders dark (--gradient-sidebar, unchanged in styles/tokens.css's dark
+            section) regardless of the app-wide theme, so a fixed light-mode neutral-700
+            reads correctly against it in both modes. Swapping these to var(--color-neutral-700)
+            would break dark mode instead of fixing it - that var resolves to a near-white
+            value in dark mode (inverted for on-dark-surface use elsewhere), which would
+            render as a bright, jarring box against this always-dark sidebar. */}
         <div style={{
           paddingTop: theme.spacing.lg,
           borderTop: `1px solid ${theme.colors.neutral[700]}`,
@@ -223,7 +230,7 @@ export function Layout({ children }: LayoutProps) {
       {/* Enhanced Main Content */}
       <main style={{
         flex: 1,
-        backgroundColor: theme.colors.background.secondary,
+        backgroundColor: 'var(--color-bg-secondary)',
         padding: theme.spacing.xl,
         minHeight: '100vh',
         maxWidth: '100%',

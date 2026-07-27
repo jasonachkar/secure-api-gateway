@@ -1,10 +1,9 @@
 /**
  * Admin Audit Logs page
- * Displays administrative actions with incident links
+ * Displays administrative actions
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { RefreshCw } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { Button } from '../components/Button';
@@ -150,7 +149,7 @@ export function AuditLogs() {
             <p
               style={{
                 ...theme.typography.body,
-                color: theme.colors.text.secondary,
+                color: 'var(--color-text-secondary)',
               }}
             >
               Administrative action history across the platform
@@ -185,11 +184,11 @@ export function AuditLogs() {
 
         <div
           style={{
-            background: theme.colors.background.primary,
+            background: 'var(--color-bg-primary)',
             borderRadius: theme.borderRadius.lg,
             padding: theme.spacing.lg,
             marginBottom: theme.spacing.lg,
-            border: `1px solid ${theme.colors.border.light}`,
+            border: '1px solid var(--color-border-light)',
           }}
         >
           <div
@@ -208,7 +207,7 @@ export function AuditLogs() {
               onChange={(e) => handleFilterChange('actorId', e.target.value)}
               style={{
                 padding: theme.spacing.sm,
-                border: `1px solid ${theme.colors.border.medium}`,
+                border: '1px solid var(--color-border-medium)',
                 borderRadius: theme.borderRadius.sm,
               }}
             />
@@ -220,7 +219,7 @@ export function AuditLogs() {
               onChange={(e) => handleFilterChange('action', e.target.value)}
               style={{
                 padding: theme.spacing.sm,
-                border: `1px solid ${theme.colors.border.medium}`,
+                border: '1px solid var(--color-border-medium)',
                 borderRadius: theme.borderRadius.sm,
               }}
             />
@@ -232,7 +231,7 @@ export function AuditLogs() {
               onChange={(e) => handleFilterChange('incidentId', e.target.value)}
               style={{
                 padding: theme.spacing.sm,
-                border: `1px solid ${theme.colors.border.medium}`,
+                border: '1px solid var(--color-border-medium)',
                 borderRadius: theme.borderRadius.sm,
               }}
             />
@@ -263,16 +262,16 @@ export function AuditLogs() {
 
         <div
           style={{
-            background: theme.colors.background.primary,
+            background: 'var(--color-bg-primary)',
             borderRadius: theme.borderRadius.lg,
-            border: `1px solid ${theme.colors.border.light}`,
+            border: '1px solid var(--color-border-light)',
             overflow: 'hidden',
           }}
         >
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ background: theme.colors.background.secondary }}>
+                <tr style={{ background: 'var(--color-bg-secondary)' }}>
                   {['Timestamp', 'Actor', 'Action', 'Incident'].map((header) => (
                     <th
                       key={header}
@@ -280,8 +279,8 @@ export function AuditLogs() {
                         textAlign: 'left',
                         padding: theme.spacing.md,
                         fontSize: theme.typography.fontSize.sm,
-                        color: theme.colors.text.secondary,
-                        borderBottom: `1px solid ${theme.colors.border.light}`,
+                        color: 'var(--color-text-secondary)',
+                        borderBottom: '1px solid var(--color-border-light)',
                       }}
                     >
                       {header}
@@ -294,7 +293,7 @@ export function AuditLogs() {
                   Array.from({ length: 8 }).map((_, rowIdx) => (
                     <tr
                       key={`skeleton-${rowIdx}`}
-                      style={{ borderBottom: `1px solid ${theme.colors.border.light}` }}
+                      style={{ borderBottom: '1px solid var(--color-border-light)' }}
                       aria-hidden="true"
                     >
                       {['55%', '70%', '65%', '40%'].map((width, cellIdx) => (
@@ -324,32 +323,27 @@ export function AuditLogs() {
                   </tr>
                 ) : (
                   logs.map((log) => (
-                    <tr key={log.id} style={{ borderBottom: `1px solid ${theme.colors.border.light}` }}>
+                    <tr key={log.id} style={{ borderBottom: '1px solid var(--color-border-light)' }}>
                       <td style={{ padding: theme.spacing.md }}>
                         {format(new Date(log.timestamp), 'MMM dd, yyyy HH:mm:ss')}
                       </td>
                       <td style={{ padding: theme.spacing.md }}>
                         <div style={{ fontWeight: 600 }}>{log.actor.username}</div>
-                        <div style={{ color: theme.colors.text.secondary, fontSize: theme.typography.fontSize.sm }}>
+                        <div style={{ color: 'var(--color-text-secondary)', fontSize: theme.typography.fontSize.sm }}>
                           {log.actor.userId}
                         </div>
                       </td>
                       <td style={{ padding: theme.spacing.md }}>
                         <div style={{ fontWeight: 600 }}>{log.action}</div>
-                        <div style={{ color: theme.colors.text.secondary, fontSize: theme.typography.fontSize.sm }}>
+                        <div style={{ color: 'var(--color-text-secondary)', fontSize: theme.typography.fontSize.sm }}>
                           {log.resource}
                         </div>
                       </td>
                       <td style={{ padding: theme.spacing.md }}>
                         {log.incidentId ? (
-                          <Link
-                            to={`/incidents?incidentId=${encodeURIComponent(log.incidentId)}`}
-                            style={{ color: theme.colors.primary[500], textDecoration: 'none' }}
-                          >
-                            {log.incidentId}
-                          </Link>
+                          <code className="text-mono text-sm">{log.incidentId}</code>
                         ) : (
-                          <span style={{ color: theme.colors.text.secondary }}>—</span>
+                          <span style={{ color: 'var(--color-text-secondary)' }}>—</span>
                         )}
                       </td>
                     </tr>
@@ -362,13 +356,13 @@ export function AuditLogs() {
           <div
             style={{
               padding: theme.spacing.md,
-              borderTop: `1px solid ${theme.colors.border.light}`,
+              borderTop: '1px solid var(--color-border-light)',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
             }}
           >
-            <div style={{ color: theme.colors.text.secondary, fontSize: theme.typography.fontSize.sm }}>
+            <div style={{ color: 'var(--color-text-secondary)', fontSize: theme.typography.fontSize.sm }}>
               Showing {startIndex}-{endIndex} of {allLogs.length}
             </div>
             <div style={{ display: 'flex', gap: theme.spacing.sm }}>

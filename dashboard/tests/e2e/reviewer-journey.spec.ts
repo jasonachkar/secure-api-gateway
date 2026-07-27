@@ -62,6 +62,9 @@ test.describe('Reviewer journey (one-click demo)', () => {
   });
 
   test('Investigations master-detail: filters narrow the list and selecting an item loads detail inline', async ({ page }) => {
+    // Longer than the 30s default: this test's own wait for scenario completion below can
+    // take up to 30s alone in CI, which wouldn't leave room for the rest of the test.
+    test.setTimeout(60000);
     // Guarantee at least one investigation exists without depending on prior test-run state.
     // Deliberately runs the AWS replay scenario, not gw-credential-attack (listed first in
     // the UI) - the gateway scenario performs several real POST /auth/login attempts to
@@ -71,8 +74,10 @@ test.describe('Reviewer journey (one-click demo)', () => {
     const awsCard = page.locator('.ui-card', { hasText: 'AWS privileged activity' });
     await awsCard.getByText('Run scenario').click();
     // Wait for the scenario's own "View investigation" result link (a real completion
-    // signal from the run finishing) rather than a fixed timeout.
-    await expect(awsCard.getByText(/View investigations?/)).toBeVisible({ timeout: 15000 });
+    // signal from the run finishing) rather than a fixed timeout. 30s, not 15s - a CI
+    // runner's first heavy request after a cold Node start can be slower than a warm
+    // local dev process even for a pure-replay scenario with no external calls.
+    await expect(awsCard.getByText(/View investigations?/)).toBeVisible({ timeout: 30000 });
 
     await page.goto('/investigations');
     await page.waitForLoadState('networkidle');

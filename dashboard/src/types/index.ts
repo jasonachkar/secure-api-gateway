@@ -180,6 +180,9 @@ export interface ThreatStatistics {
 export interface SecurityPosture {
   overallScore: number;
   grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  // auditLogging's score is a fixed baseline, not a live measurement - see
+  // docs/KNOWN_LIMITATIONS.md. Every other factor's score reflects live telemetry.
+  assessmentNote: string;
   factors: {
     authentication: {
       score: number;
@@ -187,8 +190,8 @@ export interface SecurityPosture {
       details: {
         failedLoginRate: number;
         accountLockouts: number;
+        // Accurate, not a placeholder: MFA genuinely isn't implemented yet.
         mfaEnabled: boolean;
-        sessionSecurity: number;
       };
     };
     threatIntelligence: {
@@ -197,7 +200,6 @@ export interface SecurityPosture {
       details: {
         criticalThreats: number;
         blockedIPs: number;
-        threatResponseTime: number;
       };
     };
     rateLimiting: {
@@ -205,16 +207,12 @@ export interface SecurityPosture {
       status: 'excellent' | 'good' | 'fair' | 'poor';
       details: {
         violations: number;
-        coverage: number;
       };
     };
     auditLogging: {
       score: number;
       status: 'excellent' | 'good' | 'fair' | 'poor';
-      details: {
-        logCoverage: number;
-        retentionDays: number;
-      };
+      details: Record<string, never>;
     };
     incidentResponse: {
       score: number;

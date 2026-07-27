@@ -89,27 +89,31 @@ export function Compliance() {
         throw new Error('Failed to fetch security posture data');
       }
 
+      if (!postureResponse.assessmentNote) {
+        postureResponse.assessmentNote = 'Unavailable.';
+      }
+
       if (!postureResponse.factors) {
         postureResponse.factors = {
           authentication: {
             score: 0,
             status: 'poor' as const,
-            details: { failedLoginRate: 0, accountLockouts: 0, mfaEnabled: false, sessionSecurity: 0 },
+            details: { failedLoginRate: 0, accountLockouts: 0, mfaEnabled: false },
           },
           threatIntelligence: {
             score: 0,
             status: 'poor' as const,
-            details: { criticalThreats: 0, blockedIPs: 0, threatResponseTime: 0 },
+            details: { criticalThreats: 0, blockedIPs: 0 },
           },
           rateLimiting: {
             score: 0,
             status: 'poor' as const,
-            details: { violations: 0, coverage: 0 },
+            details: { violations: 0 },
           },
           auditLogging: {
             score: 0,
             status: 'poor' as const,
-            details: { logCoverage: 0, retentionDays: 0 },
+            details: {},
           },
           incidentResponse: {
             score: 0,
@@ -211,6 +215,11 @@ export function Compliance() {
 
             {activeTab === 'posture' && (
               <div className="page-stack">
+                {posture.assessmentNote && (
+                  <div className="alert alert--warning">
+                    <strong>Partially live-assessed:</strong> {posture.assessmentNote}
+                  </div>
+                )}
                 <Card className="page-stack">
                   <div className="section-subtitle">Overall Security Posture</div>
                   <div className="compliance-score">

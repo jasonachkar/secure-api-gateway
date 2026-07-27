@@ -168,6 +168,25 @@ presented as if computed" pattern this document exists to call out. Do not remov
 `assessmentBasis`/`assessmentNote` fields or the dashboard banner that renders them
 without replacing the underlying scoring with something genuinely live.
 
+**The same problem existed on `GET /admin/compliance/posture`** (the "Security Posture"
+grade/score - the default Compliance tab, and a prominent widget on the Dashboard
+homepage), missed in the original Phase 7 pass since it's a separate endpoint from the
+four framework tabs above. `SecurityPosture.factors.auditLogging.score` was a hardcoded
+constant (`calculateAuditScore()` always returned 90, comment: "Assume good audit
+logging if service exists"), weighted 15% into the overall score, with no disclosure.
+Several factor `details` sub-fields were also fabricated placeholders with no live
+signal behind them at all: `authentication.sessionSecurity` (always 85),
+`threatIntelligence.threatResponseTime` (always 0), `rateLimiting.coverage` (always
+90), `auditLogging.logCoverage`/`retentionDays` (always 95 / 90 - the latter was
+actively wrong, not just unmeasured: the real audit-log Redis TTL is 30 days, not 90).
+Fixed by removing all of those fabricated fields entirely (rather than disclosing a
+number nobody should trust) and adding a single `assessmentNote` on `SecurityPosture`
+disclosing that `auditLogging`'s score specifically is a fixed baseline, rendered as a
+banner on the Compliance page's Security Posture tab and a one-line note on the
+Dashboard homepage widget. `authentication.details.mfaEnabled` was kept as `false` -
+that one is not a placeholder, it is an accurate statement that MFA genuinely is not
+implemented (see README Roadmap), not a guess standing in for a real measurement.
+
 ## Cloud ingestion
 
 See `docs/CLOUD_INGESTION.md` and the in-app Cloud Coverage page for the current

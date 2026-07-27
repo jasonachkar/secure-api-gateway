@@ -6,6 +6,38 @@ security detection and investigation control plane. Entries are phases, not indi
 commits - each phase landed as one or more reviewable commits, was validated (tests,
 build, CI), and pushed before the next started. See `git log` for exact commits.
 
+## Phase 12 — Final quality/claim audit
+
+A closing sweep across the whole branch (emoji, fabricated/random data, TODO/FIXME
+markers, console.log leftovers, broken doc links, static-credential defaults) found
+one genuine remaining gap: `GET /admin/compliance/posture` (the "Security Posture"
+grade - the default Compliance tab, and a prominent Dashboard homepage widget) had the
+exact problem Phase 7 fixed for the NIST/OWASP/PCI/GDPR tabs, just missed because it's
+a separate endpoint. `auditLogging`'s score was a hardcoded constant weighted 15% into
+the total, and several factor detail fields were pure fabrication with no live signal
+at all - one of them (`retentionDays: 90`) was actively wrong, not just unmeasured
+(the real audit-log Redis TTL is 30 days). Fixed by deleting the fabricated fields
+outright and adding an honest `assessmentNote` disclosure, consistent with the Phase 7
+pattern - see `docs/KNOWN_LIMITATIONS.md`.
+
+Everything else audited clean: zero emoji in `dashboard/src` (CI-enforced), no
+undisclosed `Math.random()` usage, no console.log debug leftovers, no broken internal
+doc links, static AWS/GCP credentials remain opt-in and disclosed. 258/258 backend
+tests passing, both builds clean.
+
+## Phase 11 — CI/CD completion
+
+Phase 10 built a real accessibility + interaction e2e suite, but it only ran manually
+against a local stack - not part of any GitHub Actions workflow, so regressions could
+land uncaught. Added `.github/workflows/e2e.yml`: boots the real backend and a
+production dashboard build (`vite preview`, not the dev server - testing what actually
+ships) against a real Redis service container, waits for both via health-check polling
+rather than a fixed sleep, then runs the full Phase 10 suite. Uploads the Playwright
+report and both servers' logs as artifacts on failure. Verified passing (2m11s, all 18
+tests including one that had been intermittently flaky on a local Windows dev machine)
+on its first real run - confirming that flake was local environment noise, not an
+application defect.
+
 ## Phase 10 — Testing strategy
 
 - Added `test/compliance-service.unit.test.ts` (against a real Redis connection,

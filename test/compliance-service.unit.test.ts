@@ -70,3 +70,41 @@ describe('ComplianceService.getComplianceMetrics', () => {
     expect(metrics.gdpr.assessmentBasis).toBe('static');
   });
 });
+
+describe('ComplianceService.calculateSecurityPosture', () => {
+  let redis: Redis;
+  let service: ComplianceService;
+
+  beforeAll(() => {
+    redis = new Redis({
+      host: process.env.REDIS_HOST,
+      port: Number(process.env.REDIS_PORT),
+      db: Number(process.env.REDIS_DB),
+      maxRetriesPerRequest: 1,
+    });
+    service = new ComplianceService(redis, new MetricsService(redis), new ThreatIntelService(redis));
+  });
+
+  afterAll(() => {
+    redis.disconnect();
+  });
+
+  it('discloses that auditLogging is a fixed baseline, and never fabricates unmeasured detail fields', async () => {
+    const posture = await service.calculateSecurityPosture();
+
+    expect(posture.assessmentNote.length).toBeGreaterThan(0);
+    expect(posture.assessmentNote.toLowerCase()).toContain('auditlogging');
+
+    // These fields were removed for being pure fabrication (no live signal behind them
+    // at all) - this test exists so nobody re-adds a fake number under these names.
+    expect(posture.factors.authentication.details).not.toHaveProperty('sessionSecurity');
+    expect(posture.factors.threatIntelligence.details).not.toHaveProperty('threatResponseTime');
+    expect(posture.factors.rateLimiting.details).not.toHaveProperty('coverage');
+    expect(posture.factors.auditLogging.details).not.toHaveProperty('logCoverage');
+    expect(posture.factors.auditLogging.details).not.toHaveProperty('retentionDays');
+
+    // mfaEnabled is kept, but only because it's an accurate statement (MFA isn't
+    // implemented), not a stand-in for a real measurement.
+    expect(posture.factors.authentication.details.mfaEnabled).toBe(false);
+  });
+});

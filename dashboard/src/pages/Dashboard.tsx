@@ -315,6 +315,9 @@ export function Dashboard() {
               <div className="posture-summary__meta">
                 {posture.recommendations.length > 0 && `${posture.recommendations.length} recommendation(s)`}
               </div>
+              <div className="posture-summary__meta text-muted">
+                Partially live-assessed - see Control Evidence for details
+              </div>
             </div>
             <Link to="/compliance">
               <Button variant="primary" rightIcon="→">

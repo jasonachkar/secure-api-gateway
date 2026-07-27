@@ -11,6 +11,11 @@ import { ThreatIntelService } from './threat-intel.service.js';
 export interface SecurityPosture {
   overallScore: number; // 0-100
   grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  // auditLogging.score is a fixed baseline (see calculateAuditScore) - every other
+  // factor's score reflects live telemetry. This note exists so the UI can disclose
+  // that rather than rendering all five factors identically, the same problem Phase 7
+  // fixed for the NIST/OWASP/PCI/GDPR tabs - see docs/KNOWN_LIMITATIONS.md.
+  assessmentNote: string;
   factors: {
     authentication: {
       score: number;
@@ -18,8 +23,10 @@ export interface SecurityPosture {
       details: {
         failedLoginRate: number;
         accountLockouts: number;
+        // Accurate, not a placeholder: MFA genuinely isn't implemented yet (see
+        // README's Roadmap section) - this is always false because the feature
+        // doesn't exist, not an unmeasured guess at a real value.
         mfaEnabled: boolean;
-        sessionSecurity: number;
       };
     };
     threatIntelligence: {
@@ -28,7 +35,6 @@ export interface SecurityPosture {
       details: {
         criticalThreats: number;
         blockedIPs: number;
-        threatResponseTime: number;
       };
     };
     rateLimiting: {
@@ -36,16 +42,12 @@ export interface SecurityPosture {
       status: 'excellent' | 'good' | 'fair' | 'poor';
       details: {
         violations: number;
-        coverage: number; // % of endpoints protected
       };
     };
     auditLogging: {
       score: number;
       status: 'excellent' | 'good' | 'fair' | 'poor';
-      details: {
-        logCoverage: number;
-        retentionDays: number;
-      };
+      details: Record<string, never>;
     };
     incidentResponse: {
       score: number;
@@ -241,6 +243,11 @@ export class ComplianceService {
     return {
       overallScore,
       grade,
+      assessmentNote:
+        "The auditLogging factor's score is a fixed baseline, not a live measurement " +
+        '(this codebase does not yet compute real audit log coverage or enforce a ' +
+        'specific retention period). Authentication, threat intelligence, rate ' +
+        'limiting, and incident response scores all reflect live telemetry.',
       factors: {
         authentication: {
           score: authScore,
@@ -248,8 +255,7 @@ export class ComplianceService {
           details: {
             failedLoginRate: metrics.authStats?.failedLogins ?? 0,
             accountLockouts: metrics.authStats?.accountLockouts ?? 0,
-            mfaEnabled: false, // TODO: Check if MFA is enabled
-            sessionSecurity: 85, // TODO: Calculate based on session management
+            mfaEnabled: false, // Accurate: MFA is not implemented (see README Roadmap), not a guess
           },
         },
         threatIntelligence: {
@@ -258,7 +264,6 @@ export class ComplianceService {
           details: {
             criticalThreats: threatStats.criticalThreats,
             blockedIPs: threatStats.blockedIPs,
-            threatResponseTime: 0, // TODO: Calculate from threat creation to block time
           },
         },
         rateLimiting: {
@@ -266,16 +271,12 @@ export class ComplianceService {
           status: this.getStatus(rateLimitScore),
           details: {
             violations: metrics.rateLimitStats?.violations ?? 0,
-            coverage: 90, // TODO: Calculate actual coverage
           },
         },
         auditLogging: {
           score: auditScore,
           status: this.getStatus(auditScore),
-          details: {
-            logCoverage: 95, // TODO: Calculate actual coverage
-            retentionDays: 90, // TODO: Get from config
-          },
+          details: {},
         },
         incidentResponse: {
           score: incidentScore,
@@ -346,26 +347,27 @@ export class ComplianceService {
       posture = {
         overallScore: 0,
         grade: 'F',
+        assessmentNote: 'Unavailable - error calculating security posture.',
         factors: {
           authentication: {
             score: 0,
             status: 'poor',
-            details: { failedLoginRate: 0, accountLockouts: 0, mfaEnabled: false, sessionSecurity: 0 },
+            details: { failedLoginRate: 0, accountLockouts: 0, mfaEnabled: false },
           },
           threatIntelligence: {
             score: 0,
             status: 'poor',
-            details: { criticalThreats: 0, blockedIPs: 0, threatResponseTime: 0 },
+            details: { criticalThreats: 0, blockedIPs: 0 },
           },
           rateLimiting: {
             score: 0,
             status: 'poor',
-            details: { violations: 0, coverage: 0 },
+            details: { violations: 0 },
           },
           auditLogging: {
             score: 0,
             status: 'poor',
-            details: { logCoverage: 0, retentionDays: 0 },
+            details: {},
           },
           incidentResponse: {
             score: 0,

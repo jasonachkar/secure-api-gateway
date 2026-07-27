@@ -71,8 +71,12 @@ test.describe('Reviewer journey (one-click demo)', () => {
     // trigger a lockout, which shares RATE_LIMIT_AUTH_MAX with every other login in this
     // suite and would starve the Compliance test's real admin login below.
     await page.goto('/guided-scenarios');
+    await page.waitForLoadState('networkidle');
     const awsCard = page.locator('.ui-card', { hasText: 'AWS privileged activity' });
-    await awsCard.getByText('Run scenario').click();
+    const runButton = awsCard.getByText('Run scenario');
+    await expect(runButton).toBeVisible({ timeout: 15000 });
+    await runButton.scrollIntoViewIfNeeded();
+    await runButton.click();
     // Wait for the scenario's own "View investigation" result link (a real completion
     // signal from the run finishing) rather than a fixed timeout. 30s, not 15s - a CI
     // runner's first heavy request after a cold Node start can be slower than a warm

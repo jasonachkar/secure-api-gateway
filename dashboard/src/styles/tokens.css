@@ -140,6 +140,7 @@
   --color-map-empty: #e2e8f0;
   --color-map-border: #ffffff;
   --color-map-hover: #f59e0b;
+  --color-map-hover-empty: #cbd5e1;
   --color-map-level-1: #fed7aa;
   --color-map-level-2: #fb923c;
   --color-map-level-3: #dc2626;
@@ -264,9 +265,14 @@
   --color-map-empty: #29405e;
   --color-map-border: #1e293b;
   --color-map-hover: #fbbf24;
+  --color-map-hover-empty: #3a4f6e;
+  /* Escalating heat ramp - each step must read as *more* alarming than the last. A pale/
+     light red for the top tier (previously #f87171) actually reads as calmer than the
+     mid-tier's vivid orange, inverting the intended severity signal - the top tier needs
+     to be the most saturated, not the lightest. */
   --color-map-level-1: #b45309;
   --color-map-level-2: #ea580c;
-  --color-map-level-3: #f87171;
+  --color-map-level-3: #ef4444;
 
   /* Re-balanced status pairs: a translucent tint of the accent color over the dark page
      (rather than an unmodified light-50/100 pastel, which would read as a bright island)

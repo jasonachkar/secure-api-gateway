@@ -104,7 +104,7 @@ export function WorldMapHeatmap({ threats }: WorldMapHeatmapProps) {
                     default: { outline: 'none' },
                     hover: {
                       outline: 'none',
-                      fill: 'var(--color-map-hover)',
+                      fill: aggregate ? 'var(--color-map-hover)' : 'var(--color-map-hover-empty)',
                       cursor: aggregate ? 'pointer' : 'default',
                     },
                     pressed: { outline: 'none' },

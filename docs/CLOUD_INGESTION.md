@@ -5,7 +5,7 @@
 Every way a security event enters this system - a live AWS/GCP poll, a manual fixture
 replay, or a guided scenario - runs through the exact same function:
 `ingestProviderEvent()` in
-[`src/modules/ingestion/security-ingestion.pipeline.ts`](../src/modules/ingestion/security-ingestion.pipeline.ts).
+[`src/modules/ingestion/security-ingestion.pipeline.ts`](https://github.com/jasonachkar/secure-api-gateway/blob/main/src/modules/ingestion/security-ingestion.pipeline.ts).
 
 ```
 raw provider payload
@@ -30,10 +30,10 @@ things that differ between entry points are:
 
 | Entry point | Provenance | Driver |
 | --- | --- | --- |
-| `POST /admin/security/replay` | `replay` | [`src/modules/ingestion/replay.ts`](../src/modules/ingestion/replay.ts) - loads a fixture via the allowlisted catalogue (see `docs/KNOWN_LIMITATIONS.md`), calls `ingestProviderEvent()`. |
-| Guided scenarios | `replay` (AWS/GCP) or `live` (gateway) | [`src/modules/scenarios/scenario.service.ts`](../src/modules/scenarios/scenario.service.ts) - same `replayFixtureThroughPipeline()` for cloud scenarios; the gateway scenario drives real HTTP requests through the actual auth route. |
-| AWS CloudWatch polling | `live` | [`src/modules/ingestion/adapters/cloudwatch.adapter.ts`](../src/modules/ingestion/adapters/cloudwatch.adapter.ts) |
-| GCP Cloud Logging polling | `live` | [`src/modules/ingestion/adapters/gcp-logging.adapter.ts`](../src/modules/ingestion/adapters/gcp-logging.adapter.ts) |
+| `POST /admin/security/replay` | `replay` | [`src/modules/ingestion/replay.ts`](https://github.com/jasonachkar/secure-api-gateway/blob/main/src/modules/ingestion/replay.ts) - loads a fixture via the allowlisted catalogue (see `docs/KNOWN_LIMITATIONS.md`), calls `ingestProviderEvent()`. |
+| Guided scenarios | `replay` (AWS/GCP) or `live` (gateway) | [`src/modules/scenarios/scenario.service.ts`](https://github.com/jasonachkar/secure-api-gateway/blob/main/src/modules/scenarios/scenario.service.ts) - same `replayFixtureThroughPipeline()` for cloud scenarios; the gateway scenario drives real HTTP requests through the actual auth route. |
+| AWS CloudWatch polling | `live` | [`src/modules/ingestion/adapters/cloudwatch.adapter.ts`](https://github.com/jasonachkar/secure-api-gateway/blob/main/src/modules/ingestion/adapters/cloudwatch.adapter.ts) |
+| GCP Cloud Logging polling | `live` | [`src/modules/ingestion/adapters/gcp-logging.adapter.ts`](https://github.com/jasonachkar/secure-api-gateway/blob/main/src/modules/ingestion/adapters/gcp-logging.adapter.ts) |
 | Azure | `replay` only | No live connector exists - see below. |
 
 ## AWS: CloudWatch Logs -> canonical pipeline
@@ -140,7 +140,7 @@ Credentials or Workload Identity Federation.
 ## Azure: replay only
 
 There is no live Azure connector. `AzureSentinelAdapter`
-([`src/modules/ingestion/adapters/azure-sentinel.adapter.ts`](../src/modules/ingestion/adapters/azure-sentinel.adapter.ts))
+([`src/modules/ingestion/adapters/azure-sentinel.adapter.ts`](https://github.com/jasonachkar/secure-api-gateway/blob/main/src/modules/ingestion/adapters/azure-sentinel.adapter.ts))
 is intentionally a two-line class that only reports whether `AZURE_SENTINEL_WORKSPACE` is
 set - it has no `poll()`, makes no SDK calls, and its "configured" status must never be
 read as "Sentinel is connected." Azure Activity Log fixtures are normalized through the
@@ -169,7 +169,7 @@ Both live adapters track, per-adapter (`IngestionAdapterStatus`, exposed via
 
 Pipeline-wide metrics (ingestion delay, detection evaluation/match counts, investigation
 creation/dedup counts) are tracked in
-[`src/modules/security/pipeline-metrics.ts`](../src/modules/security/pipeline-metrics.ts)
+[`src/modules/security/pipeline-metrics.ts`](https://github.com/jasonachkar/secure-api-gateway/blob/main/src/modules/security/pipeline-metrics.ts)
 and reflect the canonical pipeline regardless of which entry point produced the event.
 
 ## What was unified

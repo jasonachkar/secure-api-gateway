@@ -997,6 +997,8 @@ body {
 
 .metric-card__trend-icon.metric-card__trend--good { color: var(--color-success-600); }
 .metric-card__trend-icon.metric-card__trend--bad { color: var(--color-error-600); }
+:root[data-theme='dark'] .metric-card__trend-icon.metric-card__trend--good { color: var(--color-success-400); }
+:root[data-theme='dark'] .metric-card__trend-icon.metric-card__trend--bad { color: var(--color-error-400); }
 
 .metric-card__trend-label {
   font-size: 11px;
@@ -1007,6 +1009,8 @@ body {
 
 .metric-card__trend-label.metric-card__trend--good { color: var(--color-success-700); }
 .metric-card__trend-label.metric-card__trend--bad { color: var(--color-error-700); }
+:root[data-theme='dark'] .metric-card__trend-label.metric-card__trend--good { color: var(--color-success-400); }
+:root[data-theme='dark'] .metric-card__trend-label.metric-card__trend--bad { color: var(--color-error-400); }
 
 .metric-card__subtitle {
   font-size: 12px;
@@ -1172,14 +1176,42 @@ body {
   transition: background-color var(--transition-normal), transform var(--transition-normal);
 }
 
+/* Both modifiers below are a fixed light tint in both themes (semantic colors don't
+   change with theme). .live-feed__item-type/-time/-detail and .live-feed__message all
+   set their own theme-reactive text color (light in dark mode) by default, which is
+   correct against the default .live-feed__item background (which does darken) but would
+   be near-invisible against these fixed-light warning/critical backgrounds - the same
+   bug found and fixed on .session-card--concurrent below. */
 .live-feed__item--warning {
   border-left-color: var(--color-warning-400, var(--color-warning-500));
   background-color: var(--color-warning-50);
 }
 
+.live-feed__item--warning .live-feed__item-type,
+.live-feed__item--warning .live-feed__message {
+  color: var(--color-warning-900);
+}
+
+.live-feed__item--warning .live-feed__item-time,
+.live-feed__item--warning .live-feed__item-detail,
+.live-feed__item--warning .live-feed__user {
+  color: var(--color-warning-700);
+}
+
 .live-feed__item--critical {
   border-left-color: var(--color-error-500);
   background-color: var(--color-error-50);
+}
+
+.live-feed__item--critical .live-feed__item-type,
+.live-feed__item--critical .live-feed__message {
+  color: var(--color-error-900);
+}
+
+.live-feed__item--critical .live-feed__item-time,
+.live-feed__item--critical .live-feed__item-detail,
+.live-feed__item--critical .live-feed__user {
+  color: var(--color-error-700);
 }
 
 .live-feed__item:hover {
@@ -1467,14 +1499,25 @@ body {
 .threat-card--medium, .incident-card--medium { border-left-color: var(--color-warning-500); }
 .threat-card--low, .incident-card--low { border-left-color: var(--color-neutral-400); }
 
-.threat-card--blocked {
-  border-left-color: var(--color-error-600);
-  background-color: var(--color-error-50);
-}
-
+/* Fixed light tint in both themes (semantic colors don't change with theme) - text
+   pinned dark too, same fix and same reasoning as .session-card--concurrent above. */
+.threat-card--blocked,
 .user-card--locked {
   border-left-color: var(--color-error-600);
   background-color: var(--color-error-50);
+  color: var(--color-error-900);
+}
+
+.threat-card--blocked .threat-card__meta-label,
+.user-card--locked .threat-card__meta-label {
+  color: var(--color-error-700);
+}
+
+.threat-card--blocked .section-title,
+.threat-card--blocked .text-muted,
+.user-card--locked .section-title,
+.user-card--locked .text-muted {
+  color: var(--color-error-900);
 }
 
 .threat-card__header,
@@ -1526,6 +1569,11 @@ body {
 .threat-score--high { color: #ea580c; }
 .threat-score--medium { color: var(--color-warning-600); }
 .threat-score--low { color: var(--color-success-600); }
+
+:root[data-theme='dark'] .threat-score--critical { color: var(--color-error-400); }
+:root[data-theme='dark'] .threat-score--high { color: #fb923c; }
+:root[data-theme='dark'] .threat-score--medium { color: var(--color-warning-400); }
+:root[data-theme='dark'] .threat-score--low { color: var(--color-success-400); }
 
 .threat-pattern__description {
   color: var(--color-text-secondary);
@@ -1779,7 +1827,10 @@ body {
   position: sticky;
   top: 0;
   z-index: 20;
-  background-color: rgba(255, 255, 255, 0.85);
+  /* Was a hardcoded white translucency - rendered as a bright white bar over the dark
+     hero gradient in dark mode. color-mix() keeps the frosted-glass look while tracking
+     the current theme's actual background color. */
+  background-color: color-mix(in srgb, var(--color-bg-primary) 85%, transparent);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--color-border-light);
 }
@@ -1958,6 +2009,14 @@ body {
 .text-success { color: var(--color-success-600); }
 .text-warning { color: var(--color-warning-600); }
 .text-muted { color: var(--color-text-tertiary); }
+
+/* These sit directly on whatever theme-reactive surface surrounds them (unlike a
+   self-contained badge with its own fixed light-tint background), so - same reasoning
+   as .github-status above - they need a lighter shade in dark mode to keep WCAG AA
+   contrast against a near-black page background. */
+:root[data-theme='dark'] .text-danger { color: var(--color-error-400); }
+:root[data-theme='dark'] .text-success { color: var(--color-success-400); }
+:root[data-theme='dark'] .text-warning { color: var(--color-warning-400); }
 .text-mono {
   font-family: ui-monospace, SFMono-Regular, SFMono, Menlo, Consolas, monospace;
 }
@@ -2002,6 +2061,10 @@ body {
 .toast--success .toast__icon { color: var(--color-success-600); }
 .toast--error .toast__icon { color: var(--color-error-600); }
 .toast--info .toast__icon { color: var(--color-primary-600); }
+
+:root[data-theme='dark'] .toast--success .toast__icon { color: var(--color-success-400); }
+:root[data-theme='dark'] .toast--error .toast__icon { color: var(--color-error-400); }
+:root[data-theme='dark'] .toast--info .toast__icon { color: var(--color-primary-400); }
 
 .toast__message {
   flex: 1;
@@ -2423,6 +2486,10 @@ body {
 .request-inspector__status--4xx { color: var(--color-warning-600); }
 .request-inspector__status--5xx { color: var(--color-error-600); }
 
+:root[data-theme='dark'] .request-inspector__status--2xx { color: var(--color-success-400); }
+:root[data-theme='dark'] .request-inspector__status--4xx { color: var(--color-warning-400); }
+:root[data-theme='dark'] .request-inspector__status--5xx { color: var(--color-error-400); }
+
 @media (prefers-reduced-motion: reduce) {
   .simulator-spin, .request-inspector__row--flash {
     animation: none;
@@ -2511,12 +2578,19 @@ body {
   font-weight: 600;
 }
 
-/* success-600/error-600 measured 3.14:1 / ~3.8:1 against this card's light background
-   (WCAG 2 AA needs 4.5:1 for normal text) - 700 clears both with margin. */
+/* success-600/error-600 measured 3.14:1 / ~3.8:1 against this card's light-mode
+   background (WCAG 2 AA needs 4.5:1 for normal text) - 700 clears both with margin.
+   .github-status sits on --color-bg-secondary, which is itself theme-reactive (unlike
+   the fixed-tint badge/alert pattern used elsewhere) - so unlike those, this text color
+   needs to invert per theme too: 700-weight shades that clear contrast against a light
+   background measure only ~3.5:1 against dark mode's near-black background. */
 .github-status__build--passing { color: var(--color-success-700); }
 .github-status__build--failing { color: var(--color-error-700); }
 .github-status__build--loading,
 .github-status__build--unknown { color: var(--color-text-tertiary); }
+
+:root[data-theme='dark'] .github-status__build--passing { color: var(--color-success-400); }
+:root[data-theme='dark'] .github-status__build--failing { color: var(--color-error-400); }
 
 .github-status__link {
   display: inline-flex;
@@ -2528,6 +2602,8 @@ body {
   text-decoration: none;
   margin-top: 4px;
 }
+
+:root[data-theme='dark'] .github-status__link { color: var(--color-primary-400); }
 
 .github-status__link:hover {
   text-decoration: underline;
@@ -2677,7 +2753,22 @@ body {
 
 .session-card--concurrent {
   border-left-color: var(--color-warning-500);
+  /* Fixed light warning tint in both themes (semantic colors don't change with theme -
+     see styles/tokens.css). Text must be pinned dark here too: .threat-card__meta-label/
+     .section-title/.text-muted below all set their own theme-reactive color (light in
+     dark mode), which would otherwise render near-invisible against this fixed light
+     background - a real bug found by screenshotting this page in dark mode. */
   background-color: var(--color-warning-50);
+  color: var(--color-warning-900);
+}
+
+.session-card--concurrent .threat-card__meta-label {
+  color: var(--color-warning-700);
+}
+
+.session-card--concurrent .section-title,
+.session-card--concurrent .text-muted {
+  color: var(--color-warning-900);
 }
 
 .session-card__flags {

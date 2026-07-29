@@ -20,7 +20,6 @@ import { Card } from '../components/Card';
 import { SectionHeader } from '../components/SectionHeader';
 import { useSSE } from '../hooks/useSSE';
 import { adminApi } from '../api/admin';
-import { theme } from '../styles/theme';
 import type { IngestionStatus, SecurityPosture } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -284,29 +283,8 @@ export function Dashboard() {
         <AttackSimulator />
 
         {posture && (
-          <div style={{
-            backgroundColor: theme.colors.background.primary,
-            padding: theme.spacing.lg,
-            borderRadius: theme.borderRadius.lg,
-            boxShadow: theme.shadows.md,
-            marginBottom: theme.spacing.xl,
-            display: 'flex',
-            alignItems: 'center',
-            gap: theme.spacing.lg,
-          }}>
-            <div style={{
-              width: '80px',
-              height: '80px',
-              borderRadius: '50%',
-              backgroundColor: posture.grade === 'A' ? theme.colors.success[100] : posture.grade === 'B' ? theme.colors.primary[100] : posture.grade === 'C' ? theme.colors.warning[100] : theme.colors.error[100],
-              color: posture.grade === 'A' ? theme.colors.success[800] : posture.grade === 'B' ? theme.colors.primary[800] : posture.grade === 'C' ? theme.colors.warning[800] : theme.colors.error[800],
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: theme.typography.fontSize['4xl'],
-              fontWeight: theme.typography.fontWeight.bold,
-              border: `3px solid ${posture.grade === 'A' ? theme.colors.success[500] : posture.grade === 'B' ? theme.colors.primary[500] : posture.grade === 'C' ? theme.colors.warning[500] : theme.colors.error[500]}`,
-            }}>
+          <div className="ui-card posture-summary">
+            <div className={`posture-grade posture-grade--${posture.grade}`}>
               {posture.grade}
             </div>
             <div className="posture-summary__content">
@@ -328,41 +306,20 @@ export function Dashboard() {
         )}
 
         {ingestionStatus && (
-          <section style={{ marginBottom: theme.spacing.xl }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: theme.spacing.md
-            }}>
+          <section className="dashboard-ingestion-section">
+            <div className="dashboard-ingestion-section__header">
               <div>
-                <h2 style={{ ...theme.typography.h3 }}>Ingestion Status</h2>
-                <p style={{ ...theme.typography.small, color: theme.colors.text.secondary }}>
+                <h2 className="section-title">Ingestion Status</h2>
+                <p className="section-subtitle">
                   Normalized event pipeline health and adapter readiness
                 </p>
               </div>
-              <span style={{
-                padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
-                borderRadius: theme.borderRadius.md,
-                backgroundColor: ingestionStatus.storage.redisConnected
-                  ? theme.colors.success[100]
-                  : theme.colors.error[100],
-                color: ingestionStatus.storage.redisConnected
-                  ? theme.colors.success[800]
-                  : theme.colors.error[800],
-                fontSize: theme.typography.fontSize.sm,
-                fontWeight: theme.typography.fontWeight.medium,
-              }}>
+              <span className={`ui-badge ${ingestionStatus.storage.redisConnected ? 'ui-badge--success' : 'ui-badge--error'}`}>
                 Redis {ingestionStatus.storage.redisConnected ? 'Connected' : 'Disconnected'}
               </span>
             </div>
 
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: theme.spacing.lg,
-              marginBottom: theme.spacing.lg
-            }}>
+            <div className="page-grid page-grid--cards" style={{ marginBottom: 'var(--space-lg)' }}>
               <MetricCard
                 title="Normalized Events"
                 value={ingestionStatus.storage.totalEvents}
@@ -381,43 +338,18 @@ export function Dashboard() {
               />
             </div>
 
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-              gap: theme.spacing.md
-            }}>
+            <div className="page-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
               {ingestionStatus.adapters.map(adapter => (
-                <div key={adapter.provider} style={{
-                  backgroundColor: theme.colors.background.primary,
-                  padding: theme.spacing.md,
-                  borderRadius: theme.borderRadius.lg,
-                  boxShadow: theme.shadows.sm,
-                  border: `1px solid ${theme.colors.border.light}`,
-                }}>
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    marginBottom: theme.spacing.xs
-                  }}>
-                    <div style={{ fontWeight: theme.typography.fontWeight.semibold }}>
+                <div key={adapter.provider} className="ui-card dashboard-adapter-card">
+                  <div className="dashboard-adapter-card__header">
+                    <div className="dashboard-adapter-card__name">
                       {adapter.name}
                     </div>
-                    <span style={{
-                      padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
-                      borderRadius: theme.borderRadius.md,
-                      backgroundColor: adapter.healthy ? theme.colors.success[100] : theme.colors.warning[100],
-                      color: adapter.healthy ? theme.colors.success[800] : theme.colors.warning[800],
-                      fontSize: theme.typography.fontSize.xs,
-                      fontWeight: theme.typography.fontWeight.medium,
-                    }}>
+                    <span className={`ui-badge ${adapter.healthy ? 'ui-badge--success' : 'ui-badge--warning'}`}>
                       {adapter.configured ? 'Configured' : 'Needs setup'}
                     </span>
                   </div>
-                  <div style={{
-                    ...theme.typography.small,
-                    color: theme.colors.text.secondary,
-                  }}>
+                  <div className="section-subtitle">
                     {adapter.detail || 'Status unavailable'}
                   </div>
                 </div>

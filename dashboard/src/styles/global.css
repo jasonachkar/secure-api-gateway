@@ -1,6 +1,8 @@
 /**
  * Global Styles
  * CSS reset, typography, utilities, and custom scrollbar
+ * All colors here are semantic tokens from styles/tokens.css - see that file for the
+ * light/dark values.
  */
 
 /* CSS Reset */
@@ -21,8 +23,8 @@ body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   font-size: 14px;
   line-height: 1.5;
-  color: #0f172a;
-  background-color: #f8fafc;
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-canvas);
 }
 
 /* Smooth scroll */
@@ -32,13 +34,13 @@ html {
 
 /* Focus states for accessibility */
 *:focus-visible {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
 
 button:focus-visible,
 a:focus-visible {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
 
@@ -49,23 +51,55 @@ a:focus-visible {
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: var(--color-scrollbar-track);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: var(--color-scrollbar-thumb);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: var(--color-scrollbar-thumb-hover);
 }
 
 /* Firefox scrollbar */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 #f1f5f9;
+  scrollbar-color: var(--color-scrollbar-thumb) var(--color-scrollbar-track);
+}
+
+/* Forms: placeholders, disabled state, browser autofill, native selects */
+::placeholder {
+  color: var(--color-text-tertiary);
+  opacity: 1;
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled,
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+select {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-primary);
+  accent-color: var(--color-primary-500);
+}
+
+/* Chrome/Safari/Edge autofill: overrides the browser's default white-background,
+   black-text UA style via the (very long) transition trick, since `background-color`
+   itself is ignored on autofilled inputs. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--color-text-primary);
+  -webkit-box-shadow: 0 0 0 1000px var(--color-bg-primary) inset;
+  box-shadow: 0 0 0 1000px var(--color-bg-primary) inset;
+  transition: background-color 9999s ease-in-out 0s;
 }
 
 /* Typography utilities */
@@ -137,14 +171,14 @@ a:focus-visible {
 .p-xl { padding: 32px; }
 
 /* Color utilities */
-.text-primary { color: #0f172a; }
-.text-secondary { color: #475569; }
-.text-tertiary { color: #64748b; }
-.text-inverse { color: #ffffff; }
+.text-primary { color: var(--color-text-primary); }
+.text-secondary { color: var(--color-text-secondary); }
+.text-tertiary { color: var(--color-text-tertiary); }
+.text-inverse { color: var(--color-text-inverse); }
 
-.bg-primary { background-color: #ffffff; }
-.bg-secondary { background-color: #f8fafc; }
-.bg-tertiary { background-color: #f1f5f9; }
+.bg-primary { background-color: var(--color-bg-primary); }
+.bg-secondary { background-color: var(--color-bg-secondary); }
+.bg-tertiary { background-color: var(--color-bg-tertiary); }
 
 /* Animation utilities */
 @keyframes fadeIn {
@@ -201,9 +235,9 @@ a:focus-visible {
 .skeleton {
   background: linear-gradient(
     90deg,
-    var(--color-neutral-100, #f1f5f9) 0px,
-    var(--color-neutral-200, #e2e8f0) 40px,
-    var(--color-neutral-100, #f1f5f9) 80px
+    var(--color-bg-subtle) 0px,
+    var(--color-bg-hover) 40px,
+    var(--color-bg-subtle) 80px
   );
   background-size: 1000px;
   animation: shimmer 2s infinite;
@@ -219,5 +253,3 @@ a:focus-visible {
     background-position: 0 0;
   }
 }
-
-

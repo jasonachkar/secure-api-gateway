@@ -5,7 +5,6 @@
 
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { format } from 'date-fns';
-import { theme } from '../styles/theme';
 import { ChartTooltip } from './ChartTooltip';
 
 interface ResponseTimeDataPoint {
@@ -43,24 +42,24 @@ export function ResponseTimeChart({ data, title = 'Response Time Percentiles', i
       <h3 className="chart-card__title">{title}</h3>
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
-          <XAxis 
-            dataKey="time" 
-            stroke={theme.colors.text.tertiary} 
-            tick={{ className: 'chart-axis-tick' }}
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-chart-grid)" />
+          <XAxis
+            dataKey="time"
+            stroke="var(--color-chart-axis)"
+            tick={{ fill: 'var(--color-chart-axis)' }}
           />
-          <YAxis 
-            stroke={theme.colors.text.tertiary} 
-            tick={{ className: 'chart-axis-tick' }}
-            label={{ 
-              value: 'ms', 
-              angle: -90, 
+          <YAxis
+            stroke="var(--color-chart-axis)"
+            tick={{ fill: 'var(--color-chart-axis)' }}
+            label={{
+              value: 'ms',
+              angle: -90,
               position: 'insideLeft',
-              className: 'chart-axis-label',
-            }} 
+              fill: 'var(--color-chart-axis)',
+            }}
           />
           <Tooltip content={<ChartTooltip />} />
-          <Legend iconType="line" />
+          <Legend iconType="line" wrapperStyle={{ color: 'var(--color-chart-legend)' }} />
           <Line
             type="monotone"
             dataKey="P50 (Median)"

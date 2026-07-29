@@ -14,7 +14,6 @@ import { SectionHeader } from '../components/SectionHeader';
 import { Table, TableHeader, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/Table';
 import { AuditReportExport } from '../components/AuditReportExport';
 import { adminApi } from '../api/admin';
-import { theme } from '../styles/theme';
 import type { AdminAuditLogEntry } from '../types';
 import { format } from 'date-fns';
 
@@ -128,51 +127,22 @@ export function AuditLogs() {
 
   return (
     <Layout>
-      <div>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: theme.spacing.lg,
-          }}
-        >
-          <div>
-            <h1
-              style={{
-                ...theme.typography.h1,
-                fontSize: theme.typography.fontSize['3xl'],
-                marginBottom: theme.spacing.sm,
-              }}
-            >
-              Audit Logs
-            </h1>
-            <p
-              style={{
-                ...theme.typography.body,
-                color: theme.colors.text.secondary,
-              }}
-            >
-              Administrative action history across the platform
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: theme.spacing.sm, alignItems: 'flex-start' }}>
-            <AuditReportExport />
-            <Button variant="ghost" onClick={() => fetchLogs()} disabled={loading}>
-              <RefreshCw size={14} aria-hidden="true" style={{ marginRight: 6 }} />
-              Refresh
-            </Button>
-          </div>
-        </div>
+      <div className="page-stack">
+        <SectionHeader
+          title="Audit Logs"
+          subtitle="Administrative action history across the platform"
+          actions={
+            <>
+              <AuditReportExport />
+              <Button variant="ghost" onClick={() => fetchLogs()} disabled={loading}>
+                <RefreshCw size={14} aria-hidden="true" style={{ marginRight: 6 }} />
+                Refresh
+              </Button>
+            </>
+          }
+        />
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: theme.spacing.lg,
-            marginBottom: theme.spacing.xl,
-          }}
-        >
+        <div className="page-grid page-grid--cards">
           <MetricCard title="Total Actions" value={stats.total.toLocaleString()} color="blue" />
           <MetricCard
             title="Incident Actions"
@@ -183,34 +153,15 @@ export function AuditLogs() {
           <MetricCard title="Top Action" value={stats.topAction} color="blue" />
         </div>
 
-        <div
-          style={{
-            background: theme.colors.background.primary,
-            borderRadius: theme.borderRadius.lg,
-            padding: theme.spacing.lg,
-            marginBottom: theme.spacing.lg,
-            border: `1px solid ${theme.colors.border.light}`,
-          }}
-        >
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-              gap: theme.spacing.md,
-              marginBottom: theme.spacing.md,
-            }}
-          >
+        <Card>
+          <div className="form-grid audit-logs__filter-grid">
             <input
               type="text"
               aria-label="Filter by actor ID"
               placeholder="Actor ID"
               value={filters.actorId || ''}
               onChange={(e) => handleFilterChange('actorId', e.target.value)}
-              style={{
-                padding: theme.spacing.sm,
-                border: `1px solid ${theme.colors.border.medium}`,
-                borderRadius: theme.borderRadius.sm,
-              }}
+              className="form-control"
             />
             <input
               type="text"
@@ -218,11 +169,7 @@ export function AuditLogs() {
               placeholder="Action (e.g. incident.update)"
               value={filters.action || ''}
               onChange={(e) => handleFilterChange('action', e.target.value)}
-              style={{
-                padding: theme.spacing.sm,
-                border: `1px solid ${theme.colors.border.medium}`,
-                borderRadius: theme.borderRadius.sm,
-              }}
+              className="form-control"
             />
             <input
               type="text"
@@ -230,22 +177,11 @@ export function AuditLogs() {
               placeholder="Incident ID"
               value={filters.incidentId || ''}
               onChange={(e) => handleFilterChange('incidentId', e.target.value)}
-              style={{
-                padding: theme.spacing.sm,
-                border: `1px solid ${theme.colors.border.medium}`,
-                borderRadius: theme.borderRadius.sm,
-              }}
+              className="form-control"
             />
           </div>
 
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: theme.spacing.sm,
-              alignItems: 'center',
-            }}
-          >
+          <div className="filter-row" style={{ marginTop: 'var(--space-md)' }}>
             {DATE_PRESETS.map((preset) => (
               <Button
                 key={preset.label}
@@ -259,134 +195,89 @@ export function AuditLogs() {
               Clear Filters
             </Button>
           </div>
-        </div>
+        </Card>
 
-        <div
-          style={{
-            background: theme.colors.background.primary,
-            borderRadius: theme.borderRadius.lg,
-            border: `1px solid ${theme.colors.border.light}`,
-            overflow: 'hidden',
-          }}
-        >
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: theme.colors.background.secondary }}>
-                  {['Timestamp', 'Actor', 'Action', 'Incident'].map((header) => (
-                    <th
-                      key={header}
-                      style={{
-                        textAlign: 'left',
-                        padding: theme.spacing.md,
-                        fontSize: theme.typography.fontSize.sm,
-                        color: theme.colors.text.secondary,
-                        borderBottom: `1px solid ${theme.colors.border.light}`,
-                      }}
-                    >
-                      {header}
-                    </th>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHeaderCell>Timestamp</TableHeaderCell>
+              <TableHeaderCell>Actor</TableHeaderCell>
+              <TableHeaderCell>Action</TableHeaderCell>
+              <TableHeaderCell>Incident</TableHeaderCell>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
+              Array.from({ length: 8 }).map((_, rowIdx) => (
+                <TableRow key={`skeleton-${rowIdx}`}>
+                  {['55%', '70%', '65%', '40%'].map((width, cellIdx) => (
+                    <TableCell key={cellIdx}>
+                      <div className="skeleton" style={{ height: 14, width }} />
+                    </TableCell>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  Array.from({ length: 8 }).map((_, rowIdx) => (
-                    <tr
-                      key={`skeleton-${rowIdx}`}
-                      style={{ borderBottom: `1px solid ${theme.colors.border.light}` }}
-                      aria-hidden="true"
-                    >
-                      {['55%', '70%', '65%', '40%'].map((width, cellIdx) => (
-                        <td key={cellIdx} style={{ padding: theme.spacing.md }}>
-                          <div className="skeleton" style={{ height: 14, width }} />
-                        </td>
-                      ))}
-                    </tr>
-                  ))
-                ) : error ? (
-                  <tr>
-                    <td
-                      colSpan={4}
-                      style={{ padding: theme.spacing.xl, textAlign: 'center' }}
-                    >
-                      {error}
-                    </td>
-                  </tr>
-                ) : logs.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={4}
-                      style={{ padding: theme.spacing.xl, textAlign: 'center' }}
-                    >
-                      No audit entries found.
-                    </td>
-                  </tr>
-                ) : (
-                  logs.map((log) => (
-                    <tr key={log.id} style={{ borderBottom: `1px solid ${theme.colors.border.light}` }}>
-                      <td style={{ padding: theme.spacing.md }}>
-                        {format(new Date(log.timestamp), 'MMM dd, yyyy HH:mm:ss')}
-                      </td>
-                      <td style={{ padding: theme.spacing.md }}>
-                        <div style={{ fontWeight: 600 }}>{log.actor.username}</div>
-                        <div style={{ color: theme.colors.text.secondary, fontSize: theme.typography.fontSize.sm }}>
-                          {log.actor.userId}
-                        </div>
-                      </td>
-                      <td style={{ padding: theme.spacing.md }}>
-                        <div style={{ fontWeight: 600 }}>{log.action}</div>
-                        <div style={{ color: theme.colors.text.secondary, fontSize: theme.typography.fontSize.sm }}>
-                          {log.resource}
-                        </div>
-                      </td>
-                      <td style={{ padding: theme.spacing.md }}>
-                        {log.incidentId ? (
-                          <Link
-                            to={`/incidents?incidentId=${encodeURIComponent(log.incidentId)}`}
-                            style={{ color: theme.colors.primary[500], textDecoration: 'none' }}
-                          >
-                            {log.incidentId}
-                          </Link>
-                        ) : (
-                          <span style={{ color: theme.colors.text.secondary }}>—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                </TableRow>
+              ))
+            ) : error ? (
+              <TableRow>
+                <TableCell colSpan={4} style={{ textAlign: 'center', padding: 'var(--space-xl)' }}>
+                  {error}
+                </TableCell>
+              </TableRow>
+            ) : logs.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={4} style={{ textAlign: 'center', padding: 'var(--space-xl)' }}>
+                  No audit entries found.
+                </TableCell>
+              </TableRow>
+            ) : (
+              logs.map((log) => (
+                <TableRow key={log.id}>
+                  <TableCell>{format(new Date(log.timestamp), 'MMM dd, yyyy HH:mm:ss')}</TableCell>
+                  <TableCell>
+                    <div style={{ fontWeight: 600 }}>{log.actor.username}</div>
+                    <div className="text-secondary text-sm">{log.actor.userId}</div>
+                  </TableCell>
+                  <TableCell>
+                    <div style={{ fontWeight: 600 }}>{log.action}</div>
+                    <div className="text-secondary text-sm">{log.resource}</div>
+                  </TableCell>
+                  <TableCell>
+                    {log.incidentId ? (
+                      <Link
+                        to={`/incidents?incidentId=${encodeURIComponent(log.incidentId)}`}
+                        className="link"
+                      >
+                        {log.incidentId}
+                      </Link>
+                    ) : (
+                      <span className="text-secondary">—</span>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
 
-          <div
-            style={{
-              padding: theme.spacing.md,
-              borderTop: `1px solid ${theme.colors.border.light}`,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
-            <div style={{ color: theme.colors.text.secondary, fontSize: theme.typography.fontSize.sm }}>
-              Showing {startIndex}-{endIndex} of {allLogs.length}
-            </div>
-            <div style={{ display: 'flex', gap: theme.spacing.sm }}>
-              <Button
-                variant="secondary"
-                onClick={() => handleFilterChange('page', Math.max(1, filters.page - 1))}
-                disabled={filters.page === 1}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => handleFilterChange('page', Math.min(totalPages, filters.page + 1))}
-                disabled={filters.page >= totalPages}
-              >
-                Next
-              </Button>
-            </div>
+        <div className="audit-logs__pagination">
+          <div className="text-secondary text-sm">
+            Showing {startIndex}-{endIndex} of {allLogs.length}
+          </div>
+          <div className="action-row">
+            <Button
+              variant="secondary"
+              onClick={() => handleFilterChange('page', Math.max(1, filters.page - 1))}
+              disabled={filters.page === 1}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => handleFilterChange('page', Math.min(totalPages, filters.page + 1))}
+              disabled={filters.page >= totalPages}
+            >
+              Next
+            </Button>
           </div>
         </div>
       </div>

@@ -5,7 +5,6 @@
 
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { format } from 'date-fns';
-import { theme } from '../styles/theme';
 import { ChartTooltip } from './ChartTooltip';
 
 interface DataPoint {
@@ -39,24 +38,24 @@ export function RequestRateChart({ data, title = 'Request Rate', isLoading = fal
       <h3 className="chart-card__title">{title}</h3>
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-chart-grid)" />
           <XAxis
             dataKey="time"
-            stroke={theme.colors.text.tertiary}
-            tick={{ className: 'chart-axis-tick' }}
+            stroke="var(--color-chart-axis)"
+            tick={{ fill: 'var(--color-chart-axis)' }}
           />
           <YAxis
-            stroke={theme.colors.text.tertiary}
-            tick={{ className: 'chart-axis-tick' }}
-            label={{ 
-              value: 'Requests/sec', 
-              angle: -90, 
-              position: 'insideLeft', 
-              className: 'chart-axis-label',
+            stroke="var(--color-chart-axis)"
+            tick={{ fill: 'var(--color-chart-axis)' }}
+            label={{
+              value: 'Requests/sec',
+              angle: -90,
+              position: 'insideLeft',
+              fill: 'var(--color-chart-axis)',
             }}
           />
           <Tooltip content={<ChartTooltip />} />
-          <Legend iconType="line" />
+          <Legend iconType="line" wrapperStyle={{ color: 'var(--color-chart-legend)' }} />
           <Line
             type="monotone"
             dataKey="requests"

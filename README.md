@@ -242,6 +242,17 @@ curl http://localhost:3000/admin/audit-logs/verify -H "Authorization: Bearer <ad
 Full OpenAPI spec: [`openapi/openapi.yaml`](openapi/openapi.yaml) (also served at
 `/docs` when `ENABLE_SWAGGER=true`).
 
+## Documentation site
+
+The full reference documentation - architecture, threat model, detection rules,
+security controls, operations runbooks, and an interactive API reference generated
+from the same OpenAPI spec above - is published at
+**[jasonachkar.github.io/secure-api-gateway](https://jasonachkar.github.io/secure-api-gateway/)**,
+built with [MkDocs](https://www.mkdocs.org/) + [Material](https://squidfunk.github.io/mkdocs-material/)
+from [`mkdocs.yml`](mkdocs.yml) and [`docs/`](docs), deployed by
+[`.github/workflows/docs.yml`](.github/workflows/docs.yml) on every push to `main`.
+To build it locally: `pip install -r docs/requirements.txt && mkdocs serve`.
+
 ## Azure deployment
 
 ```bash
@@ -341,6 +352,7 @@ push/PR.
 | `dependency-review.yml` | Dependency Review (PRs), `npm audit`, SBOM generation |
 | `deploy.yml` | Manual (`workflow_dispatch`): build → push to ACR → `az containerapp update` |
 | `deploy-dashboard.yml` | Deploys the dashboard to Azure Static Web Apps when enabled |
+| `docs.yml` | Builds the MkDocs documentation site and deploys it to GitHub Pages |
 
 All SARIF output uploads to GitHub code scanning. `deploy.yml` documents the exact
 repo secrets it needs and an OIDC federated-credential setup (no long-lived Azure

@@ -26,8 +26,8 @@ const PROVENANCE_VARIANT: Record<string, 'success' | 'info' | 'neutral'> = {
 };
 
 function StepIcon({ status }: { status: 'completed' | 'skipped' | 'failed' }) {
-  if (status === 'completed') return <CheckCircle2 size={16} color="var(--color-success-600, #16a34a)" aria-hidden="true" />;
-  if (status === 'failed') return <XCircle size={16} color="var(--color-danger-600, #dc2626)" aria-hidden="true" />;
+  if (status === 'completed') return <CheckCircle2 size={16} color="var(--color-success-600)" aria-hidden="true" />;
+  if (status === 'failed') return <XCircle size={16} color="var(--color-error-600)" aria-hidden="true" />;
   return <MinusCircle size={16} className="text-muted" aria-hidden="true" />;
 }
 
@@ -161,7 +161,7 @@ export function GuidedScenarios() {
               </ol>
 
               {result && (
-                <div className="text-sm text-muted" style={{ marginTop: 12, borderTop: '1px solid var(--color-border-subtle, #e5e7eb)', paddingTop: 12 }}>
+                <div className="text-sm text-muted" style={{ marginTop: 12, borderTop: '1px solid var(--color-border-light)', paddingTop: 12 }}>
                   Correlation ID: <code className="text-mono">{result.correlationId}</code>
                   {result.investigationIds.length > 0 && (
                     <>

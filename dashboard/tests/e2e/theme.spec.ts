@@ -1,13 +1,18 @@
 /**
  * Dark-mode suite: theme persistence/init (no flash of the wrong theme), the toggle itself
- * on public and authenticated surfaces, OS-preference fallback, and that every reviewer
- * route still renders (and its charts/map re-render) once dark mode is active.
+ * on public and authenticated surfaces, and that every reviewer route still renders (and
+ * its charts/map re-render) once dark mode is active.
+ *
+ * Dark is the unconditional default for a first-time visitor with no stored preference -
+ * ThemeContext.tsx deliberately does not fall back to prefers-color-scheme (most OSes ship
+ * light out of the box, so honoring that would default the app to light for almost
+ * everyone). An explicit stored choice always wins regardless of OS preference.
  *
  * Reuses the shared reviewer storageState from global-setup.ts for authenticated routes,
  * same as reviewer-journey.spec.ts, so this suite doesn't add extra real logins and burn
- * into RATE_LIMIT_AUTH_MAX. The handful of tests that must start logged-out (OS-preference
- * fallback, landing/login toggle) open a fresh context with an empty storageState instead
- * of logging in again.
+ * into RATE_LIMIT_AUTH_MAX. The handful of tests that must start logged-out (default-theme
+ * checks, landing/login toggle) open a fresh context with an empty storageState instead of
+ * logging in again.
  */
 import { test, expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
@@ -25,10 +30,6 @@ async function seedTheme(page: Page, theme: 'light' | 'dark') {
   await page.addInitScript((t) => {
     window.localStorage.setItem('dashboard-theme', t);
   }, theme);
-}
-
-function themeAttr(page: Page) {
-  return page.evaluate(() => document.documentElement.getAttribute('data-theme'));
 }
 
 test.describe('Theme: stored preference is applied before interaction', () => {
@@ -58,7 +59,7 @@ test.describe('Theme: stored preference is applied before interaction', () => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   });
 
-  test('OS dark preference is honored when there is no stored choice', async ({ browser }) => {
+  test('a visitor with no stored preference defaults to dark regardless of OS dark preference', async ({ browser }) => {
     const context = await browser.newContext({
       storageState: { cookies: [], origins: [] },
       colorScheme: 'dark',
@@ -69,14 +70,15 @@ test.describe('Theme: stored preference is applied before interaction', () => {
     await context.close();
   });
 
-  test('OS light preference is honored when there is no stored choice', async ({ browser }) => {
+  test('a visitor with no stored preference defaults to dark even with OS light preference', async ({ browser }) => {
+    // This is the deliberate behavior, not a bug: see the file-level comment above.
     const context = await browser.newContext({
       storageState: { cookies: [], origins: [] },
       colorScheme: 'light',
     });
     const page = await context.newPage();
     await page.goto('/');
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await context.close();
   });
 });
@@ -86,29 +88,30 @@ test.describe('Theme: toggle, persistence, navigation', () => {
   // navigated once - addInitScript re-runs on every subsequent navigation (including
   // page.reload()), which would re-seed over whatever the app itself just persisted and
   // defeat the point of a real persistence test. They rely on the shared reviewer
-  // storageState carrying no stored theme, so the app starts from its OS-preference
-  // fallback (the default Playwright colorScheme is 'light').
+  // storageState carrying no stored theme, so the app starts from its default (dark - see
+  // the file-level comment above), then toggles to light to prove an explicit choice
+  // overrides that default and survives navigation/reload.
 
   test('the sidebar toggle changes the active theme and persists across reload', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-
-    await page.getByRole('button', { name: 'Switch to dark mode' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-    await expect.poll(() => page.evaluate((k) => localStorage.getItem(k), STORAGE_KEY)).toBe('dark');
+
+    await page.getByRole('button', { name: 'Switch to light mode' }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect.poll(() => page.evaluate((k) => localStorage.getItem(k), STORAGE_KEY)).toBe('light');
 
     await page.reload();
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-    await expect(page.getByRole('button', { name: 'Switch to light mode' })).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect(page.getByRole('button', { name: 'Switch to dark mode' })).toBeVisible();
 
     // Leave the shared reviewer session the way other tests in this suite expect it.
-    await page.getByRole('button', { name: 'Switch to light mode' }).click();
+    await page.getByRole('button', { name: 'Switch to dark mode' }).click();
   });
 
   test('the choice survives client-side navigation between authenticated routes', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: 'Switch to dark mode' }).click();
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await page.getByRole('button', { name: 'Switch to light mode' }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
 
     // In-app nav-link clicks are client-side route pushes (no full document reload), so this
     // exercises the app's own persistence/rerender rather than a freshly-seeded document.
@@ -116,43 +119,46 @@ test.describe('Theme: toggle, persistence, navigation', () => {
     await page.getByRole('button', { name: 'More' }).click();
     await page.getByRole('link', { name: /Audit Logs/ }).click();
     await expect(page).toHaveURL(/audit-logs/);
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
 
     await page.getByRole('link', { name: /Overview/ }).click();
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
 
     // A full reload (new document) must still pick the persisted value back up.
     await page.reload();
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
 
-    await page.getByRole('button', { name: 'Switch to light mode' }).click();
+    await page.getByRole('button', { name: 'Switch to dark mode' }).click();
   });
 
-  test('toggling back to light mode updates the document immediately', async ({ page }) => {
-    await seedTheme(page, 'dark');
+  test('toggling to light mode updates the document immediately', async ({ page }) => {
     await page.goto('/');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await page.getByRole('button', { name: 'Switch to light mode' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await expect(page.locator('html')).toHaveCSS('color-scheme', 'light');
+
+    // Leave the shared reviewer session the way other tests in this suite expect it.
+    await page.getByRole('button', { name: 'Switch to dark mode' }).click();
   });
 });
 
 test.describe('Theme: public-page toggles (before authentication)', () => {
   test('the landing page toggle works before signing in', async ({ browser }) => {
     // No seedTheme() here deliberately - see the note above the previous describe block.
-    // colorScheme: 'light' keeps the OS-preference fallback deterministic.
-    const context = await browser.newContext({ storageState: { cookies: [], origins: [] }, colorScheme: 'light' });
+    // No stored preference, so the page starts from the default (dark).
+    const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
     const page = await context.newPage();
     await page.goto('/');
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-
-    await page.getByRole('button', { name: 'Switch to dark mode' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+
+    await page.getByRole('button', { name: 'Switch to light mode' }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
 
     // Persists into the login page too, without needing to sign in first.
     await page.goto('/login');
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await context.close();
   });
 

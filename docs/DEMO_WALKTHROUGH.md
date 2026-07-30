@@ -3,7 +3,7 @@
 A suggested tour for reviewing this project in the dashboard, in the order the nav
 presents it (`dashboard/src/components/Layout.tsx`). Each stop says what's genuinely
 live versus replayed versus static, and where to verify that claim in the code -
-consistent with the [data provenance model](../README.md#data-provenance-live-replay-and-synthetic)
+consistent with the [data provenance model](https://github.com/jasonachkar/secure-api-gateway/blob/main/README.md#data-provenance-live-replay-and-synthetic)
 described in the README.
 
 ## Getting in

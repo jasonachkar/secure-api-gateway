@@ -1254,14 +1254,35 @@ body {
   transition: background-color var(--transition-normal), transform var(--transition-normal);
 }
 
+/* .live-feed__item-type/-time/-detail/-message default to a theme-reactive text color
+   tuned for the default (theme-reactive) .live-feed__item background - that default
+   color doesn't have enough contrast against these two modifiers' status-tinted
+   background, so pin it to the matching status foreground token instead (already
+   calibrated for AA against --color-surface-{warning,danger}-tint in both themes). */
 .live-feed__item--warning {
   border-left-color: var(--color-warning-500);
   background-color: var(--color-surface-warning-tint);
 }
 
+.live-feed__item--warning .live-feed__item-type,
+.live-feed__item--warning .live-feed__item-time,
+.live-feed__item--warning .live-feed__item-detail,
+.live-feed__item--warning .live-feed__message,
+.live-feed__item--warning .live-feed__user {
+  color: var(--color-status-warning-fg);
+}
+
 .live-feed__item--critical {
   border-left-color: var(--color-error-500);
   background-color: var(--color-surface-danger-tint);
+}
+
+.live-feed__item--critical .live-feed__item-type,
+.live-feed__item--critical .live-feed__item-time,
+.live-feed__item--critical .live-feed__item-detail,
+.live-feed__item--critical .live-feed__message,
+.live-feed__item--critical .live-feed__user {
+  color: var(--color-status-danger-fg);
 }
 
 .live-feed__item:hover {
@@ -2646,8 +2667,6 @@ body {
   font-weight: 600;
 }
 
-/* success-600/error-600 measured 3.14:1 / ~3.8:1 against this card's light background
-   (WCAG 2 AA needs 4.5:1 for normal text) - 700 clears both with margin. */
 .github-status__build--passing { color: var(--color-accent-success); }
 .github-status__build--failing { color: var(--color-accent-danger); }
 .github-status__build--loading,

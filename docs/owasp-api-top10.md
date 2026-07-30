@@ -11,7 +11,7 @@ Users can access objects they shouldn't by manipulating object IDs in requests.
 
 ### Our Mitigation
 
-**Implementation**: [src/modules/reports/reports.service.ts:28-48](../src/modules/reports/reports.service.ts)
+**Implementation**: [src/modules/reports/reports.service.ts:28-48](https://github.com/jasonachkar/secure-api-gateway/blob/main/src/modules/reports/reports.service.ts)
 
 ```typescript
 async getReport(reportId: string, userId: string, roles: string[]): Promise<Report> {
@@ -44,7 +44,7 @@ Weak or improperly implemented authentication allows attackers to compromise acc
 
 ### Our Mitigation
 
-**Implementation**: [src/modules/auth/auth.service.ts](../src/modules/auth/auth.service.ts)
+**Implementation**: [src/modules/auth/auth.service.ts](https://github.com/jasonachkar/secure-api-gateway/blob/main/src/modules/auth/auth.service.ts)
 
 #### Token Rotation
 ```typescript
@@ -103,7 +103,7 @@ API returns too much data, exposing sensitive properties users shouldn't see.
 
 ### Our Mitigation
 
-**Implementation**: [src/modules/reports/reports.service.ts:56-67](../src/modules/reports/reports.service.ts)
+**Implementation**: [src/modules/reports/reports.service.ts:56-67](https://github.com/jasonachkar/secure-api-gateway/blob/main/src/modules/reports/reports.service.ts)
 
 ```typescript
 private sanitizeReport(report: Report): Report {
@@ -136,7 +136,7 @@ API doesn't limit request rates, payload sizes, or execution time, leading to Do
 
 ### Our Mitigation
 
-**Implementation**: [src/middleware/rateLimit.ts](../src/middleware/rateLimit.ts)
+**Implementation**: [src/middleware/rateLimit.ts](https://github.com/jasonachkar/secure-api-gateway/blob/main/src/middleware/rateLimit.ts)
 
 #### Multi-Layer Rate Limiting
 ```typescript
@@ -186,7 +186,7 @@ Users can access admin/privileged functions by changing HTTP method or URL.
 
 ### Our Mitigation
 
-**Implementation**: [src/middleware/rbac.ts](../src/middleware/rbac.ts)
+**Implementation**: [src/middleware/rbac.ts](https://github.com/jasonachkar/secure-api-gateway/blob/main/src/middleware/rbac.ts)
 
 ```typescript
 // Route protection with role requirements
@@ -277,7 +277,7 @@ API fetches remote resource without validating user-supplied URL, allowing acces
 
 ### Our Mitigation
 
-**Implementation**: [src/lib/httpClient.ts](../src/lib/httpClient.ts) (`resolveAndValidateHostname`, `createPinnedDispatcher`)
+**Implementation**: [src/lib/httpClient.ts](https://github.com/jasonachkar/secure-api-gateway/blob/main/src/lib/httpClient.ts) (`resolveAndValidateHostname`, `createPinnedDispatcher`)
 
 ```typescript
 async function resolveAndValidateHostname(hostname: string): Promise<string[]> {
@@ -341,7 +341,7 @@ Insecure default configurations, unnecessary features enabled, verbose errors.
 
 ### Our Mitigation
 
-**Implementation**: [src/config/env.ts](../src/config/env.ts) + [src/middleware/securityHeaders.ts](../src/middleware/securityHeaders.ts)
+**Implementation**: [src/config/env.ts](https://github.com/jasonachkar/secure-api-gateway/blob/main/src/config/env.ts) + [src/middleware/securityHeaders.ts](https://github.com/jasonachkar/secure-api-gateway/blob/main/src/middleware/securityHeaders.ts)
 
 #### Config Validation
 ```typescript
@@ -439,7 +439,7 @@ Gateway blindly trusts upstream services without validation, timeouts, or error 
 
 ### Our Mitigation
 
-**Implementation**: [src/lib/httpClient.ts](../src/lib/httpClient.ts)
+**Implementation**: [src/lib/httpClient.ts](https://github.com/jasonachkar/secure-api-gateway/blob/main/src/lib/httpClient.ts)
 
 ```typescript
 export async function httpGet<T>(url: string, options: HttpClientOptions): Promise<HttpResponse<T>> {

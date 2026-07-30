@@ -1,10 +1,9 @@
 /**
  * Admin Audit Logs page
- * Displays administrative actions with incident links
+ * Displays administrative actions
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { RefreshCw } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { Button } from '../components/Button';
@@ -243,12 +242,9 @@ export function AuditLogs() {
                   </TableCell>
                   <TableCell>
                     {log.incidentId ? (
-                      <Link
-                        to={`/incidents?incidentId=${encodeURIComponent(log.incidentId)}`}
-                        className="link"
-                      >
-                        {log.incidentId}
-                      </Link>
+                      // Plain text, not a link: /incidents was removed from this app earlier
+                      // in the project (see docs/KNOWN_LIMITATIONS.md) and never came back.
+                      <code className="text-mono text-sm">{log.incidentId}</code>
                     ) : (
                       <span className="text-secondary">—</span>
                     )}

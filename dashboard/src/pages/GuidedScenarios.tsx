@@ -16,6 +16,7 @@ import { SectionHeader } from '../components/SectionHeader';
 import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
 import { useToast } from '../contexts/ToastContext';
 import { adminApi } from '../api/admin';
+import { getErrorMessage } from '../api/errors';
 import type { ScenarioDefinition, ScenarioRunResult, ScenarioId } from '../types';
 
 const PROVENANCE_VARIANT: Record<string, 'success' | 'info' | 'neutral'> = {
@@ -46,7 +47,7 @@ export function GuidedScenarios() {
         const data = await adminApi.getScenarios();
         if (!cancelled) setScenarios(data);
       } catch (err: any) {
-        if (!cancelled) setError(err.message || 'Failed to load scenarios');
+        if (!cancelled) setError(getErrorMessage(err, 'Failed to load scenarios'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -63,7 +64,7 @@ export function GuidedScenarios() {
       setResults((prev) => ({ ...prev, [id]: result }));
       showToast(`Scenario "${id}" completed`, 'success');
     } catch (err: any) {
-      showToast(err.response?.data?.error?.message || err.message || 'Scenario run failed', 'error');
+      showToast(getErrorMessage(err, 'Scenario run failed'), 'error');
     } finally {
       setRunning(null);
     }
@@ -74,7 +75,7 @@ export function GuidedScenarios() {
       await adminApi.resetGatewayScenario();
       showToast('Gateway scenario reset (demo IP unblocked, lockout cleared)', 'success');
     } catch (err: any) {
-      showToast(err.message || 'Reset failed', 'error');
+      showToast(getErrorMessage(err, 'Reset failed'), 'error');
     }
   };
 

@@ -13,6 +13,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
 import { useToast } from '../contexts/ToastContext';
 import { adminApi } from '../api/admin';
+import { getErrorMessage } from '../api/errors';
 import type { UserInfo } from '../types';
 
 export function Users() {
@@ -32,7 +33,7 @@ export function Users() {
       setUsers(data);
       setError('');
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch users');
+      setError(getErrorMessage(err, 'Failed to fetch users'));
     } finally {
       setLoading(false);
     }
@@ -48,7 +49,7 @@ export function Users() {
       await fetchUsers();
       showToast(`${username}'s account has been unlocked`, 'success');
     } catch (err: any) {
-      showToast('Failed to unlock user: ' + err.message, 'error');
+      showToast('Failed to unlock user: ' + getErrorMessage(err, 'unknown error'), 'error');
     }
   };
 

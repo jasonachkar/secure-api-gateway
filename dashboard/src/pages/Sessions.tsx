@@ -18,6 +18,7 @@ import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
 import { useCountdown } from '../hooks/useCountdown';
 import { useToast } from '../contexts/ToastContext';
 import { adminApi } from '../api/admin';
+import { getErrorMessage } from '../api/errors';
 import { useAuth } from '../contexts/AuthContext';
 import type { SessionInfo } from '../types';
 
@@ -42,7 +43,7 @@ export function Sessions() {
       setSessions(data);
       setError('');
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch sessions');
+      setError(getErrorMessage(err, 'Failed to fetch sessions'));
     } finally {
       setLoading(false);
     }
@@ -95,7 +96,7 @@ export function Sessions() {
     try {
       await performRevoke(jti);
     } catch (err: any) {
-      showToast('Failed to revoke session: ' + err.message, 'error');
+      showToast('Failed to revoke session: ' + getErrorMessage(err, 'unknown error'), 'error');
     }
   };
 
@@ -116,7 +117,7 @@ export function Sessions() {
       await fetchSessions();
       showToast(`Revoked all ${targets.length} session(s) for ${bulkRevokeUser}`, 'success');
     } catch (err: any) {
-      showToast('Failed to revoke all sessions: ' + err.message, 'error');
+      showToast('Failed to revoke all sessions: ' + getErrorMessage(err, 'unknown error'), 'error');
     }
   };
 

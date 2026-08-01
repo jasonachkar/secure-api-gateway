@@ -17,6 +17,7 @@ import { SectionHeader } from '../components/SectionHeader';
 import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
 import { useToast } from '../contexts/ToastContext';
 import { adminApi } from '../api/admin';
+import { getErrorMessage } from '../api/errors';
 import type { SecurityInvestigation, NormalizedSecurityEvent, DetectionResult, SecuritySeverity, InvestigationStatus } from '../types';
 
 const SEVERITY_VARIANT: Record<SecuritySeverity, 'success' | 'warning' | 'error' | 'info' | 'neutral'> = {
@@ -59,7 +60,7 @@ export function Investigations() {
       const data = await adminApi.getInvestigations({ limit: 100 });
       setInvestigations(data);
     } catch (err: any) {
-      setError(err.message || 'Failed to load investigations');
+      setError(getErrorMessage(err, 'Failed to load investigations'));
     } finally {
       setLoading(false);
     }
@@ -77,7 +78,7 @@ export function Investigations() {
       setEvents(events);
       setDetections(detections);
     } catch (err: any) {
-      showToast(err.message || 'Failed to load investigation detail', 'error');
+      showToast(getErrorMessage(err, 'Failed to load investigation detail'), 'error');
     } finally {
       setDetailLoading(false);
     }
@@ -101,7 +102,7 @@ export function Investigations() {
       URL.revokeObjectURL(url);
       showToast('Evidence package downloaded', 'success');
     } catch (err: any) {
-      showToast(err.message || 'Evidence export failed', 'error');
+      showToast(getErrorMessage(err, 'Evidence export failed'), 'error');
     }
   };
 

@@ -10,6 +10,7 @@ import { Badge } from '../components/Badge';
 import { SectionHeader } from '../components/SectionHeader';
 import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
 import { adminApi } from '../api/admin';
+import { getErrorMessage } from '../api/errors';
 import type { PipelineMetricsSnapshot, OperationalHealth, CloudProvider } from '../types';
 
 const HEALTH_VARIANT: Record<OperationalHealth, 'success' | 'warning' | 'error' | 'info' | 'neutral'> = {
@@ -47,7 +48,7 @@ export function CloudCoverage() {
         const data = await adminApi.getPipelineMetrics();
         if (!cancelled) setSnapshot(data);
       } catch (err: any) {
-        if (!cancelled) setError(err.message || 'Failed to load pipeline metrics');
+        if (!cancelled) setError(getErrorMessage(err, 'Failed to load pipeline metrics'));
       } finally {
         if (!cancelled) setLoading(false);
       }

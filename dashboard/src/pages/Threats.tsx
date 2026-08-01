@@ -16,6 +16,7 @@ import { WorldMapHeatmap } from '../components/WorldMapHeatmap';
 import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
 import { useToast } from '../contexts/ToastContext';
 import { adminApi } from '../api/admin';
+import { getErrorMessage } from '../api/errors';
 import type { IPThreatInfo, ThreatStatistics, AttackPattern, ThreatLevel } from '../types';
 
 const threatLevelBadgeClass: Record<ThreatLevel, string> = {
@@ -58,7 +59,7 @@ export function Threats() {
       setPatterns(patternsData);
       setError('');
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch threat data');
+      setError(getErrorMessage(err, 'Failed to fetch threat data'));
     } finally {
       setLoading(false);
     }
@@ -74,7 +75,7 @@ export function Threats() {
       await fetchData();
       showToast(`${ip} has been blocked`, 'success');
     } catch (err: any) {
-      showToast('Failed to block IP: ' + err.message, 'error');
+      showToast('Failed to block IP: ' + getErrorMessage(err, 'unknown error'), 'error');
     }
   };
 
@@ -88,7 +89,7 @@ export function Threats() {
       await fetchData();
       showToast(`${ip} has been unblocked`, 'success');
     } catch (err: any) {
-      showToast('Failed to unblock IP: ' + err.message, 'error');
+      showToast('Failed to unblock IP: ' + getErrorMessage(err, 'unknown error'), 'error');
     }
   };
 

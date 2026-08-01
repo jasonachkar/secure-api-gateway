@@ -12,6 +12,7 @@ import { Badge } from '../components/Badge';
 import { SectionHeader } from '../components/SectionHeader';
 import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
 import { adminApi } from '../api/admin';
+import { getErrorMessage } from '../api/errors';
 import type { CapabilityDefinition, CapabilityStatus, CapabilityCategory } from '../types';
 
 const STATUS_META: Record<CapabilityStatus, { label: string; variant: 'success' | 'warning' | 'info' | 'neutral'; icon: typeof CheckCircle2 }> = {
@@ -55,7 +56,7 @@ export function ImplementationStatus() {
         setCapabilities(summary.capabilities);
         setCounts(summary.counts);
       } catch (err: any) {
-        if (!cancelled) setError(err.message || 'Failed to load capability registry');
+        if (!cancelled) setError(getErrorMessage(err, 'Failed to load capability registry'));
       } finally {
         if (!cancelled) setLoading(false);
       }

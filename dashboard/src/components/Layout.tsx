@@ -6,8 +6,6 @@
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
-  Sun,
-  Moon,
   ExternalLink,
   ShieldCheck,
   LayoutGrid,
@@ -26,10 +24,9 @@ import {
 } from 'lucide-react';
 import { adminApi } from '../api/admin';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
 import { Button } from './Button';
 import { HealthCheckPill } from './HealthCheckPill';
-import { theme } from '../styles/theme';
+import { ThemeToggle } from './ThemeToggle';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -58,7 +55,6 @@ export function Layout({ children }: LayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout } = useAuth();
-  const { theme: activeTheme, toggleTheme } = useTheme();
   const [demoMode, setDemoMode] = React.useState(false);
   const [demoModeLoaded, setDemoModeLoaded] = React.useState(false);
 
@@ -120,14 +116,7 @@ export function Layout({ children }: LayoutProps) {
             <div className="app-shell__title">
               <ShieldCheck size={18} aria-hidden="true" /> Secure API Gateway
             </div>
-            <button
-              type="button"
-              className="theme-toggle"
-              onClick={toggleTheme}
-              aria-label={activeTheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            >
-              {activeTheme === 'dark' ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
-            </button>
+            <ThemeToggle variant="inverse" />
           </div>
           <div className="app-shell__subtitle">
             Multi-cloud API security control plane
@@ -179,37 +168,15 @@ export function Layout({ children }: LayoutProps) {
           )}
         </nav>
 
-        {/* Fixed (non-theme-reactive) colors below are intentional: the sidebar itself
-            always renders dark (--gradient-sidebar, unchanged in styles/tokens.css's dark
-            section) regardless of the app-wide theme, so a fixed light-mode neutral-700
-            reads correctly against it in both modes. Swapping these to var(--color-neutral-700)
-            would break dark mode instead of fixing it - that var resolves to a near-white
-            value in dark mode (inverted for on-dark-surface use elsewhere), which would
-            render as a bright, jarring box against this always-dark sidebar. */}
-        <div style={{
-          paddingTop: theme.spacing.lg,
-          borderTop: `1px solid ${theme.colors.neutral[700]}`,
-        }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: theme.spacing.sm,
-            marginBottom: theme.spacing.md,
-            borderRadius: theme.borderRadius.md,
-            backgroundColor: theme.colors.neutral[700],
-            fontSize: theme.typography.fontSize.sm,
-          }}>
-            <span style={{ fontWeight: theme.typography.fontWeight.medium }}>
-              Demo Mode
-            </span>
-            <label style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xs }}>
+        <div className="app-shell__demo-section">
+          <div className="app-shell__demo-row">
+            <span className="app-shell__demo-label">Demo Mode</span>
+            <label className="app-shell__demo-toggle">
               <input
                 type="checkbox"
                 checked={demoMode}
                 disabled
                 aria-label="Demo mode enabled"
-                style={{ accentColor: theme.colors.warning[400] }}
               />
               <span>
                 {demoModeLoaded ? (demoMode ? 'On' : 'Off') : '...'}
@@ -228,36 +195,11 @@ export function Layout({ children }: LayoutProps) {
       </aside>
 
       {/* Enhanced Main Content */}
-      <main style={{
-        flex: 1,
-        backgroundColor: 'var(--color-bg-secondary)',
-        padding: theme.spacing.xl,
-        minHeight: '100vh',
-        maxWidth: '100%',
-        overflowX: 'hidden',
-      }}>
-        <div style={{ maxWidth: '1600px', margin: '0 auto' }}>
+      <main className="app-shell__main">
+        <div className="app-shell__main-inner">
           {demoMode && (
-            <div style={{
-              display: 'flex',
-              justifyContent: 'flex-end',
-              marginBottom: theme.spacing.md,
-            }}>
-              <span style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: theme.spacing.xs,
-                padding: `${theme.spacing.xs} ${theme.spacing.md}`,
-                backgroundColor: theme.colors.warning[100],
-                color: theme.colors.warning[800],
-                border: `1px solid ${theme.colors.warning[300]}`,
-                borderRadius: theme.borderRadius.full,
-                fontSize: theme.typography.fontSize.sm,
-                fontWeight: theme.typography.fontWeight.semibold,
-                letterSpacing: '0.2px',
-              }}>
-                Demo Data
-              </span>
+            <div className="app-shell__demo-badge-row">
+              <span className="ui-badge ui-badge--warning app-shell__demo-badge">Demo Data</span>
             </div>
           )}
           {children}

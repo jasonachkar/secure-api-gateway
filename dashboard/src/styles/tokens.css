@@ -1,3 +1,17 @@
+/**
+ * Design tokens - two layers:
+ *
+ * 1. Raw palette (--color-primary-*, --color-neutral-*, --color-success-*, ...): fixed
+ *    numeric color ramps. Their meaning never changes with theme - "neutral-900" is always
+ *    the same near-black, "primary-500" is always the same blue. Components that are
+ *    intentionally dark in both themes (sidebar, code blocks, tooltips, the landing footer)
+ *    read directly from this layer, which is exactly why it must stay stable.
+ *
+ * 2. Semantic tokens (--color-bg-*, --color-text-*, --color-status-*, ...): named by UI
+ *    purpose, not by appearance. These are the only tokens that flip between
+ *    :root and :root[data-theme='dark']. Components should prefer semantic tokens; the raw
+ *    palette is for one-off accents (chart series, severity dots) and fixed-dark surfaces.
+ */
 :root {
   --color-primary-50: #eff6ff;
   --color-primary-100: #dbeafe;
@@ -40,6 +54,19 @@
   --color-error-800: #991b1b;
   --color-error-900: #7f1d1d;
 
+  /* "High" severity sits between warning and error on the threat/incident scale and needs
+     its own hue (orange) so it stays visually distinct from both - not reversed in dark. */
+  --color-orange-50: #fff7ed;
+  --color-orange-100: #ffedd5;
+  --color-orange-300: #fdba74;
+  --color-orange-500: #f97316;
+  --color-orange-600: #ea580c;
+  --color-orange-700: #c2410d;
+  --color-orange-800: #9a3412;
+
+  /* Raw neutral ramp - fixed regardless of theme. 25 is lightest, 900 is darkest, always.
+     Fixed-dark surfaces (sidebar, code blocks, tooltips, landing footer/CTA) read these
+     directly; everything theme-aware should use the semantic surface/text tokens below. */
   --color-neutral-25: #fbfcfe;
   --color-neutral-50: #f8fafc;
   --color-neutral-100: #f1f5f9;
@@ -52,21 +79,121 @@
   --color-neutral-800: #1e293b;
   --color-neutral-900: #0f172a;
 
+  /* ---- Semantic tokens (theme-aware) ---- */
+
   --color-text-primary: #0f172a;
   --color-text-secondary: #475569;
   --color-text-tertiary: #64748b;
+  --color-text-muted: #64748b;
   --color-text-inverse: #ffffff;
+  --color-link: #2563eb;
+  --color-link-hover: #1d4ed8;
 
+  --color-bg-canvas: #f8fafc;
   --color-bg-primary: #ffffff;
   --color-bg-secondary: #f8fafc;
   --color-bg-tertiary: #f1f5f9;
+  /* Recessed panel inside a card (stat tiles, table headers, list rows) - one step darker
+     than the card surface it sits on. */
+  --color-bg-subtle: #f1f5f9;
+  --color-bg-hover: #eef2f7;
+  --color-bg-selected: rgba(59, 130, 246, 0.08);
+  --color-bg-raised: #ffffff;
+  --color-bg-translucent: rgba(255, 255, 255, 0.85);
 
+  --color-border-subtle: #e2e8f0;
   --color-border-light: #e2e8f0;
   --color-border-medium: #cbd5e1;
   --color-border-dark: #94a3b8;
+  --color-focus-ring: rgba(59, 130, 246, 0.45);
+  --color-overlay: rgba(15, 23, 42, 0.55);
+
+  /* Fixed-dark surfaces: sidebar, code, tooltips. These stay constant in both themes
+     because the components that use them (nav rail, code blocks, chart/map tooltips) are
+     deliberately dark regardless of the page theme, so their text tokens are always the
+     light end of the neutral ramp. */
+  --color-sidebar-bg-start: #0f172a;
+  --color-sidebar-bg-end: #1e293b;
+  --color-sidebar-text: #ffffff;
+  --color-sidebar-text-muted: #cbd5e1;
+  --color-sidebar-text-subtle: #94a3b8;
+  --color-sidebar-border: rgba(255, 255, 255, 0.1);
+  --color-sidebar-hover: rgba(255, 255, 255, 0.06);
+  --color-sidebar-active: rgba(59, 130, 246, 0.2);
+
+  --color-tooltip-bg: #0f172a;
+  --color-tooltip-text: #ffffff;
+  --color-tooltip-text-muted: #cbd5e1;
+
+  --color-code-bg: #0f172a;
+  --color-code-text: #f1f5f9;
+
+  --color-scrollbar-track: #f1f5f9;
+  --color-scrollbar-thumb: #cbd5e1;
+  --color-scrollbar-thumb-hover: #94a3b8;
+
+  --color-chart-axis: #64748b;
+  --color-chart-grid: #e2e8f0;
+  --color-chart-legend: #334155;
+
+  --color-map-bg: #ffffff;
+  --color-map-empty: #e2e8f0;
+  --color-map-border: #ffffff;
+  --color-map-hover: #f59e0b;
+  --color-map-hover-empty: #cbd5e1;
+  --color-map-level-1: #fed7aa;
+  --color-map-level-2: #fb923c;
+  --color-map-level-3: #dc2626;
+
+  /* Status/severity: light-tinted background + dark-tinted foreground pairs. Badges and
+     alerts are always small-to-medium isolated surfaces, so this pairing (rather than a
+     full inverse treatment) is intentional and stays legible on both a white and a dark
+     page background - see the dark overrides below for how each pair is re-balanced. */
+  --color-status-info-bg: var(--color-primary-100);
+  --color-status-info-fg: var(--color-primary-800);
+  --color-status-info-border: var(--color-primary-200);
+
+  --color-status-success-bg: var(--color-success-100);
+  --color-status-success-fg: var(--color-success-800);
+  --color-status-success-border: var(--color-success-200);
+
+  --color-status-warning-bg: var(--color-warning-100);
+  --color-status-warning-fg: var(--color-warning-800);
+  --color-status-warning-border: var(--color-warning-200);
+
+  --color-status-danger-bg: var(--color-error-100);
+  --color-status-danger-fg: var(--color-error-800);
+  --color-status-danger-border: var(--color-error-200);
+
+  --color-status-high-bg: var(--color-orange-100);
+  --color-status-high-fg: var(--color-orange-800);
+  --color-status-high-border: var(--color-orange-300);
+
+  --color-status-neutral-bg: var(--color-neutral-100);
+  --color-status-neutral-fg: var(--color-neutral-700);
+  --color-status-neutral-border: var(--color-neutral-200);
+
+  /* Large tinted card surfaces (e.g. a whole "concurrent session" or "blocked" card, not a
+     badge/pill). Needs a lighter tint than --color-status-*-bg in light mode specifically:
+     that token is calibrated for small bold badge text paired with a saturated -800
+     foreground, and doesn't leave enough headroom for ordinary --color-text-tertiary body
+     text placed on a full card. In dark mode the same translucent status tint already has
+     plenty of headroom, so these just alias it. */
+  --color-surface-warning-tint: var(--color-warning-50);
+  --color-surface-danger-tint: var(--color-error-50);
+
+  /* Accent text: a raw palette color used directly AS text on a card/page surface (link,
+     active tab, severity label, icon) rather than as a badge fill. Needs its own lighter
+     shade in dark mode - the standard -600/-700 light-mode shade doesn't have enough
+     contrast against a dark card. */
+  --color-accent-primary: var(--color-primary-600);
+  --color-accent-success: var(--color-success-700);
+  --color-accent-warning: var(--color-warning-700);
+  --color-accent-danger: var(--color-error-600);
+  --color-accent-high: var(--color-orange-700);
 
   --gradient-primary: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-  --gradient-sidebar: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+  --gradient-sidebar: linear-gradient(180deg, var(--color-sidebar-bg-start) 0%, var(--color-sidebar-bg-end) 100%);
   --gradient-hero: linear-gradient(135deg, #eff6ff 0%, #f8fafc 55%, #ffffff 100%);
 
   --space-xs: 4px;
@@ -88,42 +215,101 @@
   --shadow-md: 0 1px 3px rgba(15, 23, 42, 0.1), 0 1px 2px rgba(15, 23, 42, 0.06);
   --shadow-lg: 0 4px 6px rgba(15, 23, 42, 0.1), 0 2px 4px rgba(15, 23, 42, 0.06);
   --shadow-xl: 0 20px 25px -5px rgba(15, 23, 42, 0.12), 0 8px 10px -6px rgba(15, 23, 42, 0.1);
-  --shadow-focus: 0 0 0 3px rgba(59, 130, 246, 0.35);
+  --shadow-focus: 0 0 0 3px var(--color-focus-ring);
 
   --transition-fast: 150ms ease-in-out;
   --transition-normal: 200ms ease-in-out;
   --transition-slow: 320ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Dark mode - only surface/text/border/neutral tokens are re-themed. Semantic accent
-   scales (primary/success/warning/error) stay the same in both modes: badges/alerts pair
-   a light-tinted background with a dark-tinted foreground, and that pairing still reads
-   fine against a dark page background since it's used in isolated card/badge contexts,
-   not as a full-page surface. Re-deriving a whole second accent ramp for marginal gain
-   wasn't worth it here. */
+/* Dark mode. Only semantic tokens are redefined here - the raw palette (including the
+   neutral ramp) above is intentionally left untouched. Fixed-dark components (sidebar,
+   code blocks, tooltips, landing footer/CTA, live stats bar) read the raw palette or the
+   dedicated sidebar/tooltip/code tokens directly, so they are unaffected by this block and
+   never need a [data-theme='dark'] override of their own. */
 :root[data-theme='dark'] {
   --color-text-primary: #f1f5f9;
   --color-text-secondary: #cbd5e1;
   --color-text-tertiary: #94a3b8;
+  --color-text-muted: #94a3b8;
   --color-text-inverse: #ffffff;
+  --color-link: #60a5fa;
+  --color-link-hover: #93c5fd;
 
+  --color-bg-canvas: #0f172a;
   --color-bg-primary: #1e293b;
   --color-bg-secondary: #0f172a;
   --color-bg-tertiary: #17233a;
+  --color-bg-subtle: #17233a;
+  --color-bg-hover: #263449;
+  --color-bg-selected: rgba(59, 130, 246, 0.16);
+  --color-bg-raised: #263449;
+  --color-bg-translucent: rgba(15, 23, 42, 0.82);
 
+  --color-border-subtle: #273449;
   --color-border-light: #334155;
   --color-border-medium: #475569;
   --color-border-dark: #64748b;
+  --color-focus-ring: rgba(96, 165, 250, 0.55);
+  --color-overlay: rgba(2, 6, 15, 0.7);
 
-  --color-neutral-25: #17233a;
-  --color-neutral-50: #1e293b;
-  --color-neutral-100: #273449;
-  --color-neutral-200: #334155;
-  --color-neutral-300: #475569;
-  --color-neutral-400: #64748b;
-  --color-neutral-500: #94a3b8;
-  --color-neutral-600: #cbd5e1;
-  --color-neutral-700: #e2e8f0;
+  --color-scrollbar-track: #0f172a;
+  --color-scrollbar-thumb: #334155;
+  --color-scrollbar-thumb-hover: #475569;
+
+  --color-chart-axis: #94a3b8;
+  --color-chart-grid: #334155;
+  --color-chart-legend: #cbd5e1;
+
+  --color-map-bg: #1e293b;
+  --color-map-empty: #29405e;
+  --color-map-border: #1e293b;
+  --color-map-hover: #fbbf24;
+  --color-map-hover-empty: #3a4f6e;
+  /* Escalating heat ramp - each step must read as *more* alarming than the last. A pale/
+     light red for the top tier (previously #f87171) actually reads as calmer than the
+     mid-tier's vivid orange, inverting the intended severity signal - the top tier needs
+     to be the most saturated, not the lightest. */
+  --color-map-level-1: #b45309;
+  --color-map-level-2: #ea580c;
+  --color-map-level-3: #ef4444;
+
+  /* Re-balanced status pairs: a translucent tint of the accent color over the dark page
+     (rather than an unmodified light-50/100 pastel, which would read as a bright island)
+     with a lightened accent foreground for contrast. Border adds definition since the tint
+     alone is subtle against the dark card behind it. */
+  --color-status-info-bg: rgba(59, 130, 246, 0.16);
+  --color-status-info-fg: var(--color-primary-300);
+  --color-status-info-border: rgba(59, 130, 246, 0.35);
+
+  --color-status-success-bg: rgba(34, 197, 94, 0.16);
+  --color-status-success-fg: var(--color-success-300);
+  --color-status-success-border: rgba(34, 197, 94, 0.35);
+
+  --color-status-warning-bg: rgba(245, 158, 11, 0.16);
+  --color-status-warning-fg: var(--color-warning-300);
+  --color-status-warning-border: rgba(245, 158, 11, 0.35);
+
+  --color-status-danger-bg: rgba(239, 68, 68, 0.18);
+  --color-status-danger-fg: var(--color-error-300);
+  --color-status-danger-border: rgba(239, 68, 68, 0.4);
+
+  --color-status-high-bg: rgba(249, 115, 22, 0.18);
+  --color-status-high-fg: var(--color-orange-300);
+  --color-status-high-border: rgba(249, 115, 22, 0.4);
+
+  --color-status-neutral-bg: #26364d;
+  --color-status-neutral-fg: var(--color-neutral-300);
+  --color-status-neutral-border: #334155;
+
+  --color-surface-warning-tint: var(--color-status-warning-bg);
+  --color-surface-danger-tint: var(--color-status-danger-bg);
+
+  --color-accent-primary: var(--color-primary-300);
+  --color-accent-success: var(--color-success-300);
+  --color-accent-warning: var(--color-warning-300);
+  --color-accent-danger: var(--color-error-300);
+  --color-accent-high: var(--color-orange-300);
 
   --gradient-hero: linear-gradient(135deg, #1e293b 0%, #0f172a 55%, #0f172a 100%);
 

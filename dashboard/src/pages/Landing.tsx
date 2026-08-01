@@ -9,6 +9,7 @@ import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { ArchitectureDiagram } from '../components/ArchitectureDiagram';
 import { LiveTrafficPreview } from '../components/LiveTrafficPreview';
+import { ThemeToggle } from '../components/ThemeToggle';
 
 const FEATURE_HIGHLIGHTS = [
   {
@@ -37,11 +38,14 @@ export function Landing() {
             <ShieldCheck size={20} aria-hidden="true" />
             <span>Secure API Gateway</span>
           </div>
-          <Link to="/login">
-            <Button variant="primary" size="md">
-              Sign In / Try Demo
-            </Button>
-          </Link>
+          <div className="landing-nav__actions">
+            <ThemeToggle />
+            <Link to="/login">
+              <Button variant="primary" size="md">
+                Sign In / Try Demo
+              </Button>
+            </Link>
+          </div>
         </div>
       </header>
 

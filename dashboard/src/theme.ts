@@ -1,11 +1,18 @@
 /**
- * Centralized Design System Theme
- * Provides consistent colors, typography, spacing, shadows, and other design tokens
+ * Theme-independent design tokens: raw color ramps, typography scale, spacing, radii,
+ * breakpoints, transitions, and z-index. These values are the same in light and dark mode
+ * by definition - anything that actually changes with the active theme (surfaces, text,
+ * borders, status colors, shadows) lives in styles/tokens.css as a CSS custom property
+ * instead, since that's the only layer that can react to the `data-theme` attribute
+ * without a re-render. Components should read `var(--color-*)` (see tokens.css) rather
+ * than reach into `theme.colors` for anything that should adapt to the theme.
  */
 
 export const theme = {
   colors: {
-    // Primary colors
+    // Raw color ramps - fixed regardless of theme. Kept here for the rare case a
+    // consumer needs a literal palette value (e.g. an SVG data color) rather than a
+    // semantic CSS variable. Mirrors the same ramp in styles/tokens.css.
     primary: {
       50: '#eff6ff',
       100: '#dbeafe',
@@ -18,7 +25,6 @@ export const theme = {
       800: '#1e40af',
       900: '#1e3a8a',
     },
-    // Success colors
     success: {
       50: '#f0fdf4',
       100: '#dcfce7',
@@ -31,7 +37,6 @@ export const theme = {
       800: '#166534',
       900: '#14532d',
     },
-    // Warning colors
     warning: {
       50: '#fffbeb',
       100: '#fef3c7',
@@ -44,7 +49,6 @@ export const theme = {
       800: '#92400e',
       900: '#78350f',
     },
-    // Error colors
     error: {
       50: '#fef2f2',
       100: '#fee2e2',
@@ -57,7 +61,6 @@ export const theme = {
       800: '#991b1b',
       900: '#7f1d1d',
     },
-    // Neutral colors
     neutral: {
       50: '#f8fafc',
       100: '#f1f5f9',
@@ -69,23 +72,6 @@ export const theme = {
       700: '#334155',
       800: '#1e293b',
       900: '#0f172a',
-    },
-    // Semantic colors
-    background: {
-      primary: '#ffffff',
-      secondary: '#f8fafc',
-      tertiary: '#f1f5f9',
-    },
-    text: {
-      primary: '#0f172a',
-      secondary: '#475569',
-      tertiary: '#64748b',
-      inverse: '#ffffff',
-    },
-    border: {
-      light: '#e2e8f0',
-      medium: '#cbd5e1',
-      dark: '#94a3b8',
     },
   },
 
@@ -116,42 +102,37 @@ export const theme = {
       normal: 1.5,
       relaxed: 1.75,
     },
-    // Typography presets
+    // Typography presets - sizing/weight only, no color. Pair with a `--color-text-*`
+    // CSS variable (or a `.text-*` utility from styles/global.css) for color.
     h1: {
       fontSize: '32px',
       fontWeight: 700,
       lineHeight: 1.25,
-      color: '#0f172a',
     },
     h2: {
       fontSize: '24px',
       fontWeight: 600,
       lineHeight: 1.25,
-      color: '#0f172a',
     },
     h3: {
       fontSize: '20px',
       fontWeight: 600,
       lineHeight: 1.5,
-      color: '#0f172a',
     },
     body: {
       fontSize: '14px',
       fontWeight: 400,
       lineHeight: 1.5,
-      color: '#475569',
     },
     small: {
       fontSize: '12px',
       fontWeight: 400,
       lineHeight: 1.5,
-      color: '#64748b',
     },
     caption: {
       fontSize: '11px',
       fontWeight: 400,
       lineHeight: 1.5,
-      color: '#64748b',
     },
   },
 
@@ -163,15 +144,6 @@ export const theme = {
     xl: '32px',
     '2xl': '48px',
     '3xl': '64px',
-  },
-
-  shadows: {
-    sm: '0 1px 2px rgba(0, 0, 0, 0.05)',
-    md: '0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06)',
-    lg: '0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06)',
-    xl: '0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05)',
-    '2xl': '0 20px 25px rgba(0, 0, 0, 0.1), 0 10px 10px rgba(0, 0, 0, 0.04)',
-    inner: 'inset 0 2px 4px rgba(0, 0, 0, 0.06)',
   },
 
   borderRadius: {
@@ -210,5 +182,3 @@ export const theme = {
 } as const;
 
 export type Theme = typeof theme;
-
-

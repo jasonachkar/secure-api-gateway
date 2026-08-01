@@ -4,6 +4,12 @@ export default defineConfig({
   testDir: './tests/e2e',
   timeout: 30_000,
   fullyParallel: false,
+  // fullyParallel: false only serializes tests *within* a file - separate spec files still
+  // run concurrently across workers by default. This suite shares one real backend/Redis
+  // and a small RATE_LIMIT_AUTH_MAX, and some tests (guided-scenario runs, admin logins)
+  // mutate shared server-side state - so run every spec file on a single worker, the same
+  // effective behavior the suite had back when it was one file.
+  workers: 1,
   retries: 0,
   reporter: 'list',
   globalSetup: './tests/e2e/global-setup.ts',

@@ -50,24 +50,24 @@ export function ErrorRateChart({ data, title = 'Error Rate', isLoading = false }
               <stop offset="95%" stopColor="var(--color-error-500)" stopOpacity={0.1}/>
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-light)" />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-chart-grid)" />
           <XAxis
             dataKey="time"
-            stroke="var(--color-text-tertiary)"
-            tick={{ className: 'chart-axis-tick' }}
+            stroke="var(--color-chart-axis)"
+            tick={{ fill: 'var(--color-chart-axis)' }}
           />
           <YAxis
-            stroke="var(--color-text-tertiary)"
-            tick={{ className: 'chart-axis-tick' }}
-            label={{ 
-              value: 'Errors/sec', 
-              angle: -90, 
-              position: 'insideLeft', 
-              className: 'chart-axis-label',
+            stroke="var(--color-chart-axis)"
+            tick={{ fill: 'var(--color-chart-axis)' }}
+            label={{
+              value: 'Errors/sec',
+              angle: -90,
+              position: 'insideLeft',
+              fill: 'var(--color-chart-axis)',
             }}
           />
           <Tooltip content={<ChartTooltip />} />
-          <Legend iconType="square" />
+          <Legend iconType="square" wrapperStyle={{ color: 'var(--color-chart-legend)' }} />
           <Area
             type="monotone"
             dataKey="4xx Errors"

@@ -8,6 +8,7 @@ import { KeyRound, ShieldCheck, Eye } from 'lucide-react';
 import { adminApi } from '../api/admin';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button';
+import { ThemeToggle } from '../components/ThemeToggle';
 
 const DEMO_ACCOUNTS = [
   { username: 'admin', password: 'Admin123!', label: 'admin (full access)' },
@@ -69,6 +70,9 @@ export function Login() {
     <div className="auth-page">
       <div className="auth-container">
         <div className="auth-card">
+          <div className="auth-card__toggle-row">
+            <ThemeToggle />
+          </div>
           <h1 className="auth-card__title">
             <ShieldCheck size={22} aria-hidden="true" /> Secure API Gateway
           </h1>

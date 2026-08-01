@@ -13,6 +13,7 @@ import { SectionHeader } from '../components/SectionHeader';
 import { Table, TableHeader, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/Table';
 import { AuditReportExport } from '../components/AuditReportExport';
 import { adminApi } from '../api/admin';
+import { getErrorMessage } from '../api/errors';
 import type { AdminAuditLogEntry } from '../types';
 import { format } from 'date-fns';
 
@@ -83,7 +84,7 @@ export function AuditLogs() {
       const end = start + filters.pageSize;
       setLogs(data.slice(start, end));
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch audit logs');
+      setError(getErrorMessage(err, 'Failed to fetch audit logs'));
       setAllLogs([]);
     } finally {
       setLoading(false);

@@ -13,6 +13,7 @@ import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
 import { SectionHeader } from '../components/SectionHeader';
 import { adminApi } from '../api/admin';
+import { getErrorMessage } from '../api/errors';
 import { NIST_EVIDENCE, OWASP_EVIDENCE, PCI_EVIDENCE, githubUrl, type EvidenceEntry } from '../data/complianceEvidence';
 import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
 import type { SecurityPosture, ComplianceMetrics, ComplianceAssessmentBasis } from '../types';
@@ -162,7 +163,7 @@ export function Compliance() {
       setMetrics(metricsResponse);
       setError('');
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch compliance data');
+      setError(getErrorMessage(err, 'Failed to fetch compliance data'));
       setPosture(null);
       setMetrics(null);
     } finally {

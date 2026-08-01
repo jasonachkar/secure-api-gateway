@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { KeyRound, ShieldCheck, Eye } from 'lucide-react';
 import { adminApi } from '../api/admin';
+import { getErrorMessage } from '../api/errors';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button';
 import { ThemeToggle } from '../components/ThemeToggle';
@@ -60,13 +61,7 @@ export function Login() {
       login(response.accessToken);
       navigate('/', { replace: true });
     } catch (err: any) {
-      const errorMessage =
-        err.response?.data?.error?.message ||
-        err.response?.data?.message ||
-        err.message ||
-        'Login failed. Please check your credentials.';
-
-      setError(errorMessage);
+      setError(getErrorMessage(err, 'Login failed. Please check your credentials.'));
     } finally {
       setLoading(false);
     }
@@ -80,7 +75,7 @@ export function Login() {
       login(response.accessToken);
       navigate('/', { replace: true });
     } catch (err: any) {
-      setError(err.message || 'Could not start the reviewer demo session.');
+      setError(getErrorMessage(err, 'Could not start the reviewer demo session.'));
     } finally {
       setDemoLoading(false);
     }

@@ -59,6 +59,13 @@ jobs:
       - name: ACR login
         run: az acr login --name "$(cut -d. -f1 <<< '${{ secrets.ACR_LOGIN_SERVER }}')"
 
+      # The default `docker` buildx driver can't export to the GHA cache backend
+      # (type=gha below) - only the `docker-container` driver can. Without this step,
+      # build-push-action falls back to the default driver and fails with
+      # "Cache export is not supported for the docker driver."
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:

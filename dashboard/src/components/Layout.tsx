@@ -32,7 +32,11 @@ interface LayoutProps {
   children: React.ReactNode;
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+// Swagger UI (${API_URL}/docs) is deliberately disabled in production (see
+// ENABLE_SWAGGER in src/config/env.ts) so the interactive API schema isn't public
+// by default. The MkDocs site (mkdocs.yml, deployed by .github/workflows/docs.yml)
+// is the production-appropriate API reference instead.
+const DOCS_URL = 'https://jasonachkar.github.io/secure-api-gateway/';
 
 const primaryNavItems = [
   { path: '/', label: 'Overview', icon: LayoutGrid },
@@ -153,7 +157,7 @@ export function Layout({ children }: LayoutProps) {
                 </NavLink>
               ))}
               <a
-                href={`${API_URL}/docs`}
+                href={DOCS_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="nav-link nav-link--inactive"

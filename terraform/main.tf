@@ -205,6 +205,10 @@ module "container_app" {
     PORT                                  = "3000"
     LOG_LEVEL                             = "info"
     LOG_PRETTY                            = "false"
+    # Required in production (src/config/env.ts refuses to boot with the "none"
+    # default) - Container Apps ingress is always the one hop in front of the
+    # container, see docs/PROXY_TRUST.md.
+    PROXY_TRUST_MODE                      = "azure"
     JWT_ALGORITHM                         = "HS256"
     JWT_ACCESS_TOKEN_EXPIRES_IN           = "15m"
     JWT_REFRESH_TOKEN_EXPIRES_IN          = "7d"

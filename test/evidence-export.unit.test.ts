@@ -13,7 +13,12 @@ describe('Evidence export (Integration)', () => {
   beforeAll(async () => {
     app = await createApp();
     await app.ready();
-    const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { username: 'admin', password: 'Admin123!' } });
+    const login = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { username: 'admin', password: 'Admin123!' },
+      headers: { origin: 'http://localhost:3000' },
+    });
     adminToken = login.json().accessToken;
   });
 

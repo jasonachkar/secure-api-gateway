@@ -10,8 +10,8 @@ project_name = "secapigw"
 environment  = "prod"
 location     = "eastus"
 
-# Your real Vercel production domain - never "*"
-cors_origin = "https://your-dashboard-domain.example.com"
+# Optional custom domains only; the Terraform-managed SWA origin is automatic.
+additional_cors_origins = []
 
 # No scale-to-zero in "prod" - avoids cold-start latency on the first request
 container_min_replicas = 1
@@ -22,6 +22,9 @@ container_memory          = "2Gi"
 enable_redis   = true
 redis_sku_name  = "Standard" # adds replication + SLA over Basic
 redis_capacity   = 1
+
+enable_azure_static_web_app = true
+static_web_app_location     = "eastus2"
 
 # Consider enabling for a production-grade edge (WAF-style filtering, edge rate
 # limiting, subscription-key auth) - adds real cost and 30-45min provisioning time

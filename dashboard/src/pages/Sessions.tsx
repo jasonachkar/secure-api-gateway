@@ -3,7 +3,6 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
 import { format } from 'date-fns';
 import { AlertTriangle } from 'lucide-react';
@@ -21,6 +20,7 @@ import { adminApi } from '../api/admin';
 import { getErrorMessage } from '../api/errors';
 import { useAuth } from '../contexts/AuthContext';
 import type { SessionInfo } from '../types';
+import { getAccessToken } from '../auth/tokenStore';
 
 export function Sessions() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
@@ -31,7 +31,6 @@ export function Sessions() {
   const [confirmBulkRevoke, setConfirmBulkRevoke] = useState(false);
   const { logout } = useAuth();
   const { showToast } = useToast();
-  const navigate = useNavigate();
 
   useEffect(() => {
     fetchSessions();
@@ -67,7 +66,7 @@ export function Sessions() {
   const usernames = useMemo(() => Array.from(sessionsByUser.keys()).sort(), [sessionsByUser]);
 
   const isOwnSession = (jti: string): boolean => {
-    const token = localStorage.getItem('accessToken');
+    const token = getAccessToken();
     if (!token) return false;
     try {
       const decoded = jwtDecode<{ jti: string }>(token);
@@ -81,8 +80,7 @@ export function Sessions() {
     const ownSession = isOwnSession(jti);
     await adminApi.revokeSession(jti);
     if (ownSession) {
-      logout();
-      navigate('/login', { replace: true });
+      await logout();
     } else {
       await fetchSessions();
       showToast('Session revoked successfully', 'success');
@@ -110,8 +108,7 @@ export function Sessions() {
     try {
       await Promise.all(targets.map((s) => adminApi.revokeSession(s.jti)));
       if (includesOwnSession) {
-        logout();
-        navigate('/login', { replace: true });
+        await logout();
         return;
       }
       await fetchSessions();

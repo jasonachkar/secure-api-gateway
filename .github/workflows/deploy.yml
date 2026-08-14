@@ -1,51 +1,20 @@
-name: Deploy to Azure
-
-# Manual by design - promote to `on: push: branches: [main]` once you've run this
-# by hand at least once and are comfortable with it deploying automatically.
-#
-# Required repository secrets/variables (Settings → Secrets and variables → Actions):
-#   AZURE_CLIENT_ID        - App registration client ID, federated for OIDC (recommended:
-#                            no long-lived secret - see the "Federated credential" setup
-#                            below). A classic client-secret-based login also works if you
-#                            add AZURE_CLIENT_SECRET and swap the login step accordingly,
-#                            but OIDC is the least-privilege default here.
-#   AZURE_TENANT_ID        - Azure AD tenant ID
-#   AZURE_SUBSCRIPTION_ID  - Target subscription ID
-#   ACR_LOGIN_SERVER        - e.g. secapigwdevacrXXXX.azurecr.io (terraform output acr_login_server)
-#   RESOURCE_GROUP           - e.g. rg-secapigw-dev (terraform output resource_group_name)
-#   CONTAINER_APP_NAME        - e.g. secapigw-dev-gateway (terraform output container_app_name)
-#
-# Federated credential setup (one-time, via Azure CLI):
-#   az ad app create --display-name secure-api-gateway-deploy
-#   az ad sp create --id <appId>
-#   az role assignment create --assignee <appId-object-id> --role Contributor \
-#     --scope /subscriptions/<sub>/resourceGroups/<rg>
-#   az ad app federated-credential create --id <appId> --parameters '{
-#     "name": "github-main",
-#     "issuer": "https://token.actions.githubusercontent.com",
-#     "subject": "repo:<org>/<repo>:ref:refs/heads/main",
-#     "audiences": ["api://AzureADTokenExchange"]
-#   }'
-# A Contributor scoped to just the resource group (not the subscription) is the
-# least-privilege choice - the deploy workflow only ever needs to push images and
-# update the one Container App in that group.
+name: Deploy Backend to Azure
 
 on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: 'Image tag to build and deploy (defaults to the triggering commit SHA if left blank)'
+        description: Image tag to build and deploy (defaults to the triggering commit SHA)
         required: false
 
 permissions:
-  id-token: write # required for OIDC federated login
+  id-token: write
   contents: read
 
 jobs:
   build-and-deploy:
-    name: Build, push, and deploy
     runs-on: ubuntu-latest
-    environment: production # optional: gate behind a GitHub Environment with required reviewers
+    environment: production
     steps:
       - uses: actions/checkout@v4
 
@@ -59,12 +28,7 @@ jobs:
       - name: ACR login
         run: az acr login --name "$(cut -d. -f1 <<< '${{ secrets.ACR_LOGIN_SERVER }}')"
 
-      # The default `docker` buildx driver can't export to the GHA cache backend
-      # (type=gha below) - only the `docker-container` driver can. Without this step,
-      # build-push-action falls back to the default driver and fails with
-      # "Cache export is not supported for the docker driver."
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3
 
       - name: Build and push image
         uses: docker/build-push-action@v6
@@ -81,23 +45,47 @@ jobs:
       - name: Deploy to Container Apps
         run: |
           az containerapp update \
-            --name "${{ secrets.CONTAINER_APP_NAME }}" \
-            --resource-group "${{ secrets.RESOURCE_GROUP }}" \
-            --image "${{ secrets.ACR_LOGIN_SERVER }}/secure-api-gateway:${{ inputs.image_tag || github.sha }}"
+            --name '${{ secrets.CONTAINER_APP_NAME }}' \
+            --resource-group '${{ secrets.RESOURCE_GROUP }}' \
+            --image '${{ secrets.ACR_LOGIN_SERVER }}/secure-api-gateway:${{ inputs.image_tag || github.sha }}'
 
-      - name: Verify health
+      - name: Verify readiness, CORS, login, logout, and revoked reuse
+        shell: bash
         run: |
-          FQDN=$(az containerapp show \
-            --name "${{ secrets.CONTAINER_APP_NAME }}" \
-            --resource-group "${{ secrets.RESOURCE_GROUP }}" \
-            --query properties.configuration.ingress.fqdn -o tsv)
-          for i in $(seq 1 10); do
-            if curl -fsS "https://$FQDN/healthz"; then
-              echo "Healthy"
-              exit 0
+          set -euo pipefail
+          api_fqdn=$(az containerapp show --name '${{ secrets.CONTAINER_APP_NAME }}' --resource-group '${{ secrets.RESOURCE_GROUP }}' --query properties.configuration.ingress.fqdn -o tsv)
+          dashboard_host=$(az staticwebapp show --name '${{ secrets.STATIC_WEB_APP_NAME }}' --resource-group '${{ secrets.RESOURCE_GROUP }}' --query defaultHostname -o tsv)
+          api_url="https://${api_fqdn}"
+          dashboard_origin="https://${dashboard_host}"
+          work_dir=$(mktemp -d)
+          trap 'rm -rf "$work_dir"' EXIT
+
+          ready=false
+          for attempt in $(seq 1 30); do
+            status=$(curl -sS -o "$work_dir/ready.json" -w '%{http_code}' "$api_url/readyz" || true)
+            if [ "$status" = 200 ] && jq -e '.status == "ok" and .redis == "ok"' "$work_dir/ready.json" >/dev/null; then
+              ready=true
+              break
             fi
-            echo "Waiting for new revision to become healthy... ($i/10)"
             sleep 10
           done
-          echo "Health check failed after deploy - check 'az containerapp revision list' and consider rolling back"
-          exit 1
+          [ "$ready" = true ]
+
+          preflight_status=$(curl -sS -D "$work_dir/preflight.headers" -o /dev/null -w '%{http_code}' -X OPTIONS \
+            -H "Origin: $dashboard_origin" \
+            -H 'Access-Control-Request-Method: POST' \
+            "$api_url/auth/demo-login")
+          [ "$preflight_status" = 204 ]
+          grep -iq "^access-control-allow-origin: $dashboard_origin" "$work_dir/preflight.headers"
+
+          curl -fsS -c "$work_dir/cookies.txt" -H "Origin: $dashboard_origin" -X POST \
+            "$api_url/auth/demo-login" -o "$work_dir/login.json"
+          token=$(jq -er '.accessToken' "$work_dir/login.json")
+          cp "$work_dir/cookies.txt" "$work_dir/old-cookies.txt"
+          curl -fsS -b "$work_dir/cookies.txt" -c "$work_dir/cookies.txt" \
+            -H "Origin: $dashboard_origin" -H "Authorization: Bearer $token" -X POST \
+            "$api_url/auth/logout" -o "$work_dir/logout.json"
+          jq -e '.message | type == "string"' "$work_dir/logout.json" >/dev/null
+          reuse_status=$(curl -sS -b "$work_dir/old-cookies.txt" -H "Origin: $dashboard_origin" \
+            -o /dev/null -w '%{http_code}' -X POST "$api_url/auth/refresh")
+          [ "$reuse_status" = 401 ]

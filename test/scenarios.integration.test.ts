@@ -8,7 +8,12 @@ import { FastifyInstance } from 'fastify';
 import { createApp } from '../src/app.js';
 
 async function login(app: FastifyInstance, username: string, password: string) {
-  const response = await app.inject({ method: 'POST', url: '/auth/login', payload: { username, password } });
+  const response = await app.inject({
+    method: 'POST',
+    url: '/auth/login',
+    payload: { username, password },
+    headers: { origin: 'http://localhost:3000' },
+  });
   expect(response.statusCode).toBe(200);
   return response.json().accessToken as string;
 }
@@ -148,7 +153,11 @@ describe('Guided scenarios (Integration)', () => {
   });
 
   it('allows the read-only reviewer role (via one-click demo login) to run scenarios', async () => {
-    const demoLoginResponse = await app.inject({ method: 'POST', url: '/auth/demo-login' });
+    const demoLoginResponse = await app.inject({
+      method: 'POST',
+      url: '/auth/demo-login',
+      headers: { origin: 'http://localhost:3000' },
+    });
     expect(demoLoginResponse.statusCode).toBe(200);
     const reviewerToken = demoLoginResponse.json().accessToken as string;
 
@@ -161,7 +170,11 @@ describe('Guided scenarios (Integration)', () => {
   });
 
   it('blocks the reviewer role from mutating admin endpoints outside the allowlisted scenario actions', async () => {
-    const demoLoginResponse = await app.inject({ method: 'POST', url: '/auth/demo-login' });
+    const demoLoginResponse = await app.inject({
+      method: 'POST',
+      url: '/auth/demo-login',
+      headers: { origin: 'http://localhost:3000' },
+    });
     const reviewerToken = demoLoginResponse.json().accessToken as string;
 
     const blockAttempt = await app.inject({

@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.6.0"
+  required_version = ">= 1.7.0" # import blocks need for_each, added in 1.7
 
   required_providers {
     azurerm = {
@@ -47,7 +47,8 @@ provider "azurerm" {
 # `az login` above. No resources are planned from this provider unless that flag is on,
 # so it doesn't need working credentials for a default apply.
 provider "aws" {
-  region = var.aws_region
+  region  = var.aws_region
+  profile = var.aws_profile
 }
 
 # Only touched when enable_gcp_logging_ingestion = true - relies on Application Default

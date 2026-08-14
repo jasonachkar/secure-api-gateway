@@ -500,13 +500,13 @@ body {
 }
 
 .ui-button--success {
-  background-color: var(--color-success-500);
+  background-color: var(--color-success-700);
   color: var(--color-text-inverse);
   box-shadow: var(--shadow-sm);
 }
 
 .ui-button--success:hover:not(:disabled) {
-  background-color: var(--color-success-600);
+  background-color: var(--color-success-800);
 }
 
 .ui-button--ghost {

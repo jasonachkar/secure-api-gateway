@@ -11,7 +11,12 @@ import type { FastifyInstance } from 'fastify';
 import { createApp } from '../src/app.js';
 
 async function login(app: FastifyInstance, username = 'admin', password = 'Admin123!') {
-  const res = await app.inject({ method: 'POST', url: '/auth/login', payload: { username, password } });
+  const res = await app.inject({
+    method: 'POST',
+    url: '/auth/login',
+    payload: { username, password },
+    headers: { origin: 'http://localhost:3000' },
+  });
   expect(res.statusCode).toBe(200);
   return res.json() as { accessToken: string };
 }
@@ -72,7 +77,12 @@ describe('GW-TOKEN-001 real signal wiring (Integration)', () => {
   });
 
   it('an invalid token type (refresh token used as access token) produces a token.invalid_type event and a GW-TOKEN-001 match', async () => {
-    const loginRes = await app.inject({ method: 'POST', url: '/auth/login', payload: { username: 'admin', password: 'Admin123!' } });
+    const loginRes = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { username: 'admin', password: 'Admin123!' },
+      headers: { origin: 'http://localhost:3000' },
+    });
     const refreshCookie = loginRes.cookies.find((c) => c.name === 'refreshToken');
     expect(refreshCookie).toBeDefined();
 
@@ -106,7 +116,10 @@ describe('GW-TOKEN-001 real signal wiring (Integration)', () => {
     const logoutRes = await app.inject({
       method: 'POST',
       url: '/auth/logout',
-      headers: { authorization: `Bearer ${accessToken}` },
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        origin: 'http://localhost:3000',
+      },
     });
     expect(logoutRes.statusCode).toBe(200);
 

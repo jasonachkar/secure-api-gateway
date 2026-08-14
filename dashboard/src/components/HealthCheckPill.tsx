@@ -4,8 +4,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+import { environment } from '../config/environment';
 const CHECK_INTERVAL_MS = 30000;
 
 export function HealthCheckPill() {
@@ -21,7 +20,7 @@ export function HealthCheckPill() {
     const check = async () => {
       const start = performance.now();
       try {
-        const response = await fetch(`${API_URL}/healthz`);
+        const response = await fetch(`${environment.apiBaseUrl}/healthz`);
         if (cancelled) return;
         setResponseTimeMs(Math.round(performance.now() - start));
         setHealthy(response.ok);

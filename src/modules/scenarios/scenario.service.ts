@@ -188,7 +188,10 @@ export class ScenarioService {
         method: 'POST',
         url: '/auth/login',
         payload: { username: GATEWAY_SCENARIO_USERNAME, password: 'intentionally-wrong-password' },
-        headers: { 'x-forwarded-for': GATEWAY_SCENARIO_IP },
+        headers: {
+          'x-forwarded-for': GATEWAY_SCENARIO_IP,
+          origin: env.security.corsOrigins[0],
+        },
       });
       if (res.statusCode === 429) {
         rateLimited = true;
@@ -307,7 +310,10 @@ export class ScenarioService {
       method: 'POST',
       url: '/auth/login',
       payload: { username: GATEWAY_SCENARIO_USERNAME, password: 'irrelevant-blocked-before-auth-runs' },
-      headers: { 'x-forwarded-for': GATEWAY_SCENARIO_IP },
+      headers: {
+        'x-forwarded-for': GATEWAY_SCENARIO_IP,
+        origin: env.security.corsOrigins[0],
+      },
     });
     const verifyBody =
       verifyRes.statusCode === 403 ? (verifyRes.json() as { error?: { code?: string }; requestId?: string }) : null;

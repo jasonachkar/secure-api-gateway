@@ -5,8 +5,8 @@ project_name = "secapigw"
 environment  = "dev"
 location     = "eastus"
 
-# Point at your Vercel preview/dev deployment
-cors_origin = "https://secure-api-gateway-dev.vercel.app"
+# Optional custom domains only; the Terraform-managed SWA origin is automatic.
+additional_cors_origins = []
 
 # Keep cost minimal for a dev/demo stack
 container_min_replicas = 0

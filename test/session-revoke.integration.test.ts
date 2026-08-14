@@ -59,6 +59,7 @@ describe('Session revocation (Integration)', () => {
       method: 'POST',
       url: '/auth/login',
       payload: { username: 'user', password: 'User123!' },
+      headers: { origin: 'http://localhost:3000' },
     });
     expect(loginResponse.statusCode).toBe(200);
     const { accessToken } = loginResponse.json();

@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
   ExternalLink,
   ShieldCheck,
@@ -56,7 +56,6 @@ const moreNavItems = [
 ];
 
 export function Layout({ children }: LayoutProps) {
-  const navigate = useNavigate();
   const location = useLocation();
   const { logout } = useAuth();
   const [demoMode, setDemoMode] = React.useState(false);
@@ -94,12 +93,9 @@ export function Layout({ children }: LayoutProps) {
 
   const handleLogout = async () => {
     try {
-      await adminApi.logout();
+      await logout();
     } catch (error) {
       console.error('Logout error:', error);
-    } finally {
-      logout();
-      navigate('/login', { replace: true });
     }
   };
 

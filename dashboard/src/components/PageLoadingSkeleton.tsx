@@ -12,7 +12,7 @@ interface PageLoadingSkeletonProps {
 
 export function PageLoadingSkeleton({ cardCount = 3, showMetrics = true }: PageLoadingSkeletonProps) {
   return (
-    <div className="page-stack" aria-busy="true" aria-label="Loading content">
+    <div className="page-stack" role="status" aria-busy="true" aria-label="Loading content">
       {showMetrics && (
         <div className="page-grid page-grid--cards">
           {Array.from({ length: 4 }).map((_, i) => (

@@ -10,6 +10,7 @@ import { getErrorMessage } from '../api/errors';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { environment } from '../config/environment';
 
 const DEMO_ACCOUNTS = [
   { username: 'admin', password: 'Admin123!', label: 'admin (full access)' },
@@ -116,7 +117,7 @@ export function Login() {
             scenarios, cannot block arbitrary IPs, revoke sessions, or change configuration.
           </p>
 
-          <div className="demo-banner" role="note">
+          {environment.showFixtureCredentials && <div className="demo-banner" role="note">
             <KeyRound size={18} className="demo-banner__icon" aria-hidden="true" />
             <div className="demo-banner__content">
               <div className="demo-banner__title">Or sign in with a demo account</div>
@@ -134,7 +135,7 @@ export function Login() {
                 ))}
               </div>
             </div>
-          </div>
+          </div>}
 
           <form onSubmit={handleSubmit} className="page-stack">
             <div className="form-field">

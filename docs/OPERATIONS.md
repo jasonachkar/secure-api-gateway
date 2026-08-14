@@ -76,9 +76,9 @@ store), and API keys all live there. If Redis is unreachable:
    (`terraform/modules/container-app`) means the new revision fully replaces the old
    one once healthy (no manual traffic-splitting step, at the cost of no built-in
    canary - see "Rollback" below for how to fall back to a previous revision instead).
-4. The dashboard deploys independently via Vercel's own GitHub integration - pushes to
-   `main` trigger a Vercel build automatically once the Vercel project is linked (see
-   `dashboard/DEPLOYMENT.md`).
+4. The dashboard deploys independently through `deploy-dashboard.yml`. OIDC queries the
+   live Container App and SWA hostnames before build; the follow-up reusable Playwright
+   workflow verifies the public reviewer session.
 
 ### Rollback
 
@@ -154,8 +154,8 @@ wired via container stdout) as the durable copy.
 
 ## Appendix: alternative deployment platforms
 
-This project's supported path is Docker Compose (local) + Azure Container Apps +
-Vercel. The `Dockerfile` is a standard multi-stage Node.js build with no
+This project's supported path is Docker Compose (local) + Azure Static Web Apps +
+Azure Container Apps. The `Dockerfile` is a standard multi-stage Node.js build with no
 platform-specific assumptions, so it should also run with minimal changes on:
 
 - **Kubernetes** — deploy the same image with a standard Deployment + Service +

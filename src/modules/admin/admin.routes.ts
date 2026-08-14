@@ -17,7 +17,7 @@ import { AuditService } from '../audit/audit.service.js';
 import { AdminAuditLogService } from './audit-log.service.js';
 import { IngestionService } from '../ingestion/ingestion.service.js';
 import { IngestionController } from '../ingestion/ingestion.controller.js';
-import { requireAuth, verifyToken } from '../../middleware/auth.js';
+import { requireAuth } from '../../middleware/auth.js';
 import { requireAnyRole, requireRole } from '../../middleware/rbac.js';
 import { validate } from '../../middleware/validation.js';
 import {
@@ -30,37 +30,12 @@ import {
   type CreateApiKeyBody,
   type ApiKeyIdParams,
 } from './admin.schemas.js';
-import { UnauthorizedError, NotFoundError } from '../../lib/errors.js';
+import { NotFoundError } from '../../lib/errors.js';
 import { env } from '../../config/index.js';
 import { AuditEventType } from '../audit/audit.types.js';
 import { getClientIp, getRequestId } from '../../lib/requestContext.js';
 import { upstreamCircuitBreaker } from '../../lib/httpClient.js';
 import { getRecentRequests } from '../../lib/requestTelemetry.js';
-
-/**
- * SSE authentication middleware
- * Reads token from query parameter (EventSource doesn't support headers)
- */
-async function requireAuthSSE(request: FastifyRequest, reply: FastifyReply) {
-  const token = (request.query as any).token;
-
-  if (!token) {
-    throw new UnauthorizedError('Missing authentication token');
-  }
-
-  try {
-    const payload = verifyToken(token);
-    (request as any).user = {
-      userId: payload.sub,
-      username: payload.username,
-      roles: payload.roles,
-      permissions: payload.permissions,
-      jti: payload.jti,
-    };
-  } catch (error) {
-    throw new UnauthorizedError('Invalid authentication token');
-  }
-}
 
 /**
  * Register admin routes
@@ -253,15 +228,9 @@ export async function registerAdminRoutes(
       schema: {
         description: 'Stream real-time metrics via Server-Sent Events',
         tags: ['Admin'],
-        querystring: {
-          type: 'object',
-          required: ['token'],
-          properties: {
-            token: { type: 'string', description: 'JWT access token' },
-          },
-        },
+        security: [{ bearerAuth: [] }],
       },
-      preHandler: [requireAuthSSE, requireAnyRole(['admin', 'security_analyst'])],
+      preHandler: [requireAuth, requireAnyRole(['admin', 'security_analyst', 'reviewer'])],
     },
     controller.streamRealtimeMetrics.bind(controller)
   );

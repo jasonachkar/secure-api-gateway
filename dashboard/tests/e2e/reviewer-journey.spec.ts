@@ -6,29 +6,27 @@
  * and Compliance (the assessmentBasis honesty banner) rather than just
  * checking pages render.
  *
- * Every test here reuses the single authenticated session global-setup.ts
- * creates via one real POST /auth/demo-login (see playwright.config.ts's
- * `storageState`) - only the dedicated login-flow test below performs a
- * fresh login, so the suite doesn't blow through RATE_LIMIT_AUTH_MAX.
+ * Authenticated tests share one worker-scoped browser context. The access token stays
+ * in memory and refresh-cookie rotation stays in that live context; no static storage
+ * state can replay an already-rotated cookie.
  *
  * Requires the backend (localhost:3000) and dashboard dev server
  * (localhost:5173) to already be running.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect, navigateAuthenticated } from './fixtures';
 import AxeBuilder from '@axe-core/playwright';
 
 const PRIMARY_PAGES = ['/', '/guided-scenarios', '/investigations', '/cloud-coverage', '/about'];
 const MORE_PAGES = ['/compliance', '/threats', '/audit-logs', '/sessions', '/users', '/implementation-status'];
 const ALL_REVIEWER_PAGES = [...PRIMARY_PAGES, ...MORE_PAGES];
+const BASE_URL = process.env.E2E_BASE_URL || 'http://localhost:5173';
 
 test.describe('Reviewer journey (one-click demo)', () => {
   test('the one-click demo entry point signs a fresh visitor in', async ({ browser }) => {
     // Starts logged out, unlike every other test in this file - a genuinely fresh
-    // context (no storageState) so this is a real first-visit login, not a page reload
-    // of an already-authenticated session. The access token lives in localStorage
-    // (AuthContext), not just a cookie, so clearing cookies on the shared page alone
-    // would not be enough - a fresh context is the reliable way to start logged out.
-    const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    // context so this is a real first-visit login, not a refresh-cookie bootstrap of
+    // the worker-scoped authenticated session.
+    const context = await browser.newContext({ baseURL: BASE_URL, storageState: { cookies: [], origins: [] } });
     const page = await context.newPage();
     await page.goto('/login');
     await page.getByText('Enter read-only demo').click();
@@ -36,32 +34,32 @@ test.describe('Reviewer journey (one-click demo)', () => {
     await context.close();
   });
 
-  test('reaches every nav page without a JS error', async ({ page }) => {
+  test('reaches every nav page without a JS error', async ({ reviewerPage: page }) => {
+    test.setTimeout(60_000);
     const pageErrors: string[] = [];
     page.on('pageerror', (err) => pageErrors.push(err.message));
 
     for (const path of ALL_REVIEWER_PAGES) {
-      await page.goto(path);
-      await page.waitForLoadState('networkidle');
+      await navigateAuthenticated(page, path);
     }
 
     expect(pageErrors).toEqual([]);
   });
 
-  test('guided scenarios page lists all 3 scenarios and can run the replay-based ones', async ({ page }) => {
-    await page.goto('/guided-scenarios');
+  test('guided scenarios page lists all 3 scenarios and can run the replay-based ones', async ({ reviewerPage: page }) => {
+    await navigateAuthenticated(page, '/guided-scenarios');
 
     await expect(page.getByText('Run scenario')).toHaveCount(3);
   });
 
-  test('reviewer role can read Implementation Status (explicitly reviewer-allowlisted)', async ({ page }) => {
-    await page.goto('/implementation-status');
+  test('reviewer role can read Implementation Status (explicitly reviewer-allowlisted)', async ({ reviewerPage: page }) => {
+    await navigateAuthenticated(page, '/implementation-status');
 
     // Implementation Status is explicitly reviewer-readable and should render real data.
     await expect(page.locator('.ui-card').first()).toBeVisible();
   });
 
-  test('Investigations master-detail: filters narrow the list and selecting an item loads detail inline', async ({ page }) => {
+  test('Investigations master-detail: filters narrow the list and selecting an item loads detail inline', async ({ reviewerPage: page }) => {
     // Longer than the 30s default: this test's own wait for scenario completion below can
     // take up to 45s alone on a cold CI runner, which wouldn't leave room for the rest of
     // the test.
@@ -71,23 +69,23 @@ test.describe('Reviewer journey (one-click demo)', () => {
     // the UI) - the gateway scenario performs several real POST /auth/login attempts to
     // trigger a lockout, which shares RATE_LIMIT_AUTH_MAX with every other login in this
     // suite and would starve the Compliance test's real admin login below.
-    await page.goto('/guided-scenarios');
-    await page.waitForLoadState('networkidle');
+    await navigateAuthenticated(page, '/guided-scenarios');
     const awsCard = page.locator('.ui-card', { hasText: 'AWS privileged activity' });
     const runButton = awsCard.getByText('Run scenario');
     await expect(runButton).toBeVisible({ timeout: 15000 });
     await runButton.scrollIntoViewIfNeeded();
+    const runResponsePromise = page.waitForResponse(
+      (response) => response.request().method() === 'POST' && response.url().includes('/admin/scenarios/aws-privileged-activity/run')
+    );
     await runButton.click();
-    // Wait for the scenario's own "View investigation" result link (a real completion
-    // signal from the run finishing) rather than a fixed timeout. This has needed
-    // increasing more than once: a CI runner's first heavy request after a cold Node
-    // start - a full parse -> normalize -> detect -> correlate pass, several Redis
-    // round-trips - measured noticeably slower than a warm local dev process even for a
-    // pure-replay scenario with no external network calls.
-    await expect(awsCard.getByText(/View investigations?/)).toBeVisible({ timeout: 45000 });
+    // The replay is intentionally idempotent: on a clean database it creates an
+    // investigation, while a later run reports a duplicate event and leaves the existing
+    // investigation intact. The actual HTTP response is the completion signal in both
+    // cases; the local replay can finish too quickly to observe the transient disabled UI.
+    const runResponse = await runResponsePromise;
+    expect(runResponse.ok()).toBe(true);
 
-    await page.goto('/investigations');
-    await page.waitForLoadState('networkidle');
+    await navigateAuthenticated(page, '/investigations');
 
     const firstItem = page.locator('.master-detail__item').first();
     await expect(firstItem).toBeVisible({ timeout: 10000 });
@@ -116,22 +114,23 @@ test.describe('Reviewer journey (one-click demo)', () => {
   // none of that accumulated local port pressure - if it becomes flaky there too, that's a
   // real signal to reopen this rather than assume the same local-machine explanation.
   test('Compliance page discloses assessmentBasis for every framework tab, not just Security Posture', async ({ browser }) => {
+    test.setTimeout(60_000);
     // /admin/compliance/metrics is admin-only (requireRole('admin')), not reviewer-readable
     // like most of the "More" nav - the reviewer role gets a real 403 here (rendered as an
     // error state, not a crash - covered by the "no JS error" test above). Nav still shows
     // "Control Evidence" to every authenticated user regardless of role, so a reviewer can
     // click into a page that then 403s; see docs/KNOWN_LIMITATIONS.md. Use admin here since
     // that's what this feature actually requires.
-    const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    const context = await browser.newContext({ baseURL: BASE_URL, storageState: { cookies: [], origins: [] } });
     const page = await context.newPage();
     await page.goto('/login');
     await page.getByLabel('Username').fill('admin');
     await page.getByLabel('Password').fill('Admin123!');
     await page.getByRole('button', { name: /^Sign in$/i }).click();
-    await expect(page).toHaveURL('/');
+    await expect(page).toHaveURL('/', { timeout: 30_000 });
 
     await page.goto('/compliance');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // The page's own Refresh button retries both underlying fetches - use it to ride out
     // a transient local network hiccup rather than treating one as a hard failure, the
@@ -139,7 +138,7 @@ test.describe('Reviewer journey (one-click demo)', () => {
     for (let attempt = 0; attempt < 3; attempt++) {
       if (await page.getByText('Failed to fetch security posture data').isVisible().catch(() => false)) {
         await page.getByRole('button', { name: 'Refresh' }).click();
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('domcontentloaded');
       } else {
         break;
       }
@@ -161,7 +160,7 @@ test.describe('Reviewer journey (one-click demo)', () => {
 test.describe('Accessibility (axe)', () => {
   test('login page has no serious or critical accessibility violations', async ({ browser }) => {
     // Logged-out page, unlike the rest of this file - fresh context, no shared storageState.
-    const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    const context = await browser.newContext({ baseURL: BASE_URL, storageState: { cookies: [], origins: [] } });
     const page = await context.newPage();
     await page.goto('/login');
     const results = await new AxeBuilder({ page }).analyze();
@@ -171,9 +170,8 @@ test.describe('Accessibility (axe)', () => {
   });
 
   for (const path of ALL_REVIEWER_PAGES) {
-    test(`${path} has no serious or critical accessibility violations`, async ({ page }) => {
-      await page.goto(path);
-      await page.waitForLoadState('networkidle');
+    test(`${path} has no serious or critical accessibility violations`, async ({ reviewerPage: page }) => {
+      await navigateAuthenticated(page, path);
 
       const results = await new AxeBuilder({ page }).analyze();
       const serious = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');

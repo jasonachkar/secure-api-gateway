@@ -1,11 +1,8 @@
 # Terraform — Azure deployment
 
-Provisions the backend half of the architecture described in the root README: Azure
-Container Apps running the gateway, backed by Azure Container Registry, Key Vault,
-Azure Cache for Redis, and Log Analytics / Application Insights. The frontend
-(`dashboard/`) deploys to Vercel by default (outside this Terraform) - optionally to
-Azure Static Web Apps instead, via `enable_azure_static_web_app` (see "Frontend
-hosting" below).
+Provisions the Azure architecture described in the root README: Static Web Apps for
+the dashboard, Container Apps for the gateway, Container Registry, Key Vault, Azure
+Cache for Redis, and Log Analytics / Application Insights.
 
 ## What gets created (default path)
 
@@ -18,13 +15,14 @@ hosting" below).
 | Key Vault (Standard) | `cookie-secret`, `jwt-secret`, `redis-password` | Pennies (per-operation billing) |
 | Container Apps Environment + App | Runs the gateway, scale-to-zero by default | Free grant covers light/demo traffic; consumption-priced beyond that |
 | Azure Cache for Redis (Basic C0) | Rate limiting, token/session state, audit log, API keys | **~$16/mo — the one real fixed cost in this stack** |
+| Azure Static Web Apps (Free) | Hosts the dashboard SPA with HTTPS and navigation fallback | Free |
 
 Everything except Redis realistically fits Azure's free-tier credits for a low-traffic
 demo. If you want a genuinely $0-at-rest deployment, set `enable_redis = false` — the
 app documents the degraded fallback behavior without Redis in
 [`docs/OPERATIONS.md`](../docs/OPERATIONS.md).
 
-### Optional (all `false` by default)
+### Optional
 
 - **`enable_apim`** — puts Azure API Management in front of the Container App for
   edge-level rate limiting, CORS, and header-stripping policies (see
@@ -35,9 +33,8 @@ app documents the degraded fallback behavior without Redis in
   `modules/networking`). The default path is public ingress with no private
   networking, which is simpler and free; this exists to demonstrate a more
   locked-down topology (see [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)).
-- **`enable_azure_static_web_app`** — provisions Azure Static Web Apps for the
-  dashboard (see `modules/static-web-app`) instead of/alongside Vercel. Free tier.
-  See "Frontend hosting: Vercel vs Azure Static Web Apps" below.
+- **`enable_azure_static_web_app`** defaults to `true`. Disable it only when another
+  explicitly managed frontend is replacing SWA.
 - **`enable_aws_cloudwatch_ingestion`** — provisions a dedicated AWS CloudWatch Logs
   log group plus a least-privilege IAM reader (see `modules/aws-logging`), and wires
   real credentials into the gateway so its CloudWatch ingestion adapter actually
@@ -52,43 +49,24 @@ app documents the degraded fallback behavior without Redis in
   Unlike AWS's ARN-scoped IAM, GCP has no log-name-scoped grain — project-level
   `roles/logging.viewer` is the finest read-only role available.
 
-## Frontend hosting: Vercel vs Azure Static Web Apps
+## Frontend hosting and CORS
 
-The default path (`enable_azure_static_web_app = false`) leaves the dashboard on
-Vercel — it's already working, free, and Vercel's zero-config DX / instant PR
-previews are genuinely better than what you'd get self-hosting a SPA. **Vercel +
-Azure backend is a normal, real-world pattern, not a compromise.**
+Azure Static Web Apps is enabled by default. Terraform canonicalizes and deduplicates
+the optional `additional_cors_origins` set, automatically unions the provisioned SWA
+origin, rejects wildcard/non-origin values, and exposes `effective_cors_origins` for
+review. A Terraform check proves the managed SWA URL remains present.
 
-If you'd rather keep everything on one cloud, set `enable_azure_static_web_app = true`
-and apply. Azure gives you a public HTTPS domain automatically either way — Container
-Apps' `container_app_url` output and, if enabled, the Static Web App's
-`static_web_app_url` output both work immediately with **no custom domain purchase or
-DNS setup required** (Static Web Apps' free tier supports adding a custom domain
-later if you want one, but it's optional).
-
-What Terraform automates:
-- The Static Web App resource itself (with its `<name>.azurestaticapps.net` domain)
-- Folding that URL into the gateway's `CORS_ORIGIN` automatically (`local.cors_origins_combined`
-  in `main.tf`) — no separate manual CORS update needed
-
-What's still manual, and why: `.github/workflows/deploy-dashboard.yml` builds and
-pushes the dashboard on every push to `dashboard/**`, but it needs two values only
-available after `terraform apply`:
+The only frontend-specific secret is the narrow SWA deployment token:
 
 ```bash
-# 1. Deployment token -> GitHub repo secret AZURE_STATIC_WEB_APPS_API_TOKEN
 terraform output -raw static_web_app_deployment_token
-
-# 2. Backend URL (baked into the Vite build at build time) -> GitHub repo variable VITE_API_URL
-terraform output -raw container_app_url
 ```
 
-Add both under **Settings → Secrets and variables → Actions** (the token as a
-*Secret*, the URL as a *Variable*), then push to `main` (or re-run the workflow) to
-trigger the first deploy. This can't be fully automated without giving Terraform a
-GitHub personal access token with repo/workflow write scope — a broader, longer-lived
-credential than the narrow, single-purpose deployment token the workflow actually
-needs, so it's a deliberate two-step manual handoff rather than a gap.
+Store it as `AZURE_STATIC_WEB_APPS_API_TOKEN`. Configure the same OIDC identity and
+resource-name values used by the backend workflow. Do not create a `VITE_API_URL`
+repository variable: `deploy-dashboard.yml` queries the current Container App FQDN,
+validates it as an HTTPS origin, and injects it into the build. Historical Vercel notes
+live under `legacy/deploy-configs` and are unsupported.
 
 ## Prerequisites
 
@@ -106,7 +84,7 @@ needs, so it's a deliberate two-step manual handoff rather than a gap.
 cd terraform
 terraform init                      # local state to start - see "Remote state" below
 cp environments/dev.tfvars.example environments/dev.tfvars
-# edit dev.tfvars: at minimum set cors_origin to your Vercel URL
+# add HTTPS custom domains to additional_cors_origins only when needed
 
 terraform plan  -var-file=environments/dev.tfvars
 terraform apply -var-file=environments/dev.tfvars

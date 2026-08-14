@@ -1,106 +1,88 @@
-/**
- * Server-Sent Events hook for real-time metrics
- */
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { getAccessToken } from '../auth/tokenStore';
+import { refreshAccessToken } from '../api/client';
 
-import { useEffect, useState, useRef } from 'react';
-
-interface UseSSEOptions {
+interface UseSSEOptions<T> {
   url: string;
   enabled?: boolean;
-  onMessage?: (data: any) => void;
-  onError?: (error: Event) => void;
+  onMessage?: (data: T) => void;
+  onError?: (error: Error) => void;
 }
 
-export function useSSE<T = any>({ url, enabled = true, onMessage, onError }: UseSSEOptions) {
+async function openAuthenticatedStream(url: string, signal: AbortSignal, retried = false): Promise<Response> {
+  const token = getAccessToken();
+  if (!token) throw new Error('Authentication required');
+
+  const response = await fetch(url, {
+    headers: { Accept: 'text/event-stream', Authorization: `Bearer ${token}` },
+    signal,
+  });
+
+  if (response.status === 401 && !retried) {
+    await refreshAccessToken();
+    return openAuthenticatedStream(url, signal, true);
+  }
+  if (!response.ok || !response.body) throw new Error(`Event stream failed (${response.status})`);
+  return response;
+}
+
+export function useSSE<T = unknown>({ url, enabled = true, onMessage, onError }: UseSSEOptions<T>) {
   const [data, setData] = useState<T | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const [generation, setGeneration] = useState(0);
+  const callbacks = useRef({ onMessage, onError });
+  callbacks.current = { onMessage, onError };
 
   useEffect(() => {
-    if (!enabled) {
-      return;
-    }
+    if (!enabled) return;
+    const controller = new AbortController();
 
-    // Get token from localStorage
-    const token = localStorage.getItem('accessToken');
-    if (!token) {
-      setError('No access token found');
-      return;
-    }
-
-    // Create SSE connection with token in query params
-    // (EventSource doesn't support custom headers)
-    const urlWithToken = `${url}?token=${encodeURIComponent(token)}`;
-    const eventSource = new EventSource(urlWithToken);
-    eventSourceRef.current = eventSource;
-
-    eventSource.onopen = () => {
-      setIsConnected(true);
-      setError(null);
-    };
-
-    eventSource.onmessage = (event) => {
+    const consume = async () => {
       try {
-        // Skip heartbeat messages
-        if (event.data.trim() === ': heartbeat' || event.data.startsWith(':')) {
-          return;
-        }
+        const response = await openAuthenticatedStream(url, controller.signal);
+        setIsConnected(true);
+        setError(null);
+        const reader = response.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
 
-        const parsedData = JSON.parse(event.data);
-        
-        // Skip connection messages, only process actual metrics
-        if (parsedData.type === 'connected') {
-          setIsConnected(true);
-          return;
+        while (!controller.signal.aborted) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split('\n\n');
+          buffer = events.pop() || '';
+          for (const event of events) {
+            const payload = event
+              .split('\n')
+              .filter((line) => line.startsWith('data:'))
+              .map((line) => line.slice(5).trimStart())
+              .join('\n');
+            if (!payload) continue;
+            const parsed = JSON.parse(payload) as T & { type?: string };
+            if (parsed.type === 'connected') continue;
+            setData(parsed);
+            callbacks.current.onMessage?.(parsed);
+          }
         }
-
-        // Only set data if it has actual metrics (not just connection messages)
-        if (parsedData.requestsPerSecond !== undefined || parsedData.timestamp) {
-          setData(parsedData);
-          onMessage?.(parsedData);
-        }
-      } catch (err) {
-        console.error('Failed to parse SSE data:', err, event.data);
-      }
-    };
-
-    eventSource.onerror = (event) => {
-      // Only set error if connection is actually closed
-      if (eventSource.readyState === EventSource.CLOSED) {
+      } catch (streamError) {
+        if (controller.signal.aborted) return;
+        const safeError = streamError instanceof Error ? streamError : new Error('Connection lost');
         setIsConnected(false);
         setError('Connection lost');
-        onError?.(event);
-        eventSource.close();
-      } else if (eventSource.readyState === EventSource.CONNECTING) {
-        // Still connecting, don't show error yet
-        setIsConnected(false);
-      } else {
-        // Connection open, might be temporary network issue
-        // EventSource will auto-reconnect
+        callbacks.current.onError?.(safeError);
       }
     };
 
-    // Cleanup on unmount
-    return () => {
-      eventSource.close();
-      eventSourceRef.current = null;
-    };
-  }, [url, enabled, onMessage, onError]);
+    void consume();
+    return () => controller.abort();
+  }, [url, enabled, generation]);
 
-  const reconnect = () => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
-    // Force re-render to trigger useEffect
+  const reconnect = useCallback(() => {
     setIsConnected(false);
-  };
+    setGeneration((value) => value + 1);
+  }, []);
 
-  return {
-    data,
-    isConnected,
-    error,
-    reconnect
-  };
+  return { data, isConnected, error, reconnect };
 }

@@ -51,10 +51,18 @@ variable "container_max_replicas" {
   default = 3
 }
 
-variable "cors_origin" {
-  description = "Comma-separated allowlist for the app's own CORS_ORIGIN env var - set this to your Vercel dashboard URL(s). Never left as \"*\"; the app refuses to boot in production with a wildcard."
-  type        = string
-  default     = "https://localhost:5173"
+variable "additional_cors_origins" {
+  description = "Optional HTTPS origins for custom dashboard domains. The provisioned Azure Static Web Apps origin is included automatically."
+  type        = set(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for origin in var.additional_cors_origins :
+      !strcontains(origin, "*") && can(regex("^https://[A-Za-z0-9.-]+(:[0-9]+)?/?$", trimspace(origin)))
+    ])
+    error_message = "additional_cors_origins must contain HTTPS origins only, without wildcards, credentials, paths, queries, or fragments."
+  }
 }
 
 variable "upstream_reports_url" {
@@ -112,9 +120,9 @@ variable "apim_sku_name" {
 }
 
 variable "enable_azure_static_web_app" {
-  description = "Provision Azure Static Web Apps for the dashboard instead of (or in addition to) deploying it to Vercel. Free tier, custom domains + SSL included. See terraform/README.md#frontend-hosting-vercel-vs-azure-static-web-apps for the manual GitHub setup this still requires (a deployment token as a repo secret, and the backend URL as a repo variable)."
+  description = "Provision Azure Static Web Apps as the default dashboard host. Free tier, custom domains, and SSL are included."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "static_web_app_location" {
@@ -138,6 +146,12 @@ variable "enable_aws_cloudwatch_ingestion" {
 variable "aws_region" {
   type    = string
   default = "us-east-1"
+}
+
+variable "aws_profile" {
+  description = "AWS CLI profile to use for provisioning the CloudWatch log group and IAM reader. Only required if enable_aws_cloudwatch_ingestion = true."
+  type        = string
+  default     = "default"
 }
 
 variable "aws_cloudwatch_log_retention_days" {

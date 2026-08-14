@@ -105,7 +105,7 @@ subscription level - Terraform doesn't attempt to constrain that).
   responses from a logged-in victim's browser. The env-level wildcard rejection in
   `env.ts` was real but had nothing enforcing it downstream until now.
 - **Residual risk**: none specific beyond keeping the allowlist accurate as new
-  frontend origins (e.g. Vercel preview URLs) are added.
+  frontend origins (for example an approved SWA custom domain) are added.
 
 ### 4. Cascading failure from a degraded upstream
 - **Mitigation**: per-host circuit breaker (`src/lib/circuitBreaker.ts`) - after

@@ -10,9 +10,13 @@ import { AuditEventType } from '../audit/audit.types.js';
 import { LoginRequest } from './auth.schemas.js';
 import { getClientIp, getRequestId } from '../../lib/requestContext.js';
 import { verifyToken } from '../../middleware/auth.js';
-import { env } from '../../config/index.js';
 import { UnauthorizedError, AccountLockedError, InvalidCredentialsError } from '../../lib/errors.js';
 import { evaluateGatewayCredentialAttack, type AuthSecurityPipeline } from '../security/gateway-detection.js';
+import {
+  getRefreshCookieClearOptions,
+  getRefreshCookieOptions,
+  REFRESH_COOKIE_NAME,
+} from './refresh-cookie.js';
 
 export type { AuthSecurityPipeline } from '../security/gateway-detection.js';
 
@@ -68,11 +72,7 @@ export class AuthController {
     const ip = getClientIp(request);
     const requestId = getRequestId(request);
 
-    const { accessToken, refreshToken, expiresIn, user } = await this.authService.login(
-      'reviewer',
-      'Reviewer123!',
-      ip
-    );
+    const { accessToken, refreshToken, expiresIn, user } = await this.authService.demoLogin(ip);
 
     await this.auditService.logLoginSuccess({
       userId: user.userId,
@@ -81,13 +81,7 @@ export class AuthController {
       requestId,
     });
 
-    reply.setCookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: env.server.isProduction,
-      sameSite: 'strict',
-      path: '/auth/refresh',
-      maxAge: 60 * 60 * 24 * 7,
-    });
+    reply.setCookie(REFRESH_COOKIE_NAME, refreshToken, getRefreshCookieOptions());
 
     return { accessToken, expiresIn, tokenType: 'Bearer' };
   }
@@ -126,13 +120,7 @@ export class AuthController {
       await this.securityPipeline?.gatewayAuthTracker?.reset(username);
 
       // Set refresh token as httpOnly cookie
-      reply.setCookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: env.server.isProduction, // HTTPS only in production
-        sameSite: 'strict',
-        path: '/auth/refresh', // Only send to refresh endpoint
-        maxAge: 60 * 60 * 24 * 7, // 7 days
-      });
+      reply.setCookie(REFRESH_COOKIE_NAME, refreshToken, getRefreshCookieOptions());
 
       // Return access token in response body
       return {
@@ -204,13 +192,7 @@ export class AuthController {
       });
 
       // Set new refresh token cookie (rotation)
-      reply.setCookie('refreshToken', newRefreshToken, {
-        httpOnly: true,
-        secure: env.server.isProduction,
-        sameSite: 'strict',
-        path: '/auth/refresh',
-        maxAge: 60 * 60 * 24 * 7,
-      });
+      reply.setCookie(REFRESH_COOKIE_NAME, newRefreshToken, getRefreshCookieOptions());
 
       // Return new access token
       return {
@@ -276,9 +258,7 @@ export class AuthController {
     });
 
     // Clear refresh token cookie
-    reply.clearCookie('refreshToken', {
-      path: '/auth/refresh',
-    });
+    reply.clearCookie(REFRESH_COOKIE_NAME, getRefreshCookieClearOptions());
 
     return {
       message: 'Logged out successfully',

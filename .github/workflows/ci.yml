@@ -102,6 +102,6 @@ jobs:
         run: npm run build
         working-directory: dashboard
         env:
-          # Placeholder for the CI build check only - the real value is a Vercel
-          # project env var, not baked into this workflow
+          # Valid HTTPS placeholder for compile validation. Azure deployment queries
+          # the current Container App FQDN instead of using a copied repo variable.
           VITE_API_URL: https://example.invalid

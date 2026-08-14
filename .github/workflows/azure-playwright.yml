@@ -1,0 +1,45 @@
+name: Azure Playwright Smoke
+
+on:
+  workflow_call:
+    inputs:
+      dashboard_url:
+        type: string
+        required: true
+      api_url:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      dashboard_url:
+        description: Public Azure Static Web Apps origin
+        type: string
+        required: true
+      api_url:
+        description: Public Azure Container Apps API origin
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - run: npm ci
+        working-directory: dashboard
+      - run: npx playwright install --with-deps chromium
+        working-directory: dashboard
+      - name: Run public Azure session tests
+        run: npx playwright test --config=playwright.azure.config.ts
+        working-directory: dashboard
+        env:
+          E2E_BASE_URL: ${{ inputs.dashboard_url }}
+          E2E_API_URL: ${{ inputs.api_url }}

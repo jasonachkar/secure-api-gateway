@@ -26,7 +26,7 @@ locals {
 }
 
 resource "aws_iam_user" "reader" {
-  name = "${local.iam_safe_name}-reader"
+  name = "secure-api-gateway-dev-reader"
   tags = var.tags
 }
 

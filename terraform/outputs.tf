@@ -40,6 +40,11 @@ output "static_web_app_url" {
   value       = var.enable_azure_static_web_app ? module.static_web_app[0].url : null
 }
 
+output "effective_cors_origins" {
+  description = "Canonical, non-sensitive origin allowlist passed to the gateway"
+  value       = local.cors_origins_combined
+}
+
 output "static_web_app_deployment_token" {
   description = "Add this as the GitHub repo secret AZURE_STATIC_WEB_APPS_API_TOKEN (terraform output -raw static_web_app_deployment_token)"
   value       = var.enable_azure_static_web_app ? module.static_web_app[0].api_key : null
@@ -65,8 +70,7 @@ output "next_steps" {
     ],
     var.enable_azure_static_web_app ? [
       "5. GitHub repo Settings -> Secrets -> Actions: add AZURE_STATIC_WEB_APPS_API_TOKEN = $(terraform output -raw static_web_app_deployment_token)",
-      "6. GitHub repo Settings -> Variables -> Actions: add VITE_API_URL = https://${module.container_app.fqdn}",
-      "7. Push to main (or re-run the deploy-dashboard workflow) to trigger the first dashboard deploy",
+      "6. Push to main (or re-run deploy-dashboard); the workflow queries the live Container App FQDN before building",
     ] : []
   ))
 }

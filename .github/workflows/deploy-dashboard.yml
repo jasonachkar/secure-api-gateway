@@ -1,92 +1,71 @@
 name: Deploy Dashboard (Azure Static Web Apps)
 
-# Alternative to Vercel's automatic deploys - only relevant if you provisioned the
-# dashboard via Terraform's `enable_azure_static_web_app = true` (see
-# terraform/README.md#frontend-hosting-vercel-vs-azure-static-web-apps). If you're
-# using Vercel instead (the default), this workflow is unused - Vercel's own GitHub
-# integration handles deploys and none of the setup below applies.
-#
-# Required one-time setup (both come from `terraform apply` output once
-# enable_azure_static_web_app = true):
-#   Repo secret   AZURE_STATIC_WEB_APPS_API_TOKEN = terraform output -raw static_web_app_deployment_token
-#   Repo variable VITE_API_URL                    = terraform output -raw container_app_url
-# (Settings -> Secrets and variables -> Actions -> "Secrets" tab / "Variables" tab)
-#
-# Without AZURE_STATIC_WEB_APPS_API_TOKEN set, this workflow skips cleanly (see the
-# "Check Azure Static Web Apps configuration" step) instead of failing - that's expected
-# until the secret above is added.
-
 on:
   push:
     branches: [main]
     paths:
       - 'dashboard/**'
       - '.github/workflows/deploy-dashboard.yml'
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened, closed]
-    paths:
-      - 'dashboard/**'
+      - '.github/workflows/azure-playwright.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
-  pull-requests: write # for the action's PR preview-environment comments
+  id-token: write
 
 jobs:
   deploy:
     name: Build and deploy
-    if: github.event_name != 'pull_request' || github.event.action != 'closed'
     runs-on: ubuntu-latest
+    environment: production
+    outputs:
+      api_url: ${{ steps.azure-urls.outputs.api_url }}
+      dashboard_url: ${{ steps.azure-urls.outputs.dashboard_url }}
     steps:
-      # This deploy path is optional (see the header comment above) - a missing token
-      # means the dashboard simply isn't provisioned on Azure Static Web Apps, not that
-      # this build is broken. Skip cleanly with a clear summary instead of failing.
-      - name: Check Azure Static Web Apps configuration
-        id: swa-config
-        run: |
-          if [ -n "${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}" ]; then
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            {
-              echo "### Azure Static Web Apps deploy skipped"
-              echo ""
-              echo "\`AZURE_STATIC_WEB_APPS_API_TOKEN\` is not set, so no deploy ran - this is not a build failure."
-              echo "The dashboard's live deploy is Vercel's own GitHub integration; this workflow is only relevant if you provisioned the dashboard via Terraform's \`enable_azure_static_web_app = true\`. See terraform/README.md#frontend-hosting-vercel-vs-azure-static-web-apps."
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-
       - uses: actions/checkout@v4
-        if: steps.swa-config.outputs.configured == 'true'
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
         with:
-          submodules: false
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Query and validate current Azure URLs
+        id: azure-urls
+        shell: bash
+        run: |
+          set -euo pipefail
+          fqdn=$(az containerapp show \
+            --name '${{ secrets.CONTAINER_APP_NAME }}' \
+            --resource-group '${{ secrets.RESOURCE_GROUP }}' \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          dashboard_host=$(az staticwebapp show \
+            --name '${{ secrets.STATIC_WEB_APP_NAME }}' \
+            --resource-group '${{ secrets.RESOURCE_GROUP }}' \
+            --query defaultHostname -o tsv)
+          api_url="https://${fqdn}"
+          dashboard_url="https://${dashboard_host}"
+          node -e "for (const value of process.argv.slice(1)) { const url = new URL(value); if (url.protocol !== 'https:' || url.origin !== value) process.exit(1) }" "$api_url" "$dashboard_url"
+          echo "api_url=$api_url" >> "$GITHUB_OUTPUT"
+          echo "dashboard_url=$dashboard_url" >> "$GITHUB_OUTPUT"
+          echo "VITE_API_URL=$api_url" >> "$GITHUB_ENV"
 
       - name: Deploy to Azure Static Web Apps
-        if: steps.swa-config.outputs.configured == 'true'
         uses: Azure/static-web-apps-deploy@v1
         env:
-          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_API_URL: ${{ env.VITE_API_URL }}
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          action: 'upload'
-          app_location: '/dashboard'
-          output_location: 'dist'
+          action: upload
+          app_location: /dashboard
+          output_location: dist
 
-  close-preview:
-    name: Close PR preview environment
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check Azure Static Web Apps configuration
-        id: swa-config
-        run: echo "configured=${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
-
-      - name: Close Azure Static Web Apps preview environment
-        if: steps.swa-config.outputs.configured == 'true'
-        uses: Azure/static-web-apps-deploy@v1
-        with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
-          app_location: '/dashboard'
-          action: 'close'
+  smoke:
+    name: Public Azure session journey
+    needs: deploy
+    uses: ./.github/workflows/azure-playwright.yml
+    with:
+      dashboard_url: ${{ needs.deploy.outputs.dashboard_url }}
+      api_url: ${{ needs.deploy.outputs.api_url }}

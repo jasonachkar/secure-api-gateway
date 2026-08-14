@@ -1,14 +1,14 @@
-/**
- * Authentication context for global state management
- */
-
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { adminApi } from '../api/admin';
+import { refreshAccessToken } from '../api/client';
+import { clearAccessToken, setAccessToken, subscribeToToken } from '../auth/tokenStore';
 
 interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (token: string) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -16,54 +16,41 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const navigate = useNavigate();
 
-  // Check authentication status
-  const checkAuth = useCallback(() => {
-    const token = localStorage.getItem('accessToken');
-    setIsAuthenticated(!!token);
-    setIsLoading(false);
-  }, []);
+  useEffect(() => subscribeToToken((token) => setIsAuthenticated(Boolean(token))), []);
 
   useEffect(() => {
-    // Initial check
-    checkAuth();
-
-    // Listen for storage changes (cross-tab)
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'accessToken') {
-        checkAuth();
-      }
-    };
-
-    // Listen for custom auth events (same-tab)
-    const handleAuthChange = () => {
-      checkAuth();
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('auth-state-changed', handleAuthChange);
-
+    let active = true;
+    refreshAccessToken()
+      .then(() => {
+        if (active) setIsAuthenticated(true);
+      })
+      .catch(() => {
+        if (active) setIsAuthenticated(false);
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('auth-state-changed', handleAuthChange);
+      active = false;
     };
-  }, [checkAuth]);
+  }, []);
 
   const login = useCallback((token: string) => {
-    localStorage.setItem('accessToken', token);
-    setIsAuthenticated(true);
+    setAccessToken(token);
     setIsLoading(false);
-    // Dispatch custom event to notify other components
-    window.dispatchEvent(new Event('auth-state-changed'));
   }, []);
 
-  const logout = useCallback(() => {
-    localStorage.removeItem('accessToken');
-    setIsAuthenticated(false);
-    setIsLoading(false);
-    // Dispatch custom event to notify other components
-    window.dispatchEvent(new Event('auth-state-changed'));
-  }, []);
+  const logout = useCallback(async () => {
+    try {
+      await adminApi.logout();
+    } finally {
+      clearAccessToken();
+      setIsLoading(false);
+      navigate('/login', { replace: true });
+    }
+  }, [navigate]);
 
   return (
     <AuthContext.Provider value={{ isAuthenticated, isLoading, login, logout }}>
@@ -74,11 +61,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 }
-
-
-

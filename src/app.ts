@@ -43,6 +43,7 @@ import { registerIpBlockMiddleware } from './middleware/ipBlock.js';
 import { ScenarioService } from './modules/scenarios/scenario.service.js';
 import { registerScenarioRoutes } from './modules/scenarios/scenario.routes.js';
 import type { PostgresClient } from './modules/ingestion/normalized-event.store.js';
+import type Redis from 'ioredis';
 
 async function createPostgresClient(): Promise<PostgresClient> {
   const { Pool } = await import('pg');
@@ -114,6 +115,7 @@ export async function createApp(): Promise<FastifyInstance> {
 
   // Decorate app with services for use in routes
   app.decorate('audit', auditService);
+  app.decorate('redis', redis);
   app.decorate('metrics', metricsService);
   app.decorate('tokenStore', tokenStore);
   app.decorate('apiKeyStore', apiKeyStore);
@@ -133,11 +135,6 @@ export async function createApp(): Promise<FastifyInstance> {
   // Cookie parser (for refresh tokens)
   await app.register(cookie, {
     secret: env.security.cookieSecret,
-    parseOptions: {
-      httpOnly: true,
-      secure: env.server.isProduction,
-      sameSite: 'strict',
-    },
   });
 
   // CORS - explicit origin allowlist (env.security.corsOrigins, from CORS_ORIGIN).
@@ -148,7 +145,7 @@ export async function createApp(): Promise<FastifyInstance> {
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'Cache-Control', 'Accept'],
-    exposedHeaders: ['X-Request-ID', 'RateLimit-*', 'Content-Type'],
+    exposedHeaders: ['X-Request-ID', 'RateLimit-*', 'Retry-After', 'Content-Type'],
   });
 
   // Compression
@@ -268,6 +265,10 @@ export async function createApp(): Promise<FastifyInstance> {
 
     // Handle AppError (operational errors)
     if (error instanceof AppError) {
+      const retryAfter = (error as AppError & { retryAfter?: number }).retryAfter;
+      if (Number.isFinite(retryAfter)) {
+        reply.header('Retry-After', Math.max(1, Math.ceil(retryAfter!)));
+      }
       logger.warn(
         {
           requestId,
@@ -283,6 +284,24 @@ export async function createApp(): Promise<FastifyInstance> {
 
       return reply.status(error.statusCode).send({
         ...error.toJSON(),
+        requestId,
+      });
+    }
+
+    // @fastify/rate-limit has already selected 429 and attached Retry-After before its
+    // generated error reaches the application handler. Preserve that classification and
+    // return the same safe envelope as route-level rate limiting instead of translating a
+    // plugin error into INTERNAL_ERROR/500.
+    if (error.statusCode === 429 || reply.statusCode === 429) {
+      const retryAfterHeader = reply.getHeader('Retry-After') ?? reply.getHeader('retry-after');
+      if (retryAfterHeader !== undefined) {
+        reply.header('Retry-After', retryAfterHeader);
+      }
+      return reply.status(429).send({
+        error: {
+          code: 'RATE_LIMIT_EXCEEDED',
+          message: 'Too many requests, please try again later',
+        },
         requestId,
       });
     }
@@ -391,9 +410,17 @@ export async function createApp(): Promise<FastifyInstance> {
             timestamp: { type: 'number' },
           },
         },
+        503: {
+          type: 'object',
+          properties: {
+            status: { type: 'string' },
+            redis: { type: 'string' },
+            timestamp: { type: 'number' },
+          },
+        },
       },
     },
-  }, async () => {
+  }, async (_request, reply) => {
     // Check Redis connection
     let redisStatus = 'unknown';
     try {
@@ -403,11 +430,11 @@ export async function createApp(): Promise<FastifyInstance> {
       redisStatus = 'error';
     }
 
-    return {
+    return reply.code(redisStatus === 'ok' ? 200 : 503).send({
       status: redisStatus === 'ok' ? 'ok' : 'degraded',
       redis: redisStatus,
       timestamp: Date.now(),
-    };
+    });
   });
 
   // Register module routes
@@ -456,6 +483,7 @@ export async function createApp(): Promise<FastifyInstance> {
 declare module 'fastify' {
   interface FastifyInstance {
     audit: AuditService;
+    redis: Redis;
     metrics: MetricsService;
     tokenStore: TokenStore;
     apiKeyStore: ApiKeyStore;

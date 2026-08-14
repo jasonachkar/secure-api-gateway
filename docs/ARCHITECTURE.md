@@ -1,6 +1,6 @@
 # Architecture
 
-## Deployment architecture (Azure + Vercel)
+## Deployment architecture (Azure)
 
 ```mermaid
 flowchart TB
@@ -8,7 +8,7 @@ flowchart TB
         Browser["Browser"]
     end
 
-    subgraph Vercel["Vercel"]
+    subgraph SWA["Azure Static Web Apps"]
         Dashboard["Security Dashboard\n(React + Vite SPA)"]
     end
 
@@ -37,11 +37,10 @@ flowchart TB
 ```
 
 The frontend and backend deploy independently and communicate only over HTTPS:
-- **`dashboard/`** → Vercel by default. Static build, points at the gateway via
-  `VITE_API_URL`. Optionally Azure Static Web Apps instead (`enable_azure_static_web_app`
-  in Terraform) if you'd rather keep everything on one cloud - see
-  [`terraform/README.md`](https://github.com/jasonachkar/secure-api-gateway/blob/main/terraform/README.md#frontend-hosting-vercel-vs-azure-static-web-apps).
-  Both give you a public HTTPS domain automatically, no custom domain required.
+- **`dashboard/`** → Azure Static Web Apps by default. The deployment workflow queries
+  the current Container App FQDN and injects it into the Vite build. Terraform adds the
+  SWA origin to CORS automatically and accepts optional custom domains through
+  `additional_cors_origins`.
 - **everything else** → Azure, provisioned by [`terraform/`](https://github.com/jasonachkar/secure-api-gateway/tree/main/terraform). See
   [`terraform/README.md`](https://github.com/jasonachkar/secure-api-gateway/blob/main/terraform/README.md) for the resource-by-resource
   breakdown and cost table.
@@ -211,7 +210,7 @@ The gateway follows a layered architecture with clear separation of concerns:
 | State | Redis (ioredis) | Rate limits, token/session state, audit log, API keys - stateless app, horizontally scalable |
 | Outbound HTTP | undici (`Agent`/`Dispatcher`) | DNS-pinning for SSRF defense, not available via a bare `fetch()` call |
 | Logging | Pino | Structured JSON logs with field-level redaction |
-| Frontend | React + Vite | Fast dev loop, static output deploys cleanly to Vercel |
+| Frontend | React + Vite | Fast dev loop, static output deploys cleanly to Azure Static Web Apps |
 | IaC | Terraform, azurerm provider | Declarative, plan-before-apply, real diffable state |
 
 ## Scalability

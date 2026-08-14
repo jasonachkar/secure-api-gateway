@@ -3,7 +3,7 @@
  */
 
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import { Landing } from './pages/Landing';
 import { Login } from './pages/Login';
@@ -31,8 +31,7 @@ function App() {
   }
 
   return (
-    <BrowserRouter>
-      <Routes>
+    <Routes>
         <Route
           path="/"
           element={isAuthenticated ? <Dashboard /> : <Landing />}
@@ -82,8 +81,7 @@ function App() {
           element={isAuthenticated ? <ImplementationStatus /> : <Navigate to="/login" replace />}
         />
         <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+    </Routes>
   );
 }
 

@@ -21,6 +21,45 @@ const KNOWN_PLACEHOLDER_SECRETS = new Set([
   'dev-secret-only',
 ]);
 
+function parseCorsOrigins(value: string, ctx: z.RefinementCtx): string[] {
+  const normalized = new Set<string>();
+
+  for (const candidate of value.split(',').map((entry) => entry.trim()).filter(Boolean)) {
+    if (candidate === '*') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'CORS_ORIGIN must be an explicit origin allowlist, not "*"',
+      });
+      continue;
+    }
+
+    try {
+      const url = new URL(candidate);
+      if (!['http:', 'https:'].includes(url.protocol)) {
+        throw new Error('unsupported protocol');
+      }
+      if (url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+        throw new Error('origin contains URL components beyond scheme and authority');
+      }
+      normalized.add(url.origin);
+    } catch {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Invalid CORS origin: ${candidate}`,
+      });
+    }
+  }
+
+  if (normalized.size === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'CORS_ORIGIN must contain at least one trusted HTTP(S) origin',
+    });
+  }
+
+  return [...normalized];
+}
+
 /**
  * Zod schema for environment variables
  * Validates and coerces types at startup - fail fast on misconfiguration
@@ -77,7 +116,7 @@ const envSchema = z
     CORS_ORIGIN: z
       .string()
       .default('http://localhost:3000,http://localhost:5173')
-      .transform((val) => val.split(',').map((s) => s.trim())),
+      .transform(parseCorsOrigins),
     COOKIE_SECRET: z.string().min(32),
     BCRYPT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
 
@@ -205,12 +244,12 @@ const envSchema = z
       });
     }
 
-    // CORS must never wildcard in production
-    if (data.CORS_ORIGIN.some((origin) => origin === '*')) {
+    // Credentialed browser traffic may only cross HTTPS origins in production.
+    if (data.CORS_ORIGIN.some((origin) => !origin.startsWith('https://'))) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['CORS_ORIGIN'],
-        message: 'CORS_ORIGIN must be an explicit origin allowlist in production, not "*"',
+        message: 'CORS_ORIGIN entries must use HTTPS in production',
       });
     }
 

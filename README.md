@@ -48,7 +48,7 @@ flowchart TB
     subgraph Client
         Browser["Browser"]
     end
-    subgraph Vercel["Vercel"]
+    subgraph SWA["Azure Static Web Apps"]
         Dashboard["Security Dashboard (React + Vite)"]
     end
     subgraph Azure["Azure"]
@@ -69,7 +69,7 @@ flowchart TB
     Gateway -->|SSRF-checked, DNS-pinned| Upstream
 ```
 
-- **Frontend** (`dashboard/`) → **Vercel**. Static Vite build.
+- **Frontend** (`dashboard/`) → **Azure Static Web Apps**. Static Vite build with SPA fallback.
 - **Backend** (`src/`) → **Azure Container Apps**, provisioned by [`terraform/`](terraform).
 - **Local development** → Docker Compose, the one supported local path.
 
@@ -258,7 +258,7 @@ To build it locally: `pip install -r docs/requirements.txt && mkdocs serve`.
 ```bash
 cd terraform
 terraform init
-cp environments/dev.tfvars.example environments/dev.tfvars   # set cors_origin at minimum
+cp environments/dev.tfvars.example environments/dev.tfvars   # add custom origins only if needed
 terraform apply -var-file=environments/dev.tfvars
 ```
 
@@ -282,13 +282,10 @@ remote state setup, secret rotation, and design notes (why the Container App use
 user-assigned identity, why JWT is HS256 in this deployment):
 [`terraform/README.md`](terraform/README.md).
 
-Deploy the dashboard to Vercel separately — root directory `dashboard`, env var
-`VITE_API_URL` set to the gateway's URL (`terraform output container_app_url`). See
-[`dashboard/DEPLOYMENT.md`](dashboard/DEPLOYMENT.md). Prefer one cloud instead? Set
-`enable_azure_static_web_app = true` in Terraform to host the dashboard on Azure
-Static Web Apps — free tier, automatic HTTPS domain, no custom domain needed either
-way. See [`terraform/README.md`](terraform/README.md#frontend-hosting-vercel-vs-azure-static-web-apps)
-for the (two-step, one-time) manual GitHub secret/variable setup this still needs.
+Terraform enables Azure Static Web Apps by default and automatically adds its origin to
+the gateway allowlist. The dashboard workflow queries the live Container App FQDN over
+OIDC before every build, so no manually copied `VITE_API_URL` repository variable can
+drift. See [`dashboard/DEPLOYMENT.md`](dashboard/DEPLOYMENT.md).
 
 ### Cost
 
@@ -379,7 +376,7 @@ secure-api-gateway/
 │   │   ├── response/                  # real response actions (block IP, revoke sessions)
 │   │   └── proxy/, reports/            # the actual gateway/proxy pattern
 │   ├── app.ts / main.ts
-├── dashboard/                # React + Vite reviewer dashboard → Vercel
+├── dashboard/                # React + Vite reviewer dashboard → Azure Static Web Apps
 ├── mock-service/             # mock upstream for local dev/demo
 ├── terraform/                # Azure IaC + opt-in AWS/GCP ingestion identity (see terraform/README.md)
 ├── docs/                     # ARCHITECTURE, CLOUD_INGESTION, CONCURRENCY, DETECTION_RULES,

@@ -7,6 +7,8 @@ import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import { FastifyInstance } from 'fastify';
 import { createApp } from '../src/app.js';
 
+const AUTH_ORIGIN = 'http://localhost:3000';
+
 describe('Authentication Flow (Integration)', () => {
   let app: FastifyInstance;
 
@@ -32,6 +34,7 @@ describe('Authentication Flow (Integration)', () => {
         username: 'admin',
         password: 'Admin123!',
       },
+      headers: { origin: AUTH_ORIGIN },
     });
 
     // Assert: Login successful
@@ -75,6 +78,7 @@ describe('Authentication Flow (Integration)', () => {
       cookies: {
         refreshToken: refreshTokenCookie!.value,
       },
+      headers: { origin: AUTH_ORIGIN },
     });
 
     // Assert: Refresh successful
@@ -111,6 +115,7 @@ describe('Authentication Flow (Integration)', () => {
       cookies: {
         refreshToken: newRefreshCookie!.value,
       },
+      headers: { origin: AUTH_ORIGIN, authorization: `Bearer ${newAccessToken}` },
     });
 
     // Assert: Logout successful
@@ -128,10 +133,18 @@ describe('Authentication Flow (Integration)', () => {
       cookies: {
         refreshToken: newRefreshCookie!.value,
       },
+      headers: { origin: AUTH_ORIGIN },
     });
 
     // Assert: Refresh fails (token revoked)
     expect(expiredRefreshResponse.statusCode).toBe(401);
+
+    const revokedAccessResponse = await app.inject({
+      method: 'GET',
+      url: '/admin/audit-logs?limit=1',
+      headers: { authorization: `Bearer ${newAccessToken}` },
+    });
+    expect(revokedAccessResponse.statusCode).toBe(401);
   });
 
   it('should reject invalid credentials', async () => {
@@ -143,6 +156,7 @@ describe('Authentication Flow (Integration)', () => {
         username: 'admin',
         password: 'WrongPassword!',
       },
+      headers: { origin: AUTH_ORIGIN },
     });
 
     // Assert
@@ -175,6 +189,7 @@ describe('Authentication Flow (Integration)', () => {
         username: 'user',
         password: 'User123!',
       },
+      headers: { origin: AUTH_ORIGIN },
     });
 
     const loginBody = JSON.parse(loginResponse.body);

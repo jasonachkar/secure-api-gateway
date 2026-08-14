@@ -109,6 +109,10 @@ function rateLimitErrorHandler(request: FastifyRequest, context: any): object {
   }
 
   return {
+    // The plugin throws this builder result. Supplying statusCode lets the centralized
+    // Fastify error handler preserve 429 instead of treating the plain object as an
+    // unclassified internal error.
+    statusCode: 429,
     error: {
       code: 'RATE_LIMIT_EXCEEDED',
       message: 'Too many requests, please try again later',

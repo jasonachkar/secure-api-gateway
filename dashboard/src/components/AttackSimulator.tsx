@@ -10,8 +10,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronUp, Swords, Gauge, KeySquare, Loader2 } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+import { environment } from '../config/environment';
 
 type SimKey = 'bruteForce' | 'rateLimit' | 'jwtTamper';
 
@@ -42,7 +41,7 @@ export function AttackSimulator() {
     set({ running: true, progress: 0, total: 20 });
     for (let i = 1; i <= 20; i++) {
       try {
-        await fetch(`${API_URL}/auth/login`, {
+        await fetch(`${environment.apiBaseUrl}/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: 'sim-target', password: `wrong-password-${i}` }),
@@ -64,7 +63,7 @@ export function AttackSimulator() {
     let sawRateLimited = false;
     for (let batchStart = 0; batchStart < 60; batchStart += BATCH_SIZE) {
       const batch = Array.from({ length: Math.min(BATCH_SIZE, 60 - batchStart) }, () =>
-        fetch(`${API_URL}/healthz`).then((r) => {
+        fetch(`${environment.apiBaseUrl}/healthz`).then((r) => {
           if (r.status === 429) sawRateLimited = true;
         }).catch(() => {})
       );
@@ -88,7 +87,7 @@ export function AttackSimulator() {
     const tamperedToken =
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0YW1wZXJlZCIsInJvbGVzIjpbImFkbWluIl19.not-a-valid-signature';
     try {
-      const response = await fetch(`${API_URL}/admin/health`, {
+      const response = await fetch(`${environment.apiBaseUrl}/admin/health`, {
         headers: { Authorization: `Bearer ${tamperedToken}` },
       });
       const body = await response.json().catch(() => ({}));

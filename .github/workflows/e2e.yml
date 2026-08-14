@@ -41,6 +41,12 @@ jobs:
       COOKIE_SECRET: e2e-ci-only-cookie-secret-min-32-chars-long
       ENABLE_SWAGGER: 'false'
       DEMO_MODE: 'false'
+      # The suite intentionally exercises many full-page refresh/bootstrap cycles in
+      # one browser worker; auth rate-limit behavior is covered by backend tests.
+      RATE_LIMIT_AUTH_MAX: 200
+      # Dashboard pages issue several API calls and SSE reconnects. Keep this workflow
+      # focused on browser/session behavior; global-limit enforcement has integration tests.
+      RATE_LIMIT_GLOBAL_MAX: 2000
 
     steps:
       - uses: actions/checkout@v4
@@ -76,16 +82,11 @@ jobs:
         run: npm ci
         working-directory: dashboard
 
-      - name: Build dashboard
-        run: npm run build
+      - name: Start dashboard dev server
+        run: nohup npx vite --host 127.0.0.1 --port 5173 --strictPort > dashboard.log 2>&1 &
         working-directory: dashboard
         env:
-          # Baked in at build time (Vite) - the backend this job just started.
           VITE_API_URL: http://localhost:3000
-
-      - name: Start dashboard preview server
-        run: nohup npx vite preview --port 5173 --strictPort > dashboard.log 2>&1 &
-        working-directory: dashboard
 
       - name: Wait for dashboard readiness
         run: |

@@ -72,6 +72,33 @@ describe('env.ts production fail-fast validation', () => {
     expect(load).toThrow(/process\.exit/);
   });
 
+  it('canonicalizes, trims, and deduplicates configured origins', () => {
+    const load = loadEnvWith({
+      CORS_ORIGIN:
+        ' https://dashboard.example.com/,https://dashboard.example.com,https://admin.example.com ',
+    });
+    const loaded = load();
+    expect(loaded.env.security.corsOrigins).toEqual([
+      'https://dashboard.example.com',
+      'https://admin.example.com',
+    ]);
+  });
+
+  it.each([
+    'https://dashboard.example.com/path',
+    'https://dashboard.example.com?debug=true',
+    'https://dashboard.example.com#fragment',
+    'https://user:password@dashboard.example.com',
+  ])('refuses a CORS URL that is not an origin: %s', (corsOrigin) => {
+    const load = loadEnvWith({ CORS_ORIGIN: corsOrigin });
+    expect(load).toThrow(/process\.exit/);
+  });
+
+  it('requires HTTPS CORS origins in production', () => {
+    const load = loadEnvWith({ CORS_ORIGIN: 'http://dashboard.example.com' });
+    expect(load).toThrow(/process\.exit/);
+  });
+
   it('refuses ENABLE_SWAGGER=true in production', () => {
     const load = loadEnvWith({ ENABLE_SWAGGER: 'true' });
     expect(load).toThrow(/process\.exit/);
@@ -102,12 +129,12 @@ describe('env.ts production fail-fast validation', () => {
     expect(load).toThrow(/process\.exit/);
   });
 
-  it('does not apply any of the above restrictions outside production', () => {
+  it('does not apply production-only secret and infrastructure restrictions outside production', () => {
     const load = () => {
       Object.assign(process.env, BASE_PROD_ENV, {
         NODE_ENV: 'development',
         COOKIE_SECRET: 'your-cookie-secret-min-32-chars-long-change-in-production',
-        CORS_ORIGIN: '*',
+        CORS_ORIGIN: 'http://localhost:5173',
         ENABLE_SWAGGER: 'true',
         SSRF_ALLOW_PRIVATE_IPS: 'true',
         REDIS_PASSWORD: '',
@@ -117,5 +144,19 @@ describe('env.ts production fail-fast validation', () => {
     };
 
     expect(load).not.toThrow();
+  });
+
+  it('refuses wildcard CORS configuration outside production too', () => {
+    const load = () => {
+      Object.assign(process.env, BASE_PROD_ENV, {
+        NODE_ENV: 'development',
+        CORS_ORIGIN: '*',
+        REDIS_PASSWORD: '',
+      });
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      return require('../src/config/env.js');
+    };
+
+    expect(load).toThrow(/process\.exit/);
   });
 });

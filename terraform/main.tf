@@ -205,12 +205,13 @@ module "container_app" {
     PORT                                  = "3000"
     LOG_LEVEL                             = "info"
     LOG_PRETTY                            = "false"
+    PROXY_TRUST_MODE                      = "azure"
     JWT_ALGORITHM                         = "HS256"
     JWT_ACCESS_TOKEN_EXPIRES_IN           = "15m"
     JWT_REFRESH_TOKEN_EXPIRES_IN          = "7d"
     CORS_ORIGIN                           = join(",", local.cors_origins_combined)
     ENABLE_SWAGGER                        = "false"
-    DEMO_MODE                             = "true"
+    DEMO_MODE                             = "false"
     UPSTREAM_REPORTS_URL                  = var.upstream_reports_url
     ALLOWED_UPSTREAM_HOSTS                = var.allowed_upstream_hosts
     BODY_LIMIT                            = "1048576"

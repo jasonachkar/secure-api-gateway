@@ -21,8 +21,7 @@ import { SectionHeader } from '../components/SectionHeader';
 import { useSSE } from '../hooks/useSSE';
 import { adminApi } from '../api/admin';
 import type { IngestionStatus, SecurityPosture } from '../types';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+import { environment } from '../config/environment';
 
 interface RealtimeMetrics {
   timestamp: number;
@@ -105,7 +104,7 @@ export function Dashboard() {
   const [inspectorExpanded, setInspectorExpanded] = useState(false);
 
   const { data, isConnected, error } = useSSE<any>({
-    url: `${API_URL}/admin/metrics/realtime`,
+    url: `${environment.apiBaseUrl}/admin/metrics/realtime`,
     enabled: true,
   });
 

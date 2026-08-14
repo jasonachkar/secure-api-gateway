@@ -14,6 +14,7 @@ import { createRateLimiter } from '../../middleware/rateLimit.js';
 import { env } from '../../config/index.js';
 import Redis from 'ioredis';
 import type { AuthSecurityPipeline } from './auth.controller.js';
+import { requireTrustedAuthOrigin } from './trusted-origin.js';
 
 /**
  * Register authentication routes
@@ -75,7 +76,7 @@ export async function registerAuthRoutes(
           },
         },
       },
-      preHandler: [authRateLimit, validate(loginSchema, 'body')],
+      preHandler: [requireTrustedAuthOrigin, authRateLimit, validate(loginSchema, 'body')],
     },
     controller.login.bind(controller)
   );
@@ -108,7 +109,7 @@ export async function registerAuthRoutes(
           timeWindow: env.rateLimit.authWindowMs,
         },
       },
-      preHandler: [authRateLimit],
+      preHandler: [requireTrustedAuthOrigin, authRateLimit],
     },
     controller.demoLogin.bind(controller)
   );
@@ -134,7 +135,7 @@ export async function registerAuthRoutes(
           },
         },
       },
-      preHandler: [authRateLimit],
+      preHandler: [requireTrustedAuthOrigin, authRateLimit],
     },
     controller.refresh.bind(controller)
   );
@@ -161,7 +162,7 @@ export async function registerAuthRoutes(
       // Best-effort: attach the user if a still-valid access token is
       // present so its jti can be revoked too, but don't require one -
       // logout must also work once the access token has already expired
-      preHandler: [authRateLimit, optionalAuth],
+      preHandler: [requireTrustedAuthOrigin, authRateLimit, optionalAuth],
     },
     controller.logout.bind(controller)
   );

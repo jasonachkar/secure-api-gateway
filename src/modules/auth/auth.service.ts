@@ -18,7 +18,7 @@ import Redis from 'ioredis';
 interface User {
   userId: string;
   username: string;
-  passwordHash: string;
+  passwordHash?: string;
   roles: string[];
   permissions: string[];
 }
@@ -27,7 +27,7 @@ interface User {
  * Role definitions with permissions
  * This demonstrates RBAC configuration
  */
-const ROLES = {
+export const ROLES = {
   admin: {
     name: 'admin',
     permissions: [
@@ -58,6 +58,39 @@ const ROLES = {
   },
 };
 
+export interface SeedUserDefinition {
+  userId: string;
+  username: string;
+  password?: string;
+  roles: string[];
+}
+
+export function getSeedUserDefinitions(
+  nodeEnv: 'development' | 'production' | 'test'
+): SeedUserDefinition[] {
+  const reviewer: SeedUserDefinition = {
+    userId: 'user-5',
+    username: 'reviewer',
+    password: nodeEnv === 'production' ? undefined : 'Reviewer123!',
+    roles: ['reviewer'],
+  };
+
+  if (nodeEnv === 'production') return [reviewer];
+
+  return [
+    { userId: 'user-1', username: 'admin', password: 'Admin123!', roles: ['admin', 'user'] },
+    { userId: 'user-2', username: 'user', password: 'User123!', roles: ['user'] },
+    { userId: 'user-3', username: 'service', password: 'Service123!', roles: ['service'] },
+    {
+      userId: 'user-4',
+      username: 'sim-target',
+      password: 'SimTarget123!',
+      roles: ['user'],
+    },
+    reviewer,
+  ];
+}
+
 /**
  * Get permissions for roles
  */
@@ -82,49 +115,10 @@ class UserStore {
   private users: Map<string, User> = new Map();
 
   async initialize() {
-    // Seed demo users for development
-    const demoUsers = [
-      {
-        userId: 'user-1',
-        username: 'admin',
-        password: 'Admin123!',
-        roles: ['admin', 'user'],
-      },
-      {
-        userId: 'user-2',
-        username: 'user',
-        password: 'User123!',
-        roles: ['user'],
-      },
-      {
-        userId: 'user-3',
-        username: 'service',
-        password: 'Service123!',
-        roles: ['service'],
-      },
-      {
-        // Dedicated, non-privileged target for the dashboard's "Attack Simulator" panel
-        // (dashboard Dashboard.tsx). The simulator intentionally sends wrong passwords to
-        // trigger a real lockout - it must never point at `admin`/`user`/`service`, or a
-        // reviewer clicking the button could lock themselves out of their own demo session.
-        userId: 'user-4',
-        username: 'sim-target',
-        password: 'SimTarget123!',
-        roles: ['user'],
-      },
-      {
-        // Backing account for POST /auth/demo-login (one-click read-only reviewer
-        // entry point). Its password is never exposed to callers - only the server
-        // authenticates as this account, on the caller's behalf. See ROLES.reviewer.
-        userId: 'user-5',
-        username: 'reviewer',
-        password: 'Reviewer123!',
-        roles: ['reviewer'],
-      },
-    ];
+    const demoUsers = getSeedUserDefinitions(env.server.nodeEnv);
 
     for (const user of demoUsers) {
-      const passwordHash = await hashPassword(user.password);
+      const passwordHash = user.password ? await hashPassword(user.password) : undefined;
       const permissions = getPermissionsForRoles(user.roles);
 
       this.users.set(user.username, {
@@ -246,7 +240,7 @@ export class AuthService {
 
     // Find user
     const user = await this.userStore.findByUsername(username);
-    if (!user) {
+    if (!user || !user.passwordHash) {
       // Increment failed attempts (prevent username enumeration by same timing)
       await this.lockoutManager.incrementAttempts(lockoutKey);
       throw new InvalidCredentialsError();
@@ -294,6 +288,36 @@ export class AuthService {
     };
   }
 
+  /** Issue the public read-only reviewer session without a source-controlled password. */
+  async demoLogin(ip: string): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    expiresIn: number;
+    user: { userId: string; username: string };
+  }> {
+    const reviewer = await this.userStore.findByUsername('reviewer');
+    if (!reviewer || !reviewer.roles.includes('reviewer')) {
+      throw new InvalidCredentialsError();
+    }
+
+    const { accessToken, refreshToken, expiresIn } = await this.generateTokenPair(
+      {
+        userId: reviewer.userId,
+        username: reviewer.username,
+        roles: reviewer.roles,
+        permissions: reviewer.permissions,
+      },
+      ip
+    );
+
+    return {
+      accessToken,
+      refreshToken,
+      expiresIn,
+      user: { userId: reviewer.userId, username: reviewer.username },
+    };
+  }
+
   /**
    * Refresh access token using refresh token
    * Implements token rotation and reuse detection
@@ -315,34 +339,40 @@ export class AuthService {
       throw new TokenInvalidError('Invalid token type');
     }
 
-    // Check if token is revoked
+    const tokenHash = hashToken(refreshToken);
+    const remainingLifetime = Math.max(1, (payload.exp ?? 0) - Math.floor(Date.now() / 1000));
+    const familyBlacklistLifetime = this.parseExpiration(env.auth.jwt.refreshTokenExpiresIn);
+    const currentMetadata = await this.tokenStore.get(payload.jti);
+
+    // A rotated/logged-out refresh token is a reuse signal. The tombstone retains
+    // only its hash/family metadata so the whole lineage can be revoked safely.
     if (await this.tokenStore.isRevoked(payload.jti)) {
-      logger.warn({ jti: payload.jti }, 'Attempted to use revoked refresh token');
+      const revokedMetadata = await this.tokenStore.getRevokedMetadata(payload.jti);
+      if (revokedMetadata?.tokenHash === tokenHash && revokedMetadata.family) {
+        await this.tokenStore.revokeFamily(revokedMetadata.family, familyBlacklistLifetime);
+      }
+      logger.warn({ jti: payload.jti }, 'Attempted to reuse revoked refresh token');
       throw new TokenRevokedError();
     }
 
     // Verify token hash matches (prevent token substitution)
-    const tokenHash = hashToken(refreshToken);
-    const isValidHash = await this.tokenStore.verifyTokenHash(payload.jti, tokenHash);
+    const isValidHash = currentMetadata?.tokenHash === tokenHash;
 
     if (!isValidHash) {
       // Token reuse detected! Revoke entire token family
-      const metadata = await this.tokenStore.get(payload.jti);
+      const metadata = currentMetadata ?? (await this.tokenStore.getRevokedMetadata(payload.jti));
       if (metadata?.family) {
-        await this.tokenStore.revokeFamily(metadata.family, 60 * 60 * 24 * 7); // 7 days
+        await this.tokenStore.revokeFamily(metadata.family, familyBlacklistLifetime);
         logger.error({ family: metadata.family, jti: payload.jti }, 'Token reuse detected! Family revoked');
       }
       throw new TokenInvalidError('Token reuse detected');
     }
 
-    // Fetch metadata before revoking so we can carry the token family forward
-    const currentMetadata = await this.tokenStore.get(payload.jti);
-
     // Update last used timestamp
     await this.tokenStore.updateLastUsed(payload.jti);
 
     // Revoke old refresh token (rotation)
-    await this.tokenStore.revoke(payload.jti, 60 * 60); // Keep in blacklist for 1 hour
+    await this.tokenStore.revoke(payload.jti, remainingLifetime);
 
     // Generate new token pair, preserving the family so a future reuse-detection
     // event revokes every token descended from this login (see generateTokenPair)
@@ -379,7 +409,8 @@ export class AuthService {
       const payload = verifyToken(refreshToken);
 
       if (payload.type === 'refresh') {
-        await this.tokenStore.revoke(payload.jti, 60 * 60 * 24 * 7); // 7 days
+        const remainingLifetime = Math.max(1, (payload.exp ?? 0) - Math.floor(Date.now() / 1000));
+        await this.tokenStore.revoke(payload.jti, remainingLifetime);
         logger.info({ userId: payload.sub, jti: payload.jti }, 'User logged out');
       }
     } catch (error) {

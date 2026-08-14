@@ -14,6 +14,7 @@ export class TokenStore {
   private readonly PREFIX = 'token';
   private readonly FAMILY_PREFIX = 'token:family';
   private readonly BLACKLIST_PREFIX = 'token:blacklist';
+  private readonly REVOKED_METADATA_PREFIX = 'token:revoked-metadata';
   private readonly USER_INDEX_PREFIX = 'token:user';
 
   constructor(private redis: Redis) {}
@@ -90,20 +91,35 @@ export class TokenStore {
     try {
       const metadata = await this.get(jti);
 
-      // Remove from active tokens
-      await this.redis.del(`${this.PREFIX}:${jti}`);
-
-      // Add to blacklist
-      await this.redis.setex(key, ttlSeconds, '1');
-
-      if (metadata?.userId) {
-        await this.redis.srem(`${this.USER_INDEX_PREFIX}:${metadata.userId}`, jti);
+      const pipeline = this.redis.pipeline();
+      pipeline.del(`${this.PREFIX}:${jti}`);
+      pipeline.setex(key, ttlSeconds, '1');
+      if (metadata) {
+        // Retain only the hashed token/family metadata needed to recognize reuse.
+        // The raw refresh token is never stored.
+        pipeline.setex(
+          `${this.REVOKED_METADATA_PREFIX}:${jti}`,
+          ttlSeconds,
+          JSON.stringify(metadata)
+        );
+        pipeline.srem(`${this.USER_INDEX_PREFIX}:${metadata.userId}`, jti);
       }
+      await pipeline.exec();
 
       logger.info({ jti }, 'Refresh token revoked');
     } catch (error) {
       logger.error({ error, jti }, 'Failed to revoke refresh token');
       throw error;
+    }
+  }
+
+  async getRevokedMetadata(jti: string): Promise<RefreshTokenMetadata | null> {
+    try {
+      const data = await this.redis.get(`${this.REVOKED_METADATA_PREFIX}:${jti}`);
+      return data ? (JSON.parse(data) as RefreshTokenMetadata) : null;
+    } catch (error) {
+      logger.error({ error, jti }, 'Failed to retrieve revoked token metadata');
+      return null;
     }
   }
 

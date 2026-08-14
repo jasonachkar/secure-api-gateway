@@ -15,7 +15,7 @@ async function login(app: FastifyInstance, username: string, password: string, i
     method: 'POST',
     url: '/auth/login',
     payload: { username, password },
-    headers: { 'x-forwarded-for': ip },
+    headers: { 'x-forwarded-for': ip, origin: 'http://localhost:3000' },
   });
 }
 

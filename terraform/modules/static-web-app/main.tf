@@ -1,7 +1,6 @@
 /**
- * Azure Static Web Apps hosting for the dashboard - the Azure-native alternative to
- * Vercel (var.enable_azure_static_web_app at the root, false by default - Vercel
- * remains the default frontend host, see terraform/README.md for why).
+ * Azure Static Web Apps hosting for the dashboard. The root module enables this
+ * Azure-native frontend by default; see terraform/README.md for deployment details.
  *
  * This resource is deliberately NOT linked to the GitHub repo via repository_url/
  * repository_token: doing so would require handing Terraform a GitHub PAT with

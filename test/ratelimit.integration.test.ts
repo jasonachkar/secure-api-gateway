@@ -37,6 +37,7 @@ describe('Rate Limiting (Integration)', () => {
         },
         headers: {
           'x-forwarded-for': '192.168.1.100', // Consistent IP for rate limiting
+          origin: 'http://localhost:3000',
         },
       });
 

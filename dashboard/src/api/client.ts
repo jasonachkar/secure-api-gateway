@@ -1,46 +1,113 @@
-/**
- * API client with JWT authentication
- */
+import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
+import { environment } from '../config/environment';
+import {
+  clearAccessToken,
+  getAccessToken,
+  getTokenVersion,
+  setAccessToken,
+} from '../auth/tokenStore';
 
-import axios, { AxiosInstance } from 'axios';
+interface RetriableRequestConfig extends InternalAxiosRequestConfig {
+  _authRetry?: boolean;
+  _tokenVersion?: number;
+}
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+interface RefreshResponse {
+  accessToken: string;
+}
+
+const AUTH_EXCLUSIONS = new Set([
+  '/auth/login',
+  '/auth/demo-login',
+  '/auth/refresh',
+  '/auth/logout',
+]);
+
+export const refreshHttpClient = axios.create({
+  baseURL: environment.apiBaseUrl,
+  withCredentials: true,
+  headers: { 'Content-Type': 'application/json' },
+});
+
+let refreshPromise: Promise<string> | null = null;
+
+function endpointPath(url?: string): string {
+  if (!url) return '';
+  try {
+    return new URL(url, environment.apiBaseUrl).pathname;
+  } catch {
+    return url.split('?')[0];
+  }
+}
+
+export function isRefreshExcluded(url?: string): boolean {
+  return AUTH_EXCLUSIONS.has(endpointPath(url));
+}
+
+export function refreshAccessToken(): Promise<string> {
+  if (!refreshPromise) {
+    refreshPromise = refreshHttpClient
+      .post<RefreshResponse>('/auth/refresh')
+      .then(({ data }) => {
+        setAccessToken(data.accessToken);
+        return data.accessToken;
+      })
+      .catch((error) => {
+        clearAccessToken();
+        throw error;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+
+  return refreshPromise;
+}
 
 class ApiClient {
-  private client: AxiosInstance;
+  private readonly client: AxiosInstance;
 
   constructor() {
     this.client = axios.create({
-      baseURL: API_URL,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      withCredentials: true, // For refresh token cookies
+      baseURL: environment.apiBaseUrl,
+      headers: { 'Content-Type': 'application/json' },
+      withCredentials: true,
     });
 
-    // Add token to requests
-    this.client.interceptors.request.use((config) => {
-      const token = localStorage.getItem('accessToken');
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-      return config;
+    this.client.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+      const request = config as RetriableRequestConfig;
+      const token = getAccessToken();
+      request._tokenVersion = getTokenVersion();
+      if (token) request.headers.Authorization = `Bearer ${token}`;
+      return request;
     });
 
-    // Handle 401 errors
     this.client.interceptors.response.use(
       (response) => response,
-      (error) => {
-        if (error.response?.status === 401) {
-          localStorage.removeItem('accessToken');
-          window.location.href = '/login';
+      async (error: AxiosError) => {
+        const request = error.config as RetriableRequestConfig | undefined;
+        if (
+          error.response?.status !== 401 ||
+          !request ||
+          request._authRetry ||
+          isRefreshExcluded(request.url)
+        ) {
+          throw error;
         }
-        return Promise.reject(error);
+
+        request._authRetry = true;
+        let token = getAccessToken();
+        if (!token || request._tokenVersion === getTokenVersion()) {
+          token = await refreshAccessToken();
+        }
+
+        request.headers.Authorization = `Bearer ${token}`;
+        return this.client.request(request);
       }
     );
   }
 
-  getClient() {
+  getClient(): AxiosInstance {
     return this.client;
   }
 }

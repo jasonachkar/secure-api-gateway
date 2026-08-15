@@ -40,8 +40,15 @@ describe('Guided scenarios (Integration)', () => {
       headers: { authorization: `Bearer ${adminToken}` },
     });
     expect(response.statusCode).toBe(200);
-    const ids = response.json().scenarios.map((s: { id: string }) => s.id).sort();
-    expect(ids).toEqual(['aws-privileged-activity', 'gcp-credential-persistence', 'gw-credential-attack']);
+    const ids = response
+      .json()
+      .scenarios.map((s: { id: string }) => s.id)
+      .sort();
+    expect(ids).toEqual([
+      'aws-privileged-activity',
+      'gcp-credential-persistence',
+      'gw-credential-attack',
+    ]);
   });
 
   it('runs the AWS replay scenario and produces a real detection + investigation', async () => {
@@ -109,7 +116,10 @@ describe('Guided scenarios (Integration)', () => {
     expect(rejectedBody.requestId).toBeTruthy();
 
     // And confirm the rejection produced a real audit entry, not just an HTTP response.
-    const auditLogs = await app.audit.query({ eventType: 'SECURITY_IP_BLOCKED_REQUEST', limit: 50 });
+    const auditLogs = await app.audit.query({
+      eventType: 'SECURITY_IP_BLOCKED_REQUEST',
+      limit: 50,
+    });
     expect(auditLogs.some((entry: { ip: string }) => entry.ip === '203.0.113.50')).toBe(true);
 
     // Idempotency: re-running immediately, with no reset in between, must not crash or
@@ -130,7 +140,9 @@ describe('Guided scenarios (Integration)', () => {
     expect(rerun.statusCode).toBe(200);
     const rerunResult = rerun.json().result;
     for (const stepId of ['generate', 'normalize', 'detect', 'correlate', 'respond', 'verify']) {
-      expect(rerunResult.steps.find((s: { id: string }) => s.id === stepId).status).toBe('completed');
+      expect(rerunResult.steps.find((s: { id: string }) => s.id === stepId).status).toBe(
+        'completed'
+      );
     }
     expect(rerunResult.investigationIds[0]).toBe(result.investigationIds[0]); // same case, not a duplicate
 
@@ -192,5 +204,106 @@ describe('Guided scenarios (Integration)', () => {
       payload: { userId: 'user-1', reason: 'should be forbidden for reviewer' },
     });
     expect(revokeAttempt.statusCode).toBe(403);
+  });
+
+  it('gives reviewers the full read-only dashboard through server-side sanitized projections', async () => {
+    const demoLoginResponse = await app.inject({
+      method: 'POST',
+      url: '/auth/demo-login',
+      headers: { origin: 'http://localhost:3000' },
+    });
+    expect(demoLoginResponse.statusCode).toBe(200);
+    const reviewerToken = demoLoginResponse.json().accessToken as string;
+    const authorization = { authorization: `Bearer ${reviewerToken}` };
+
+    for (const url of [
+      '/admin/ingestion/status',
+      '/admin/audit/logs?limit=100',
+      '/admin/audit/admin-actions?limit=100',
+      '/admin/health',
+      '/admin/config',
+      '/admin/threats?limit=20',
+      '/admin/threats/top?limit=20',
+      '/admin/threats/statistics',
+      '/admin/threats/patterns',
+      '/admin/compliance/posture',
+      '/admin/compliance/metrics',
+    ]) {
+      const response = await app.inject({ method: 'GET', url, headers: authorization });
+      expect(response.statusCode).toBe(200);
+    }
+
+    const ingestionResponse = await app.inject({
+      method: 'GET',
+      url: '/admin/ingestion/status',
+      headers: authorization,
+    });
+    for (const adapter of ingestionResponse.json().status.adapters as Array<{
+      cursor?: string;
+      detail: string;
+    }>) {
+      expect(adapter.cursor).toBeUndefined();
+      expect(['Not configured', 'Configured and healthy', 'Configured; provider polling is degraded'])
+        .toContain(adapter.detail);
+    }
+
+    const sessionsResponse = await app.inject({
+      method: 'GET',
+      url: '/admin/sessions/active',
+      headers: authorization,
+    });
+    expect(sessionsResponse.statusCode).toBe(200);
+    const sessions = sessionsResponse.json().sessions as Array<{
+      jti: string;
+      userId: string;
+      lastKnownIp: string;
+    }>;
+    expect(sessions.length).toBeGreaterThan(0);
+    expect(sessions.every((session) => session.userId === 'user-5')).toBe(true);
+    expect(sessions.every((session) => session.jti.startsWith('reviewer-session-'))).toBe(true);
+    expect(sessions.every((session) => /^192\.0\.2\.\d+$/.test(session.lastKnownIp))).toBe(true);
+
+    const usersResponse = await app.inject({
+      method: 'GET',
+      url: '/admin/users',
+      headers: authorization,
+    });
+    expect(usersResponse.statusCode).toBe(200);
+    expect(usersResponse.json().users).toEqual([
+      expect.objectContaining({ userId: 'user-5', username: 'reviewer', roles: ['reviewer'] }),
+    ]);
+
+    const auditResponse = await app.inject({
+      method: 'GET',
+      url: '/admin/audit/admin-actions?limit=100',
+      headers: authorization,
+    });
+    const auditEntries = auditResponse.json().logs as Array<{ actor: { userId: string } }>;
+    expect(auditEntries.every((entry) => entry.actor.userId === 'user-5')).toBe(true);
+
+    const trafficResponse = await app.inject({
+      method: 'GET',
+      url: '/admin/requests/live?limit=100',
+      headers: authorization,
+    });
+    expect(trafficResponse.statusCode).toBe(200);
+    const traffic = trafficResponse.json().requests as Array<{ sourceIp: string; user: string }>;
+    expect(traffic.length).toBeGreaterThan(0);
+    expect(traffic.every((entry) => /^192\.0\.2\.\d+$/.test(entry.sourceIp))).toBe(true);
+    expect(traffic.some((entry) => entry.user.includes('admin'))).toBe(false);
+
+    const forbiddenWrites = [
+      { method: 'POST', url: `/admin/sessions/${sessions[0].jti}/revoke`, payload: {} },
+      { method: 'POST', url: '/admin/users/user-5/unlock', payload: {} },
+      {
+        method: 'POST',
+        url: '/admin/threats/ip/198.51.100.10/block',
+        payload: { reason: 'reviewers cannot mutate enforcement state' },
+      },
+    ];
+    for (const request of forbiddenWrites) {
+      const response = await app.inject({ ...request, headers: authorization });
+      expect(response.statusCode).toBe(403);
+    }
   });
 });

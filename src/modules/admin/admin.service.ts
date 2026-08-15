@@ -10,6 +10,7 @@ import { logger } from '../../lib/logger.js';
 import type { SessionInfo, UserInfo, AuditLogQuery } from './admin.schemas.js';
 import type { AuditLogEntry } from '../audit/audit.types.js';
 import { env } from '../../config/index.js';
+import { getSeedUserDefinitions, ROLES } from '../auth/auth.service.js';
 
 /**
  * Demo user store interface (mirrors auth service)
@@ -28,40 +29,18 @@ export class AdminService {
   private tokenStore: TokenStore;
   private lockoutPrefix = 'lockout';
 
-  // Demo users (should match auth.service.ts)
-  private demoUsers: User[] = [
-    {
-      userId: 'user-1',
-      username: 'admin',
-      roles: ['admin', 'user'],
-      permissions: [
-        'read:reports',
-        'write:reports',
-        'delete:reports',
-        'read:admin',
-        'write:admin',
-        'manage:users',
-      ],
-    },
-    {
-      userId: 'user-2',
-      username: 'user',
-      roles: ['user'],
-      permissions: ['read:reports'],
-    },
-    {
-      userId: 'user-3',
-      username: 'service',
-      roles: ['service'],
-      permissions: ['read:reports', 'write:reports'],
-    },
-    {
-      userId: 'user-4',
-      username: 'sim-target',
-      roles: ['user'],
-      permissions: ['read:reports'],
-    },
-  ];
+  // Derived from the authentication seed definitions so production never exposes
+  // the development-only administrator, service, or simulation identities.
+  private demoUsers: User[] = getSeedUserDefinitions(env.server.nodeEnv).map((definition) => ({
+    userId: definition.userId,
+    username: definition.username,
+    roles: definition.roles,
+    permissions: Array.from(
+      new Set(
+        definition.roles.flatMap((role) => ROLES[role as keyof typeof ROLES]?.permissions ?? [])
+      )
+    ),
+  }));
 
   constructor(
     private redis: Redis,
@@ -77,7 +56,7 @@ export class AdminService {
     try {
       // Find all token keys (exclude blacklist and family keys)
       const keys = await this.redis.keys('token:*');
-      const tokenKeys = keys.filter(key => !key.includes('blacklist') && !key.includes('family'));
+      const tokenKeys = keys.filter((key) => !key.includes('blacklist') && !key.includes('family'));
 
       const sessions: SessionInfo[] = [];
 
@@ -173,7 +152,7 @@ export class AdminService {
   async unlockUser(userId: string): Promise<void> {
     try {
       // Find user by ID
-      const user = this.demoUsers.find(u => u.userId === userId);
+      const user = this.demoUsers.find((u) => u.userId === userId);
       if (!user) {
         throw new Error('User not found');
       }

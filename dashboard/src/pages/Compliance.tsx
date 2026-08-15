@@ -22,7 +22,7 @@ import {
   type EvidenceEntry,
 } from '../data/complianceEvidence';
 import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
-import { AccessBoundary } from '../components/AccessBoundary';
+import { ReviewerModeNotice } from '../components/ReviewerModeNotice';
 import { useAuth } from '../contexts/AuthContext';
 import type { SecurityPosture, ComplianceMetrics, ComplianceAssessmentBasis } from '../types';
 
@@ -88,9 +88,8 @@ export function Compliance() {
   );
 
   useEffect(() => {
-    if (isAdmin) fetchData();
-    else setLoading(false);
-  }, [isAdmin]);
+    fetchData();
+  }, []);
 
   const fetchData = async () => {
     try {
@@ -226,23 +225,21 @@ export function Compliance() {
         <SectionHeader
           title="Control Evidence"
           subtitle="Control implementation, assessment basis, test evidence, and explicit limitations"
-          actions={isAdmin ? <Button onClick={fetchData}>Refresh</Button> : undefined}
+          actions={<Button onClick={fetchData}>Refresh</Button>}
         />
 
         {!isAdmin && (
-          <AccessBoundary
-            title="Runtime posture requires administrator access"
-            description="Framework mappings and source paths are documented in the repository, while runtime posture inputs remain restricted because they include authentication, threat, and incident-response telemetry. Reviewer mode does not convert that 403 boundary into a synthetic score."
-            resource="GET /admin/compliance/metrics"
-            alternative={{ label: 'Review the capability registry', to: '/implementation-status' }}
-          />
+          <ReviewerModeNotice>
+            Live aggregate posture and framework evidence are visible; source identities and
+            operator actions are not exposed.
+          </ReviewerModeNotice>
         )}
 
-        {isAdmin && loading && <PageLoadingSkeleton cardCount={3} />}
+        {loading && <PageLoadingSkeleton cardCount={3} />}
 
-        {isAdmin && error && <div className="alert alert--danger">{error}</div>}
+        {error && <div className="alert alert--danger">{error}</div>}
 
-        {isAdmin && !loading && !error && posture && metrics && (
+        {!loading && !error && posture && metrics && (
           <div className="page-stack">
             <div className="tab-list">
               {[

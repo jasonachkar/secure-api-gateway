@@ -14,6 +14,11 @@ import type {
 } from './admin.schemas.js';
 import { AdminAuditLogService } from './audit-log.service.js';
 import { env } from '../../config/index.js';
+import {
+  isReadOnlyReviewer,
+  reviewerIpAlias,
+  reviewerSessionAlias,
+} from '../../lib/reviewerProjection.js';
 
 /**
  * Admin controller
@@ -148,8 +153,14 @@ export class AdminController {
     request: FastifyRequest<{ Querystring: AuditLogQuery }>,
     reply: FastifyReply
   ) {
-    const logs = await this.adminService.queryAuditLogs(request.query);
-    return { logs };
+    const user = (request as any).user;
+    const reviewer = isReadOnlyReviewer(request);
+    const logs = await this.adminService.queryAuditLogs(
+      reviewer ? { ...request.query, userId: user.userId } : request.query
+    );
+    return {
+      logs: reviewer ? logs.map((log) => ({ ...log, ip: reviewerIpAlias(log.ip) })) : logs,
+    };
   }
 
   /**
@@ -160,7 +171,10 @@ export class AdminController {
     request: FastifyRequest<{ Querystring: AdminAuditLogQuery }>,
     reply: FastifyReply
   ) {
-    const logs = await this.adminAuditLogService.query(request.query);
+    const user = (request as any).user;
+    const logs = await this.adminAuditLogService.query(
+      isReadOnlyReviewer(request) ? { ...request.query, actorId: user.userId } : request.query
+    );
     return { logs };
   }
 
@@ -169,8 +183,21 @@ export class AdminController {
    * Get all active sessions
    */
   async getActiveSessions(request: FastifyRequest, reply: FastifyReply) {
+    const user = (request as any).user;
     const sessions = await this.adminService.getActiveSessions();
-    return { sessions };
+    if (!isReadOnlyReviewer(request)) {
+      return { sessions };
+    }
+
+    return {
+      sessions: sessions
+        .filter((session) => session.userId === user.userId)
+        .map((session) => ({
+          ...session,
+          jti: reviewerSessionAlias(session.jti),
+          lastKnownIp: reviewerIpAlias(session.lastKnownIp),
+        })),
+    };
   }
 
   /**
@@ -191,7 +218,12 @@ export class AdminController {
    */
   async getUsers(request: FastifyRequest, reply: FastifyReply) {
     const users = await this.adminService.getUsers();
-    return { users };
+    if (!isReadOnlyReviewer(request)) {
+      return { users };
+    }
+
+    const user = (request as any).user;
+    return { users: users.filter((entry) => entry.userId === user.userId) };
   }
 
   /**

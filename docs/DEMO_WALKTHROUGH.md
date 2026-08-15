@@ -9,12 +9,14 @@ described in the README.
 ## Getting in
 
 From the login page, click **"Enter read-only demo"** - no credentials needed. This
-calls `POST /auth/demo-login` and signs you in as a `reviewer` role: you can view
-everything and run every guided scenario, but cannot block arbitrary IPs, revoke
-sessions, or change configuration (those return `403`; see the "reviewer" tests in
-`test/scenarios.integration.test.ts`). If you want to see the admin-only paths too,
-sign in instead with `admin` / `Admin123!` (seeded for local/demo use only - never
-present in the Azure deployment).
+calls `POST /auth/demo-login` and signs you in as a `reviewer` role: you can open every
+dashboard workflow and run every guided scenario. Sensitive data is projected by the
+API before it leaves the backend: IPs/session IDs are stable aliases and identity,
+session, and audit lists are scoped to the reviewer. You cannot block IPs, revoke
+sessions, unlock accounts, or change configuration (those return `403`; see the
+"reviewer" tests in `test/scenarios.integration.test.ts`). Local development still
+seeds `admin` / `Admin123!` for operator testing; that account is never present in the
+Azure production deployment.
 
 ## 1. Overview (`/`)
 
@@ -71,10 +73,12 @@ not a canned screenshot.
   to real account-lockout telemetry, the rest are fixed) or **"Static
   self-assessment"** (OWASP/PCI/GDPR - a code-reviewed mapping, not a live scan or
   audit). Read the banner before reading the score.
-- **Threats** - per-IP threat scoring and attack-pattern detection.
-- **Audit Logs** - the tamper-evident, hash-chained audit trail; verify it hasn't been
-  edited via `GET /admin/audit-logs/verify`.
-- **Sessions** / **Identity & Access** - active JWT sessions and RBAC configuration.
+- **Threats** - threat scoring and attack-pattern detection; reviewer IPs are RFC 5737
+  aliases and block/unblock controls remain operator-only.
+- **Audit Logs** - the reviewer identity's own administrative request history. The
+  underlying security audit log remains tamper-evident and hash-chained.
+- **Sessions** / **Identity & Access** - the reviewer's active JWT session families,
+  RBAC configuration, rotation state, and lockout state with sensitive IDs aliased.
 - **Implementation Status** (`/implementation-status`) - the capability registry
   (`src/modules/security/capability-registry.ts`), grouped by category, with a status
   badge (`implemented`/`partial`/`simulated`/`planned`) and implementation/test-path

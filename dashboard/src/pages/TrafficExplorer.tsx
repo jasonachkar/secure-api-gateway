@@ -19,8 +19,10 @@ import { Drawer } from '../components/Drawer';
 import { DecisionBadge } from '../components/SecurityBadges';
 import { EmptyState } from '../components/EmptyState';
 import { JsonViewer } from '../components/JsonViewer';
+import { ReviewerModeNotice } from '../components/ReviewerModeNotice';
 import { adminApi } from '../api/admin';
 import { getErrorMessage } from '../api/errors';
+import { useAuth } from '../contexts/AuthContext';
 import type { RequestLogEntry } from '../types';
 
 const columnHelper = createColumnHelper<RequestLogEntry>();
@@ -32,6 +34,8 @@ function statusTone(status: number) {
 }
 
 export function TrafficExplorer() {
+  const { identity } = useAuth();
+  const isAdmin = identity?.roles.includes('admin') ?? false;
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(() => searchParams.get('q') ?? '');
   const [method, setMethod] = useState(() => searchParams.get('method') ?? 'all');
@@ -182,6 +186,13 @@ export function TrafficExplorer() {
             </Button>
           }
         />
+
+        {!isAdmin && (
+          <ReviewerModeNotice>
+            Live request decisions remain searchable, with source IPs replaced by stable RFC 5737
+            aliases and other authenticated principals anonymized.
+          </ReviewerModeNotice>
+        )}
 
         <div className="traffic-toolbar">
           <div className="filter-search">

@@ -14,7 +14,7 @@ import { SectionHeader } from '../components/SectionHeader';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { WorldMapHeatmap } from '../components/WorldMapHeatmap';
 import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
-import { AccessBoundary } from '../components/AccessBoundary';
+import { ReviewerModeNotice } from '../components/ReviewerModeNotice';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import { adminApi } from '../api/admin';
@@ -48,9 +48,8 @@ export function Threats() {
   const isAdmin = identity?.roles.includes('admin') ?? false;
 
   useEffect(() => {
-    if (isAdmin) fetchData();
-    else setLoading(false);
-  }, [isAdmin]);
+    fetchData();
+  }, []);
 
   const fetchData = async () => {
     try {
@@ -105,31 +104,28 @@ export function Threats() {
           title="Threat Intelligence"
           subtitle="IP reputation, enforcement state, and attack-pattern analysis"
           actions={
-            isAdmin ? (
-              <Button variant="primary" onClick={fetchData} isLoading={loading}>
-                Refresh
-              </Button>
-            ) : undefined
+            <Button variant="primary" onClick={fetchData} isLoading={loading}>
+              Refresh
+            </Button>
           }
         />
 
         {!isAdmin && (
-          <AccessBoundary
-            description="Threat intelligence includes sensitive source-IP history and IP block/unblock actions. Reviewer mode keeps those records private while leaving documented detection rules and safe replay evidence available."
-            resource="GET /admin/threats/top"
-            alternative={{ label: 'Explore detection rules', to: '/detections' }}
-          />
+          <ReviewerModeNotice>
+            Threat scores and patterns are live, while source IPs use stable RFC 5737 aliases and
+            geolocation is removed.
+          </ReviewerModeNotice>
         )}
 
-        {isAdmin && loading && !error && <PageLoadingSkeleton cardCount={4} />}
+        {loading && !error && <PageLoadingSkeleton cardCount={4} />}
 
-        {isAdmin && error && (
+        {error && (
           <div className="alert alert--danger" role="alert">
             {error}
           </div>
         )}
 
-        {isAdmin && !loading && !error && statistics && (
+        {!loading && !error && statistics && (
           <div className="page-stack">
             <div className="page-grid page-grid--cards">
               <MetricCard title="Total Threats" value={statistics.totalThreats} color="blue" />
@@ -220,27 +216,29 @@ export function Threats() {
                               {threat.threatLevel.toUpperCase()}
                             </Badge>
                           </div>
-                          <div className="incident-actions">
-                            {threat.isBlocked ? (
-                              <Button
-                                variant="success"
-                                size="sm"
-                                className="button-nowrap"
-                                onClick={() => setUnblockTarget(threat.ip)}
-                              >
-                                Unblock IP
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                className="button-nowrap"
-                                onClick={() => setBlockTarget(threat)}
-                              >
-                                Block IP
-                              </Button>
-                            )}
-                          </div>
+                          {isAdmin && (
+                            <div className="incident-actions">
+                              {threat.isBlocked ? (
+                                <Button
+                                  variant="success"
+                                  size="sm"
+                                  className="button-nowrap"
+                                  onClick={() => setUnblockTarget(threat.ip)}
+                                >
+                                  Unblock IP
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="danger"
+                                  size="sm"
+                                  className="button-nowrap"
+                                  onClick={() => setBlockTarget(threat)}
+                                >
+                                  Block IP
+                                </Button>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         <div className="threat-card__meta-grid">

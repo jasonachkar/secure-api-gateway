@@ -11,7 +11,7 @@ import { Card } from '../components/Card';
 import { SectionHeader } from '../components/SectionHeader';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
-import { AccessBoundary } from '../components/AccessBoundary';
+import { ReviewerModeNotice } from '../components/ReviewerModeNotice';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import { adminApi } from '../api/admin';
@@ -30,9 +30,8 @@ export function Users() {
   const isAdmin = identity?.roles.includes('admin') ?? false;
 
   useEffect(() => {
-    if (isAdmin) fetchUsers();
-    else setLoading(false);
-  }, [isAdmin]);
+    fetchUsers();
+  }, []);
 
   const fetchUsers = async () => {
     try {
@@ -65,30 +64,22 @@ export function Users() {
       <div className="page-stack">
         <SectionHeader
           title="Identity & Access"
-          subtitle={
-            isAdmin
-              ? `${users.length} user${users.length !== 1 ? 's' : ''}`
-              : 'Users, roles, permissions, and account lockout state'
-          }
-          actions={isAdmin ? <Button onClick={fetchUsers}>Refresh</Button> : undefined}
+          subtitle={`${users.length} user${users.length !== 1 ? 's' : ''}`}
+          actions={<Button onClick={fetchUsers}>Refresh</Button>}
         />
 
         {!isAdmin && (
-          <AccessBoundary
-            description="Reviewer access intentionally excludes the user directory, role assignments, failed-login counters, and account-unlock actions. Sign in with an administrator account to operate this surface."
-            resource="GET /admin/users"
-            alternative={{
-              label: 'Review implemented identity controls',
-              to: '/implementation-status',
-            }}
-          />
+          <ReviewerModeNotice>
+            Production exposes only the reviewer identity, its assigned permissions, and lockout
+            status.
+          </ReviewerModeNotice>
         )}
 
-        {isAdmin && loading && <PageLoadingSkeleton cardCount={2} showMetrics={false} />}
+        {loading && <PageLoadingSkeleton cardCount={2} showMetrics={false} />}
 
-        {isAdmin && error && <div className="alert alert--danger">{error}</div>}
+        {error && <div className="alert alert--danger">{error}</div>}
 
-        {isAdmin && !loading && !error && (
+        {!loading && !error && (
           <div className="page-stack">
             {users.map((user) => {
               const cardClass = ['user-card', user.lockout?.isLocked ? 'user-card--locked' : null]
@@ -111,7 +102,7 @@ export function Users() {
                         </Badge>
                       )}
                     </div>
-                    {user.lockout?.isLocked && (
+                    {isAdmin && user.lockout?.isLocked && (
                       <Button
                         variant="success"
                         size="sm"

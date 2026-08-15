@@ -307,14 +307,17 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
     status: 'implemented',
     provenance: 'live',
     summary:
-      'POST /auth/demo-login authenticates as a fixed, read-only "reviewer" role account with no write:admin/manage:users permissions. The reviewer role can run the 3 allowlisted guided scenarios and read capabilities/events/investigations/metrics, but is rejected (403) from blocking arbitrary IPs, revoking arbitrary sessions, and all other mutating admin routes.',
+      'POST /auth/demo-login authenticates as a fixed, read-only "reviewer" role account with no write:admin/manage:users permissions. The reviewer role can inspect every dashboard workflow and run the 3 allowlisted guided scenarios. Sensitive control-plane reads use server-side projections: source IPs and session IDs are stable aliases, sessions/audit/users are scoped to the reviewer identity, provider errors/cursors and operator history are withheld. Blocking, revocation, unlock, configuration changes, and every other mutating admin route still return 403.',
     limitations: [
-      'RBAC-enforced allowlist, verified by test. Admin-only surfaces render an explicit access boundary in reviewer mode rather than synthetic or incomplete data.',
+      'RBAC and reviewer projections are enforced by the API and verified by integration tests; hiding buttons in the dashboard is not the security boundary.',
+      'Read-only views intentionally omit raw source identifiers, other identities, and destructive controls, so public access is broad but never equivalent to an operator account.',
     ],
     implementationPaths: [
       'src/modules/auth/auth.service.ts',
       'src/modules/auth/auth.controller.ts',
       'src/modules/scenarios/scenario.routes.ts',
+      'src/lib/reviewerProjection.ts',
+      'src/modules/admin/admin.routes.ts',
     ],
     testPaths: ['test/scenarios.integration.test.ts'],
   },

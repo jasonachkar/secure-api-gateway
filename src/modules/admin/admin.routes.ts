@@ -18,7 +18,7 @@ import { AdminAuditLogService } from './audit-log.service.js';
 import { IngestionService } from '../ingestion/ingestion.service.js';
 import { IngestionController } from '../ingestion/ingestion.controller.js';
 import { requireAuth } from '../../middleware/auth.js';
-import { requireAnyRole, requireRole } from '../../middleware/rbac.js';
+import { requireAnyRole, requirePermission, requireRole } from '../../middleware/rbac.js';
 import { validate } from '../../middleware/validation.js';
 import {
   adminAuditLogQuerySchema,
@@ -36,6 +36,7 @@ import { AuditEventType } from '../audit/audit.types.js';
 import { getClientIp, getRequestId } from '../../lib/requestContext.js';
 import { upstreamCircuitBreaker } from '../../lib/httpClient.js';
 import { getRecentRequests } from '../../lib/requestTelemetry.js';
+import { isReadOnlyReviewer, reviewerIpAlias } from '../../lib/reviewerProjection.js';
 
 /**
  * Register admin routes
@@ -92,10 +93,11 @@ export async function registerAdminRoutes(
 
   await adminAuditLogService.initialize();
 
-  // All admin routes require admin role. metricsAuth additionally allows the
-  // read-only reviewer role (see ROLES.reviewer) - metrics/ingestion-status are
-  // informational only, never mutate state.
+  // Mutations require the administrator role. Safe read surfaces use the
+  // read:admin permission so the public reviewer can inspect the complete product;
+  // controllers project sensitive identifiers before returning reviewer data.
   const adminAuth = [requireAuth, requireRole('admin')];
+  const readAdminAuth = [requireAuth, requirePermission('read:admin')];
   const metricsAuth = [requireAuth, requireAnyRole(['admin', 'security_analyst', 'reviewer'])];
   const incidentAuth = [requireAuth, requireAnyRole(['admin', 'incident_responder'])];
 
@@ -163,7 +165,7 @@ export async function registerAdminRoutes(
         tags: ['Admin'],
         security: [{ bearerAuth: [] }],
       },
-      preHandler: adminAuth,
+      preHandler: readAdminAuth,
     },
     ingestionController.getStatus.bind(ingestionController)
   );
@@ -194,7 +196,20 @@ export async function registerAdminRoutes(
     },
     async (request: FastifyRequest) => {
       const { limit } = request.query as { limit?: number };
-      return { requests: getRecentRequests(limit ?? 20) };
+      const requests = getRecentRequests(limit ?? 20);
+      const user = (request as any).user;
+      return {
+        requests: isReadOnlyReviewer(request)
+          ? requests.map((entry) => ({
+              ...entry,
+              sourceIp: reviewerIpAlias(entry.sourceIp),
+              user:
+                entry.user === 'anonymous' || entry.user.startsWith(`${user.username} (`)
+                  ? entry.user
+                  : 'authenticated principal',
+            }))
+          : requests,
+      };
     }
   );
 
@@ -258,7 +273,7 @@ export async function registerAdminRoutes(
           },
         },
       },
-      preHandler: [...adminAuth, validate(auditLogQuerySchema, 'query')],
+      preHandler: [...readAdminAuth, validate(auditLogQuerySchema, 'query')],
     },
     controller.getAuditLogs.bind(controller)
   );
@@ -287,7 +302,7 @@ export async function registerAdminRoutes(
           },
         },
       },
-      preHandler: [...adminAuth, validate(adminAuditLogQuerySchema, 'query')],
+      preHandler: [...readAdminAuth, validate(adminAuditLogQuerySchema, 'query')],
     },
     controller.getAdminActionLogs.bind(controller)
   );
@@ -304,7 +319,7 @@ export async function registerAdminRoutes(
         tags: ['Admin'],
         security: [{ bearerAuth: [] }],
       },
-      preHandler: adminAuth,
+      preHandler: readAdminAuth,
     },
     controller.getActiveSessions.bind(controller)
   );
@@ -345,7 +360,7 @@ export async function registerAdminRoutes(
         tags: ['Admin'],
         security: [{ bearerAuth: [] }],
       },
-      preHandler: adminAuth,
+      preHandler: readAdminAuth,
     },
     controller.getUsers.bind(controller)
   );
@@ -386,7 +401,7 @@ export async function registerAdminRoutes(
         tags: ['Admin'],
         security: [{ bearerAuth: [] }],
       },
-      preHandler: adminAuth,
+      preHandler: readAdminAuth,
     },
     controller.getHealth.bind(controller)
   );
@@ -403,7 +418,7 @@ export async function registerAdminRoutes(
         tags: ['Admin'],
         security: [{ bearerAuth: [] }],
       },
-      preHandler: adminAuth,
+      preHandler: readAdminAuth,
     },
     controller.getConfig.bind(controller)
   );
@@ -430,7 +445,7 @@ export async function registerAdminRoutes(
           },
         },
       },
-      preHandler: adminAuth,
+      preHandler: readAdminAuth,
     },
     threatController.getAllThreats.bind(threatController)
   );
@@ -453,7 +468,7 @@ export async function registerAdminRoutes(
           },
         },
       },
-      preHandler: adminAuth,
+      preHandler: readAdminAuth,
     },
     threatController.getTopThreats.bind(threatController)
   );
@@ -470,7 +485,7 @@ export async function registerAdminRoutes(
         tags: ['Threat Intelligence'],
         security: [{ bearerAuth: [] }],
       },
-      preHandler: adminAuth,
+      preHandler: readAdminAuth,
     },
     threatController.getStatistics.bind(threatController)
   );
@@ -487,7 +502,7 @@ export async function registerAdminRoutes(
         tags: ['Threat Intelligence'],
         security: [{ bearerAuth: [] }],
       },
-      preHandler: adminAuth,
+      preHandler: readAdminAuth,
     },
     threatController.getAttackPatterns.bind(threatController)
   );
@@ -917,7 +932,7 @@ export async function registerAdminRoutes(
         tags: ['Compliance'],
         security: [{ bearerAuth: [] }],
       },
-      preHandler: adminAuth,
+      preHandler: readAdminAuth,
     },
     complianceController.getSecurityPosture.bind(complianceController)
   );
@@ -934,7 +949,7 @@ export async function registerAdminRoutes(
         tags: ['Compliance'],
         security: [{ bearerAuth: [] }],
       },
-      preHandler: adminAuth,
+      preHandler: readAdminAuth,
     },
     complianceController.getComplianceMetrics.bind(complianceController)
   );

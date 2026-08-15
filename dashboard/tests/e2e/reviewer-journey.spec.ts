@@ -64,6 +64,17 @@ test.describe('Reviewer journey (one-click demo)', () => {
     expect(pageErrors).toEqual([]);
   });
 
+  test('formerly restricted governance pages render reviewer-safe live views', async ({
+    reviewerPage: page,
+  }) => {
+    for (const path of ['/compliance', '/threats', '/audit', '/sessions', '/identities']) {
+      await navigateAuthenticated(page, path);
+      await expect(page.getByText('Read-only reviewer view.')).toBeVisible();
+      await expect(page.locator('.access-boundary')).toHaveCount(0);
+      await expect(page.getByText(/Failed to fetch|administrator access required/i)).toHaveCount(0);
+    }
+  });
+
   test('guided scenarios page lists all 3 scenarios and can run the replay-based ones', async ({
     reviewerPage: page,
   }) => {
@@ -189,29 +200,11 @@ test.describe('Reviewer journey (one-click demo)', () => {
   // none of that accumulated local port pressure - if it becomes flaky there too, that's a
   // real signal to reopen this rather than assume the same local-machine explanation.
   test('Compliance page discloses assessmentBasis for every framework tab, not just Security Posture', async ({
-    browser,
+    reviewerPage: page,
   }) => {
     test.setTimeout(60_000);
-    // /admin/compliance/metrics is admin-only (requireRole('admin')), not reviewer-readable
-    // like most of the "More" nav - the reviewer role gets a real 403 here (rendered as an
-    // error state, not a crash - covered by the "no JS error" test above). Nav still shows
-    // "Control Evidence" to every authenticated user regardless of role, so a reviewer can
-    // click into a page that then 403s; see docs/KNOWN_LIMITATIONS.md. Use admin here since
-    // that's what this feature actually requires.
-    const context = await browser.newContext({
-      baseURL: BASE_URL,
-      storageState: { cookies: [], origins: [] },
-    });
-    const page = await context.newPage();
-    await page.goto('/login');
-    await page.getByLabel('Username').fill('admin');
-    await page.getByLabel('Password').fill('Admin123!');
-    await page.getByRole('button', { name: /^Sign in$/i }).click();
-    await expect(page).toHaveURL('/', { timeout: 30_000 });
-
-    // Keep the freshly issued in-memory access token. A hard navigation would discard it
-    // and spend a refresh-token rotation solely to reach this route, making the test depend
-    // on the state of the refresh rate-limit window rather than the compliance surface.
+    // Compliance aggregates and implementation evidence are reviewer-readable. The API
+    // still withholds source identities and every mutation.
     await navigateAuthenticated(page, '/compliance');
 
     // The page's own Refresh button retries both underlying fetches - use it to ride out
@@ -238,7 +231,6 @@ test.describe('Reviewer journey (one-click demo)', () => {
       // self-assessment for a continuously measured score.
       await expect(page.getByText(/Static self-assessment|Partially live-assessed/)).toBeVisible();
     }
-    await context.close();
   });
 });
 

@@ -14,7 +14,7 @@ import { SectionHeader } from '../components/SectionHeader';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { TokenLifecycleDiagram } from '../components/TokenLifecycleDiagram';
 import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
-import { AccessBoundary } from '../components/AccessBoundary';
+import { ReviewerModeNotice } from '../components/ReviewerModeNotice';
 import { useCountdown } from '../hooks/useCountdown';
 import { useToast } from '../contexts/ToastContext';
 import { adminApi } from '../api/admin';
@@ -35,9 +35,8 @@ export function Sessions() {
   const { showToast } = useToast();
 
   useEffect(() => {
-    if (isAdmin) fetchSessions();
-    else setLoading(false);
-  }, [isAdmin]);
+    fetchSessions();
+  }, []);
 
   const fetchSessions = async () => {
     try {
@@ -126,12 +125,8 @@ export function Sessions() {
       <div className="page-stack">
         <SectionHeader
           title="Active Sessions"
-          subtitle={
-            isAdmin
-              ? `${sessions.length} active session${sessions.length !== 1 ? 's' : ''}`
-              : 'Session families, expiration, concurrent access, and revocation controls'
-          }
-          actions={isAdmin ? <Button onClick={fetchSessions}>Refresh</Button> : undefined}
+          subtitle={`${sessions.length} active session${sessions.length !== 1 ? 's' : ''}`}
+          actions={<Button onClick={fetchSessions}>Refresh</Button>}
         />
 
         <Card>
@@ -143,25 +138,21 @@ export function Sessions() {
         </Card>
 
         {!isAdmin && (
-          <AccessBoundary
-            description="The reviewer session can inspect how tokens are issued and rotated, but active session identifiers and revocation controls remain administrator-only."
-            resource="GET /admin/sessions/active"
-            alternative={{
-              label: 'Inspect authentication capabilities',
-              to: '/implementation-status',
-            }}
-          />
+          <ReviewerModeNotice>
+            Only your session family is shown, with token and IP identifiers replaced by stable
+            aliases.
+          </ReviewerModeNotice>
         )}
 
-        {isAdmin && loading && <PageLoadingSkeleton cardCount={2} showMetrics={false} />}
+        {loading && <PageLoadingSkeleton cardCount={2} showMetrics={false} />}
 
-        {isAdmin && error && (
+        {error && (
           <div className="alert alert--danger" role="alert">
             {error}
           </div>
         )}
 
-        {isAdmin && !loading && !error && concurrentUsers.length > 0 && (
+        {!loading && !error && concurrentUsers.length > 0 && (
           <div className="alert alert--warning" role="alert">
             <strong>Concurrent sessions detected:</strong>{' '}
             {concurrentUsers.map(([username, list]) => `${username} (${list.length})`).join(', ')}.
@@ -206,7 +197,7 @@ export function Sessions() {
           </Card>
         )}
 
-        {isAdmin && !loading && !error && (
+        {!loading && !error && (
           <div className="page-stack">
             {sessions.length === 0 && <Card className="empty-state">No active sessions</Card>}
 
@@ -216,6 +207,7 @@ export function Sessions() {
                 session={session}
                 isConcurrent={(sessionsByUser.get(session.username)?.length ?? 0) > 1}
                 onRevoke={() => setRevokeTarget(session)}
+                canRevoke={isAdmin}
               />
             ))}
           </div>
@@ -253,10 +245,12 @@ function SessionCard({
   session,
   isConcurrent,
   onRevoke,
+  canRevoke,
 }: {
   session: SessionInfo;
   isConcurrent: boolean;
   onRevoke: () => void;
+  canRevoke: boolean;
 }) {
   const countdown = useCountdown(session.expiresAt);
   const cardClass = ['session-card', isConcurrent ? 'session-card--concurrent' : null]
@@ -319,9 +313,11 @@ function SessionCard({
         )}
       </div>
 
-      <Button variant="danger" size="sm" className="button-nowrap" onClick={onRevoke}>
-        Revoke
-      </Button>
+      {canRevoke && (
+        <Button variant="danger" size="sm" className="button-nowrap" onClick={onRevoke}>
+          Revoke
+        </Button>
+      )}
     </Card>
   );
 }

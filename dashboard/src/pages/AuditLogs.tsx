@@ -19,7 +19,7 @@ import {
   TableCell,
 } from '../components/Table';
 import { AuditReportExport } from '../components/AuditReportExport';
-import { AccessBoundary } from '../components/AccessBoundary';
+import { ReviewerModeNotice } from '../components/ReviewerModeNotice';
 import { adminApi } from '../api/admin';
 import { getErrorMessage } from '../api/errors';
 import { useAuth } from '../contexts/AuthContext';
@@ -103,9 +103,8 @@ export function AuditLogs() {
   }, [filters]);
 
   useEffect(() => {
-    if (isAdmin) fetchLogs();
-    else setLoading(false);
-  }, [fetchLogs, isAdmin]);
+    fetchLogs();
+  }, [fetchLogs]);
 
   const handleFilterChange = (key: keyof AuditLogFilters, value: any) => {
     setFilters((prev) => ({
@@ -157,165 +156,154 @@ export function AuditLogs() {
         />
 
         {!isAdmin && (
-          <AccessBoundary
-            title="Audit records require administrator access"
-            description="Reviewer mode cannot enumerate actor history or export administrative audit records. The API enforces this boundary; evidence-chain implementation and limitations remain reviewable in Architecture and Implementation."
-            resource="GET /admin/audit/admin-actions"
-            alternative={{ label: 'Review evidence architecture', to: '/architecture' }}
+          <ReviewerModeNotice>
+            This timeline is restricted to actions produced by your reviewer identity; platform-wide
+            actor history and report export stay private.
+          </ReviewerModeNotice>
+        )}
+
+        <div className="page-grid page-grid--cards">
+          <MetricCard title="Total Actions" value={stats.total.toLocaleString()} color="blue" />
+          <MetricCard
+            title="Incident Actions"
+            value={stats.incidentLogs.toLocaleString()}
+            color="yellow"
           />
-        )}
+          <MetricCard title="Unique Actors" value={stats.uniqueActors.toString()} color="green" />
+          <MetricCard title="Top Action" value={stats.topAction} color="blue" />
+        </div>
 
-        {isAdmin && (
-          <div className="page-grid page-grid--cards">
-            <MetricCard title="Total Actions" value={stats.total.toLocaleString()} color="blue" />
-            <MetricCard
-              title="Incident Actions"
-              value={stats.incidentLogs.toLocaleString()}
-              color="yellow"
+        <Card>
+          <div className="form-grid audit-logs__filter-grid">
+            <input
+              type="text"
+              aria-label="Filter by actor ID"
+              placeholder={isAdmin ? 'Actor ID' : 'Current reviewer only'}
+              value={filters.actorId || ''}
+              onChange={(e) => handleFilterChange('actorId', e.target.value)}
+              className="form-control"
+              disabled={!isAdmin}
             />
-            <MetricCard title="Unique Actors" value={stats.uniqueActors.toString()} color="green" />
-            <MetricCard title="Top Action" value={stats.topAction} color="blue" />
+            <input
+              type="text"
+              aria-label="Filter by action"
+              placeholder="Action (e.g. incident.update)"
+              value={filters.action || ''}
+              onChange={(e) => handleFilterChange('action', e.target.value)}
+              className="form-control"
+            />
+            <input
+              type="text"
+              aria-label="Filter by incident ID"
+              placeholder="Incident ID"
+              value={filters.incidentId || ''}
+              onChange={(e) => handleFilterChange('incidentId', e.target.value)}
+              className="form-control"
+            />
           </div>
-        )}
 
-        {isAdmin && (
-          <Card>
-            <div className="form-grid audit-logs__filter-grid">
-              <input
-                type="text"
-                aria-label="Filter by actor ID"
-                placeholder="Actor ID"
-                value={filters.actorId || ''}
-                onChange={(e) => handleFilterChange('actorId', e.target.value)}
-                className="form-control"
-              />
-              <input
-                type="text"
-                aria-label="Filter by action"
-                placeholder="Action (e.g. incident.update)"
-                value={filters.action || ''}
-                onChange={(e) => handleFilterChange('action', e.target.value)}
-                className="form-control"
-              />
-              <input
-                type="text"
-                aria-label="Filter by incident ID"
-                placeholder="Incident ID"
-                value={filters.incidentId || ''}
-                onChange={(e) => handleFilterChange('incidentId', e.target.value)}
-                className="form-control"
-              />
-            </div>
-
-            <div className="filter-row" style={{ marginTop: 'var(--space-md)' }}>
-              {DATE_PRESETS.map((preset) => (
-                <Button
-                  key={preset.label}
-                  variant="secondary"
-                  onClick={() => handleDatePreset(preset.hours)}
-                >
-                  {preset.label}
-                </Button>
-              ))}
-              <Button variant="ghost" onClick={clearFilters}>
-                Clear Filters
+          <div className="filter-row" style={{ marginTop: 'var(--space-md)' }}>
+            {DATE_PRESETS.map((preset) => (
+              <Button
+                key={preset.label}
+                variant="secondary"
+                onClick={() => handleDatePreset(preset.hours)}
+              >
+                {preset.label}
               </Button>
-            </div>
-          </Card>
-        )}
+            ))}
+            <Button variant="ghost" onClick={clearFilters}>
+              Clear Filters
+            </Button>
+            {!isAdmin && (
+              <Button variant="ghost" onClick={() => fetchLogs()} disabled={loading}>
+                <RefreshCw size={14} aria-hidden="true" style={{ marginRight: 6 }} />
+                Refresh
+              </Button>
+            )}
+          </div>
+        </Card>
 
-        {isAdmin && (
-          <Table>
-            <TableHeader>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHeaderCell>Timestamp</TableHeaderCell>
+              <TableHeaderCell>Actor</TableHeaderCell>
+              <TableHeaderCell>Action</TableHeaderCell>
+              <TableHeaderCell>Incident</TableHeaderCell>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
+              Array.from({ length: 8 }).map((_, rowIdx) => (
+                <TableRow key={`skeleton-${rowIdx}`}>
+                  {['55%', '70%', '65%', '40%'].map((width, cellIdx) => (
+                    <TableCell key={cellIdx}>
+                      <div className="skeleton" style={{ height: 14, width }} />
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : error ? (
               <TableRow>
-                <TableHeaderCell>Timestamp</TableHeaderCell>
-                <TableHeaderCell>Actor</TableHeaderCell>
-                <TableHeaderCell>Action</TableHeaderCell>
-                <TableHeaderCell>Incident</TableHeaderCell>
+                <TableCell colSpan={4} style={{ textAlign: 'center', padding: 'var(--space-xl)' }}>
+                  {error}
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                Array.from({ length: 8 }).map((_, rowIdx) => (
-                  <TableRow key={`skeleton-${rowIdx}`}>
-                    {['55%', '70%', '65%', '40%'].map((width, cellIdx) => (
-                      <TableCell key={cellIdx}>
-                        <div className="skeleton" style={{ height: 14, width }} />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : error ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={4}
-                    style={{ textAlign: 'center', padding: 'var(--space-xl)' }}
-                  >
-                    {error}
+            ) : logs.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={4} style={{ textAlign: 'center', padding: 'var(--space-xl)' }}>
+                  No audit entries found.
+                </TableCell>
+              </TableRow>
+            ) : (
+              logs.map((log) => (
+                <TableRow key={log.id}>
+                  <TableCell>{format(new Date(log.timestamp), 'MMM dd, yyyy HH:mm:ss')}</TableCell>
+                  <TableCell>
+                    <div style={{ fontWeight: 600 }}>{log.actor.username}</div>
+                    <div className="text-secondary text-sm">{log.actor.userId}</div>
+                  </TableCell>
+                  <TableCell>
+                    <div style={{ fontWeight: 600 }}>{log.action}</div>
+                    <div className="text-secondary text-sm">{log.resource}</div>
+                  </TableCell>
+                  <TableCell>
+                    {log.incidentId ? (
+                      // Plain text, not a link: /incidents was removed from this app earlier
+                      // in the project (see docs/KNOWN_LIMITATIONS.md) and never came back.
+                      <code className="text-mono text-sm">{log.incidentId}</code>
+                    ) : (
+                      <span className="text-secondary">—</span>
+                    )}
                   </TableCell>
                 </TableRow>
-              ) : logs.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={4}
-                    style={{ textAlign: 'center', padding: 'var(--space-xl)' }}
-                  >
-                    No audit entries found.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                logs.map((log) => (
-                  <TableRow key={log.id}>
-                    <TableCell>
-                      {format(new Date(log.timestamp), 'MMM dd, yyyy HH:mm:ss')}
-                    </TableCell>
-                    <TableCell>
-                      <div style={{ fontWeight: 600 }}>{log.actor.username}</div>
-                      <div className="text-secondary text-sm">{log.actor.userId}</div>
-                    </TableCell>
-                    <TableCell>
-                      <div style={{ fontWeight: 600 }}>{log.action}</div>
-                      <div className="text-secondary text-sm">{log.resource}</div>
-                    </TableCell>
-                    <TableCell>
-                      {log.incidentId ? (
-                        // Plain text, not a link: /incidents was removed from this app earlier
-                        // in the project (see docs/KNOWN_LIMITATIONS.md) and never came back.
-                        <code className="text-mono text-sm">{log.incidentId}</code>
-                      ) : (
-                        <span className="text-secondary">—</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        )}
+              ))
+            )}
+          </TableBody>
+        </Table>
 
-        {isAdmin && (
-          <div className="audit-logs__pagination">
-            <div className="text-secondary text-sm">
-              Showing {startIndex}-{endIndex} of {allLogs.length}
-            </div>
-            <div className="action-row">
-              <Button
-                variant="secondary"
-                onClick={() => handleFilterChange('page', Math.max(1, filters.page - 1))}
-                disabled={filters.page === 1}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => handleFilterChange('page', Math.min(totalPages, filters.page + 1))}
-                disabled={filters.page >= totalPages}
-              >
-                Next
-              </Button>
-            </div>
+        <div className="audit-logs__pagination">
+          <div className="text-secondary text-sm">
+            Showing {startIndex}-{endIndex} of {allLogs.length}
           </div>
-        )}
+          <div className="action-row">
+            <Button
+              variant="secondary"
+              onClick={() => handleFilterChange('page', Math.max(1, filters.page - 1))}
+              disabled={filters.page === 1}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => handleFilterChange('page', Math.min(totalPages, filters.page + 1))}
+              disabled={filters.page >= totalPages}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
       </div>
     </Layout>
   );

@@ -4,7 +4,22 @@
  */
 
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { ThreatIntelService } from './threat-intel.service.js';
+import { ThreatIntelService, type IPThreatInfo } from './threat-intel.service.js';
+import { isReadOnlyReviewer, reviewerIpAlias } from '../../lib/reviewerProjection.js';
+
+function projectThreatsForReviewer(
+  request: FastifyRequest,
+  threats: IPThreatInfo[]
+): IPThreatInfo[] {
+  if (!isReadOnlyReviewer(request)) return threats;
+
+  return threats.map((threat) => ({
+    ...threat,
+    ip: reviewerIpAlias(threat.ip),
+    geo: null,
+    abuseScore: undefined,
+  }));
+}
 
 /**
  * Threat Intelligence Controller
@@ -21,9 +36,10 @@ export class ThreatIntelController {
     reply: FastifyReply
   ) {
     const limit = request.query.limit || 100;
-    const includeAbuseIPDB = request.query.includeAbuseIPDB === true;
+    const includeAbuseIPDB =
+      !isReadOnlyReviewer(request) && request.query.includeAbuseIPDB === true;
     const threats = await this.threatIntelService.getAllThreats(limit, includeAbuseIPDB);
-    return { threats };
+    return { threats: projectThreatsForReviewer(request, threats) };
   }
 
   /**
@@ -35,9 +51,10 @@ export class ThreatIntelController {
     reply: FastifyReply
   ) {
     const limit = request.query.limit || 10;
-    const includeAbuseIPDB = request.query.includeAbuseIPDB === true;
+    const includeAbuseIPDB =
+      !isReadOnlyReviewer(request) && request.query.includeAbuseIPDB === true;
     const threats = await this.threatIntelService.getTopThreats(limit, includeAbuseIPDB);
-    return { threats };
+    return { threats: projectThreatsForReviewer(request, threats) };
   }
 
   /**
@@ -45,7 +62,7 @@ export class ThreatIntelController {
    * Get threat information for specific IP
    */
   async getIPThreat(
-    request: FastifyRequest<{ 
+    request: FastifyRequest<{
       Params: { ip: string };
       Querystring: { includeAbuseIPDB?: boolean };
     }>,
@@ -79,7 +96,14 @@ export class ThreatIntelController {
    */
   async getAttackPatterns(request: FastifyRequest, reply: FastifyReply) {
     const patterns = await this.threatIntelService.detectAttackPatterns();
-    return { patterns };
+    return {
+      patterns: isReadOnlyReviewer(request)
+        ? patterns.map((pattern) => ({
+            ...pattern,
+            ipAddresses: pattern.ipAddresses.map(reviewerIpAlias),
+          }))
+        : patterns,
+    };
   }
 
   /**
@@ -106,10 +130,7 @@ export class ThreatIntelController {
    * POST /admin/threats/ip/:ip/unblock
    * Unblock an IP address
    */
-  async unblockIP(
-    request: FastifyRequest<{ Params: { ip: string } }>,
-    reply: FastifyReply
-  ) {
+  async unblockIP(request: FastifyRequest<{ Params: { ip: string } }>, reply: FastifyReply) {
     await this.threatIntelService.unblockIP(request.params.ip);
     return { message: 'IP address unblocked successfully' };
   }

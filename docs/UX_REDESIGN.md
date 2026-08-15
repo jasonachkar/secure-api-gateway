@@ -15,7 +15,7 @@ The original interface exposed strong backend capabilities as separate project/d
 - investigations lacked a dense timeline/evidence workspace;
 - guided scenarios did not visually explain the real returned pipeline trace;
 - the Architecture page read like a long README;
-- reviewer visits to administrator-only routes rendered generic fetch/403 errors;
+- reviewer visits to sensitive governance routes rendered dead-end access boundaries;
 - the binary theme choice did not follow the operating system by default;
 - mobile tables and secondary navigation needed explicit interaction design.
 
@@ -35,13 +35,13 @@ The shell is collapsible on desktop, a drawer on mobile, and includes environmen
 
 ## Data truth rules
 
-Runtime metrics come from existing API endpoints. Capability claims come from `src/modules/security/capability-registry.ts`. The UI renders provenance and capability status explicitly and does not substitute a synthetic value when an administrator-only API returns `403`.
+Runtime metrics come from existing API endpoints. Capability claims come from `src/modules/security/capability-registry.ts`. The UI renders provenance and capability status explicitly and does not substitute synthetic values for unavailable data.
 
-Reviewer-safe pages expose an intentional access boundary for sensitive users, sessions, threat intelligence, audit records, and runtime compliance inputs. The Security Lab animates only a completed trace returned by the backend; it does not pretend the API streams stages.
+The public reviewer can open every dashboard workflow. Sensitive governance pages use API-owned read projections: raw source IPs and session identifiers become stable aliases, user/session/audit queries are scoped to the reviewer identity, and operator mutations remain administrator-only. The Security Lab animates only a completed trace returned by the backend; it does not pretend the API streams stages.
 
 ## Key implementation
 
-- `TrafficExplorer.tsx`: polled request telemetry, URL-backed removable filters, TanStack Table sorting, bounded mobile table, and an evidence drawer with request ID/source IP correlation.
+- `TrafficExplorer.tsx`: polled request telemetry, URL-backed removable filters, TanStack Table sorting, bounded mobile table, and an evidence drawer with request ID/source-IP-alias correlation in reviewer mode.
 - `Detections.tsx`: backend rule catalog, runtime health, provenance, rationale, remediation, false-positive notes, and test paths.
 - `Investigations.tsx`: resizable queue/workspace, URL-selected investigation, timeline, normalized/raw evidence, response history, export, and correlation explanation.
 - `GuidedScenarios.tsx`: Security Lab safety boundary and returned six-stage trace.
@@ -56,6 +56,7 @@ TanStack Query centralizes new server-state reads, TanStack Table powers the ope
 The repository includes:
 
 - Playwright reviewer journeys for authentication, every canonical route, mobile navigation, command search, scenario replay, investigation selection, evidence export visibility, and compliance disclosure;
+- integration coverage proving reviewers can read every governance workflow through sanitized responses while write endpoints still return `403`;
 - axe checks across every canonical reviewer route in light and dark themes;
 - System/Light/Dark persistence and OS-preference tests;
 - stable `toHaveScreenshot` baselines for critical public surfaces plus seven authenticated workflows across desktop/mobile and light/dark themes;

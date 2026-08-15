@@ -13,10 +13,11 @@ test('production reviewer session survives refresh, recovers once, and revokes c
   await expect(page.getByText(/Admin123!|User123!/)).toHaveCount(0);
 
   const loginResponsePromise = page.waitForResponse(
-    (response) => response.url() === `${apiUrl}/auth/demo-login` && response.status() === 200
+    (response) => response.url() === `${apiUrl}/auth/demo-login`
   );
   await page.getByText('Enter read-only demo').click();
   const loginResponse = await loginResponsePromise;
+  expect(loginResponse.status()).toBe(200);
   const { accessToken } = await loginResponse.json();
   await expect(page).toHaveURL(/\/$/);
 

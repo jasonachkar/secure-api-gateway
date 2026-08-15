@@ -40,7 +40,7 @@ export const adminApi = {
   },
 
   logout: async (): Promise<void> => {
-    await apiClient.post('/auth/logout');
+    await apiClient.post('/auth/logout', {});
   },
 
   // Metrics
@@ -92,7 +92,7 @@ export const adminApi = {
   },
 
   revokeSession: async (jti: string): Promise<void> => {
-    await apiClient.post(`/admin/sessions/${jti}/revoke`);
+    await apiClient.post(`/admin/sessions/${jti}/revoke`, {});
   },
 
   // Users
@@ -102,7 +102,7 @@ export const adminApi = {
   },
 
   unlockUser: async (userId: string): Promise<void> => {
-    await apiClient.post(`/admin/users/${userId}/unlock`);
+    await apiClient.post(`/admin/users/${userId}/unlock`, {});
   },
 
   // Health
@@ -151,7 +151,7 @@ export const adminApi = {
   },
 
   unblockIP: async (ip: string): Promise<void> => {
-    await apiClient.post(`/admin/threats/ip/${ip}/unblock`);
+    await apiClient.post(`/admin/threats/ip/${ip}/unblock`, {});
   },
 
   getBlockedIPs: async (): Promise<string[]> => {
@@ -266,17 +266,17 @@ export const adminApi = {
   },
 
   runScenario: async (id: ScenarioId): Promise<ScenarioRunResult> => {
-    const { data } = await apiClient.post(`/admin/scenarios/${id}/run`);
+    const { data } = await apiClient.post(`/admin/scenarios/${id}/run`, {});
     return data.result;
   },
 
   resetGatewayScenario: async (): Promise<void> => {
-    await apiClient.post('/admin/scenarios/gw-credential-attack/reset');
+    await apiClient.post('/admin/scenarios/gw-credential-attack/reset', {});
   },
 
   // One-click read-only reviewer demo login
   demoLogin: async (): Promise<LoginResponse> => {
-    const { data } = await apiClient.post('/auth/demo-login');
+    const { data } = await apiClient.post('/auth/demo-login', {});
     return data;
   },
 };

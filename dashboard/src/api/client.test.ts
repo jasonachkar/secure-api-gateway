@@ -13,6 +13,23 @@ afterEach(() => {
 });
 
 describe('authenticated API lifecycle', () => {
+  it('sends valid empty JSON for authentication requests without a payload', async () => {
+    apiMock.onPost('/auth/demo-login').reply(200, { accessToken: 'demo-token' });
+    refreshMock.onPost('/auth/refresh').reply(200, { accessToken: 'renewed' });
+
+    await apiClient.post('/auth/demo-login', {});
+    await refreshAccessToken();
+
+    expect(apiMock.history.post[0]).toMatchObject({
+      data: '{}',
+    });
+    expect(apiMock.history.post[0].headers?.['Content-Type']).toBe('application/json');
+    expect(refreshMock.history.post[0]).toMatchObject({
+      data: '{}',
+    });
+    expect(refreshMock.history.post[0].headers?.['Content-Type']).toBe('application/json');
+  });
+
   it('keeps access tokens in memory and attaches bearer authentication', async () => {
     setAccessToken('memory-token');
     apiMock.onGet('/protected').reply((config) => [200, { authorization: config.headers?.Authorization }]);

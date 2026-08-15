@@ -26,7 +26,6 @@ const AUTH_EXCLUSIONS = new Set([
 export const refreshHttpClient = axios.create({
   baseURL: environment.apiBaseUrl,
   withCredentials: true,
-  headers: { 'Content-Type': 'application/json' },
 });
 
 let refreshPromise: Promise<string> | null = null;
@@ -47,7 +46,7 @@ export function isRefreshExcluded(url?: string): boolean {
 export function refreshAccessToken(): Promise<string> {
   if (!refreshPromise) {
     refreshPromise = refreshHttpClient
-      .post<RefreshResponse>('/auth/refresh')
+      .post<RefreshResponse>('/auth/refresh', {})
       .then(({ data }) => {
         setAccessToken(data.accessToken);
         return data.accessToken;
@@ -70,7 +69,6 @@ class ApiClient {
   constructor() {
     this.client = axios.create({
       baseURL: environment.apiBaseUrl,
-      headers: { 'Content-Type': 'application/json' },
       withCredentials: true,
     });
 

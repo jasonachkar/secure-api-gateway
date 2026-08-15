@@ -55,37 +55,80 @@ jobs:
           set -euo pipefail
           api_fqdn=$(az containerapp show --name '${{ secrets.CONTAINER_APP_NAME }}' --resource-group '${{ secrets.RESOURCE_GROUP }}' --query properties.configuration.ingress.fqdn -o tsv)
           dashboard_host=$(az staticwebapp show --name '${{ secrets.STATIC_WEB_APP_NAME }}' --resource-group '${{ secrets.RESOURCE_GROUP }}' --query defaultHostname -o tsv)
+          if [ -z "$api_fqdn" ]; then
+            echo "::error::Container App ingress FQDN is empty"
+            exit 1
+          fi
+          if [ -z "$dashboard_host" ]; then
+            echo "::error::Static Web App default hostname is empty"
+            exit 1
+          fi
           api_url="https://${api_fqdn}"
           dashboard_origin="https://${dashboard_host}"
           work_dir=$(mktemp -d)
           trap 'rm -rf "$work_dir"' EXIT
 
           ready=false
+          ready_status=000
           for attempt in $(seq 1 30); do
-            status=$(curl -sS -o "$work_dir/ready.json" -w '%{http_code}' "$api_url/readyz" || true)
-            if [ "$status" = 200 ] && jq -e '.status == "ok" and .redis == "ok"' "$work_dir/ready.json" >/dev/null; then
+            ready_status=$(curl -sS -o "$work_dir/ready.json" -w '%{http_code}' "$api_url/readyz" || true)
+            if [ "$ready_status" = 200 ] && jq -e '.status == "ok" and .redis == "ok"' "$work_dir/ready.json" >/dev/null; then
               ready=true
               break
             fi
             sleep 10
           done
-          [ "$ready" = true ]
+          if [ "$ready" != true ]; then
+            echo "::error::API readiness failed after 30 attempts (last HTTP status: $ready_status)"
+            jq -c . "$work_dir/ready.json" 2>/dev/null || true
+            exit 1
+          fi
 
           preflight_status=$(curl -sS -D "$work_dir/preflight.headers" -o /dev/null -w '%{http_code}' -X OPTIONS \
             -H "Origin: $dashboard_origin" \
             -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: Content-Type' \
             "$api_url/auth/demo-login")
-          [ "$preflight_status" = 204 ]
-          grep -iq "^access-control-allow-origin: $dashboard_origin" "$work_dir/preflight.headers"
+          if [ "$preflight_status" != 200 ] && [ "$preflight_status" != 204 ]; then
+            echo "::error::CORS preflight returned HTTP $preflight_status (expected 200 or 204)"
+            exit 1
+          fi
+          if ! grep -iq "^access-control-allow-origin: $dashboard_origin" "$work_dir/preflight.headers"; then
+            echo "::error::CORS preflight did not allow dashboard origin $dashboard_origin"
+            exit 1
+          fi
+          if ! grep -Eiq '^access-control-allow-methods:.*POST' "$work_dir/preflight.headers"; then
+            echo "::error::CORS preflight did not allow POST"
+            exit 1
+          fi
+          if ! grep -Eiq '^access-control-allow-headers:.*Content-Type' "$work_dir/preflight.headers"; then
+            echo "::error::CORS preflight did not allow Content-Type"
+            exit 1
+          fi
 
-          curl -fsS -c "$work_dir/cookies.txt" -H "Origin: $dashboard_origin" -X POST \
-            "$api_url/auth/demo-login" -o "$work_dir/login.json"
+          login_status=$(curl -sS -c "$work_dir/cookies.txt" -H "Origin: $dashboard_origin" \
+            -H 'Content-Type: application/json' -X POST --data '{}' \
+            "$api_url/auth/demo-login" -o "$work_dir/login.json" -w '%{http_code}')
+          if [ "$login_status" != 200 ]; then
+            echo "::error::Demo login returned HTTP $login_status"
+            jq -c '.error // {message: .message}' "$work_dir/login.json" 2>/dev/null || true
+            exit 1
+          fi
           token=$(jq -er '.accessToken' "$work_dir/login.json")
           cp "$work_dir/cookies.txt" "$work_dir/old-cookies.txt"
-          curl -fsS -b "$work_dir/cookies.txt" -c "$work_dir/cookies.txt" \
-            -H "Origin: $dashboard_origin" -H "Authorization: Bearer $token" -X POST \
-            "$api_url/auth/logout" -o "$work_dir/logout.json"
+          logout_status=$(curl -sS -b "$work_dir/cookies.txt" -c "$work_dir/cookies.txt" \
+            -H "Origin: $dashboard_origin" -H "Authorization: Bearer $token" \
+            -H 'Content-Type: application/json' -X POST --data '{}' \
+            "$api_url/auth/logout" -o "$work_dir/logout.json" -w '%{http_code}')
+          if [ "$logout_status" != 200 ]; then
+            echo "::error::Logout returned HTTP $logout_status"
+            jq -c '.error // {message: .message}' "$work_dir/logout.json" 2>/dev/null || true
+            exit 1
+          fi
           jq -e '.message | type == "string"' "$work_dir/logout.json" >/dev/null
           reuse_status=$(curl -sS -b "$work_dir/old-cookies.txt" -H "Origin: $dashboard_origin" \
             -o /dev/null -w '%{http_code}' -X POST "$api_url/auth/refresh")
-          [ "$reuse_status" = 401 ]
+          if [ "$reuse_status" != 401 ]; then
+            echo "::error::Revoked refresh-token reuse returned HTTP $reuse_status (expected 401)"
+            exit 1
+          fi

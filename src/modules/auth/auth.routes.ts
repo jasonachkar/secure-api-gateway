@@ -32,10 +32,17 @@ export async function registerAuthRoutes(
   const controller = new AuthController(authService, auditService, securityPipeline);
 
   // Stricter rate limit for auth endpoints (prevent brute force)
-  const authRateLimit = createRateLimiter(
+  const authRateLimit = createRateLimiter(redis, env.rateLimit.authMax, env.rateLimit.authWindowMs);
+
+  // Refresh tokens are high-entropy, rotating credentials and are already protected by
+  // trusted-origin checks, reuse detection, family revocation, and the global limiter.
+  // Giving refresh bootstrap the password-attempt budget (five requests by default)
+  // causes legitimate reloads and parallel tabs to log a user out. Keep password/demo
+  // entry strict while applying the normal authenticated-user budget to refresh traffic.
+  const refreshRateLimit = createRateLimiter(
     redis,
-    env.rateLimit.authMax,
-    env.rateLimit.authWindowMs
+    env.rateLimit.userMax,
+    env.rateLimit.userWindowMs
   );
 
   /**
@@ -135,7 +142,7 @@ export async function registerAuthRoutes(
           },
         },
       },
-      preHandler: [requireTrustedAuthOrigin, authRateLimit],
+      preHandler: [requireTrustedAuthOrigin, refreshRateLimit],
     },
     controller.refresh.bind(controller)
   );

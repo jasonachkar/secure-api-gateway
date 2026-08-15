@@ -1,150 +1,227 @@
-/**
- * Cloud Coverage page - real per-provider ingestion health and pipeline
- * metrics (GET /admin/security/pipeline-metrics), not a static "Configured"
- * label. See src/modules/security/pipeline-metrics.ts.
- */
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Cloud as CloudIcon,
+  Database,
+  RefreshCw,
+  Server,
+  Workflow,
+} from 'lucide-react';
 import { Layout } from '../components/Layout';
-import { Card } from '../components/Card';
-import { Badge } from '../components/Badge';
 import { SectionHeader } from '../components/SectionHeader';
-import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
+import { Button } from '../components/Button';
+import { Card } from '../components/Card';
+import { HealthBadge, ProvenanceBadge } from '../components/SecurityBadges';
 import { adminApi } from '../api/admin';
 import { getErrorMessage } from '../api/errors';
-import type { PipelineMetricsSnapshot, OperationalHealth, CloudProvider } from '../types';
+import type { CloudProvider, DataProvenance } from '../types';
 
-const HEALTH_VARIANT: Record<OperationalHealth, 'success' | 'warning' | 'error' | 'info' | 'neutral'> = {
-  healthy: 'success',
-  degraded: 'warning',
-  unavailable: 'error',
-  replay_only: 'info',
-  not_configured: 'neutral',
-};
-
-const HEALTH_LABEL: Record<OperationalHealth, string> = {
-  healthy: 'Healthy',
-  degraded: 'Degraded',
-  unavailable: 'Unavailable',
-  replay_only: 'Replay only',
-  not_configured: 'Not configured',
-};
-
-const PROVIDER_LABEL: Record<CloudProvider, string> = {
-  aws: 'AWS CloudWatch / CloudTrail',
-  gcp: 'GCP Cloud Logging',
-  azure: 'Azure (replay only)',
-  gateway: 'Gateway (live)',
-};
+const PROVIDERS: Array<{ id: CloudProvider; name: string; source: string }> = [
+  {
+    id: 'gateway',
+    name: 'API Gateway',
+    source: 'Authentication, authorization, token, and request telemetry',
+  },
+  {
+    id: 'aws',
+    name: 'Amazon Web Services',
+    source: 'CloudWatch Logs · CloudTrail · WAF · API Gateway',
+  },
+  { id: 'gcp', name: 'Google Cloud', source: 'Cloud Logging · Audit Logs' },
+  { id: 'azure', name: 'Microsoft Azure', source: 'Activity Log fixtures · Monitor normalization' },
+];
 
 export function CloudCoverage() {
-  const [snapshot, setSnapshot] = useState<PipelineMetricsSnapshot | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const pipeline = useQuery({
+    queryKey: ['pipeline-metrics'],
+    queryFn: adminApi.getPipelineMetrics,
+    refetchInterval: 10_000,
+  });
+  const capability = useQuery({
+    queryKey: ['capability-summary'],
+    queryFn: adminApi.getCapabilitySummary,
+  });
+  const ingestion = useQuery({
+    queryKey: ['ingestion-status'],
+    queryFn: adminApi.getIngestionStatus,
+    refetchInterval: 15_000,
+  });
+  const error = pipeline.error ?? capability.error ?? ingestion.error;
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await adminApi.getPipelineMetrics();
-        if (!cancelled) setSnapshot(data);
-      } catch (err: any) {
-        if (!cancelled) setError(getErrorMessage(err, 'Failed to load pipeline metrics'));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (loading) {
-    return (
-      <Layout>
-        <PageLoadingSkeleton cardCount={3} />
-      </Layout>
-    );
-  }
-
-  const providers: CloudProvider[] = ['aws', 'gcp', 'azure', 'gateway'];
+  const provenanceFor = (provider: CloudProvider): DataProvenance => {
+    if (provider === 'gateway') return 'live';
+    if (provider === 'azure') return 'replay';
+    const source = capability.data?.cloudSources[provider];
+    return source?.mode === 'live' ? 'live' : 'replay';
+  };
 
   return (
     <Layout>
-      <div className="page-stack">
+      <div className="page-stack cloud-page">
         <SectionHeader
-          title="Cloud coverage"
-          subtitle="Per-provider ingestion health, computed from real poll success/failure counters - not a static badge."
+          title="Cloud"
+          subtitle="Ingestion readiness, evidence provenance, adapter state, and canonical pipeline health across gateway, AWS, GCP, and Azure sources."
+          actions={
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() =>
+                Promise.all([pipeline.refetch(), ingestion.refetch(), capability.refetch()])
+              }
+            >
+              <RefreshCw size={14} /> Refresh sources
+            </Button>
+          }
         />
-
         {error && (
           <div className="alert alert--danger" role="alert">
-            {error}
+            {getErrorMessage(error, 'One or more cloud source checks failed.')}
           </div>
         )}
 
-        {snapshot && (
-          <>
-            <div className="page-grid page-grid--cards">
-              {providers.map((provider) => {
-                const health = snapshot.healthByProvider[provider];
-                const ingested = snapshot.eventsIngestedByProvider[provider] ?? 0;
-                const lastPoll = snapshot.lastSuccessfulProviderPoll[provider];
-                const failures = snapshot.consecutiveProviderFailures[provider] ?? 0;
-                return (
-                  <Card key={provider}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                      <strong>{PROVIDER_LABEL[provider]}</strong>
-                      <Badge variant={HEALTH_VARIANT[health]}>{HEALTH_LABEL[health]}</Badge>
-                    </div>
-                    <div className="text-sm text-muted">Events ingested: {ingested}</div>
-                    <div className="text-sm text-muted">
-                      Last successful poll: {lastPoll ? new Date(lastPoll).toLocaleString() : 'never'}
-                    </div>
-                    {failures > 0 && <div className="text-sm text-muted">Consecutive poll failures: {failures}</div>}
-                  </Card>
-                );
-              })}
-            </div>
+        <div className="cloud-source-grid">
+          {PROVIDERS.map((provider) => {
+            const health = pipeline.data?.healthByProvider[provider.id];
+            const events = pipeline.data?.eventsIngestedByProvider[provider.id] ?? 0;
+            const lastPoll = pipeline.data?.lastSuccessfulProviderPoll[provider.id];
+            const failures = pipeline.data?.consecutiveProviderFailures[provider.id] ?? 0;
+            return (
+              <Card key={provider.id} className="cloud-source-card">
+                <header>
+                  <span className={`provider-mark provider-mark--${provider.id}`}>
+                    {provider.id.slice(0, 2).toUpperCase()}
+                  </span>
+                  <div>
+                    <h2>{provider.name}</h2>
+                    <p>{provider.source}</p>
+                  </div>
+                  {health && <HealthBadge value={health} />}
+                </header>
+                <div className="cloud-source-card__metrics">
+                  <div>
+                    <span>Events ingested</span>
+                    <strong>{events.toLocaleString()}</strong>
+                  </div>
+                  <div>
+                    <span>Consecutive failures</span>
+                    <strong className={failures ? 'text-danger' : ''}>{failures}</strong>
+                  </div>
+                </div>
+                <footer>
+                  <ProvenanceBadge value={provenanceFor(provider.id)} />
+                  <span>
+                    {lastPoll
+                      ? `Last poll ${new Date(lastPoll).toLocaleString()}`
+                      : provider.id === 'gateway'
+                        ? 'Event-driven source'
+                        : 'No successful poll recorded'}
+                  </span>
+                </footer>
+              </Card>
+            );
+          })}
+        </div>
 
-            <Card>
-              <h3 className="section-title">Pipeline totals</h3>
-              <div className="page-grid page-grid--cards">
-                <div>
-                  <div className="text-sm text-muted">Events normalized</div>
-                  <div className="metric-card__value">{snapshot.eventsNormalized}</div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted">Duplicates discarded</div>
-                  <div className="metric-card__value">{snapshot.duplicatesDiscarded}</div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted">Parser failures</div>
-                  <div className="metric-card__value">{snapshot.parserFailures}</div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted">Detection evaluations</div>
-                  <div className="metric-card__value">{snapshot.detectionEvaluations}</div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted">Detection matches</div>
-                  <div className="metric-card__value">{snapshot.detectionMatches}</div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted">Investigations created</div>
-                  <div className="metric-card__value">{snapshot.investigationsCreated}</div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted">Investigation dedups</div>
-                  <div className="metric-card__value">{snapshot.investigationDeduplications}</div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted">Avg ingestion delay</div>
-                  <div className="metric-card__value">{snapshot.averageIngestionDelayMs} ms</div>
-                </div>
+        <div className="cloud-operational-grid">
+          <Card className="cloud-pipeline-card">
+            <div className="cloud-section-heading">
+              <span>
+                <Workflow size={16} />
+              </span>
+              <div>
+                <h2>Canonical pipeline</h2>
+                <p>Operational counters from receive through response.</p>
               </div>
-            </Card>
-          </>
-        )}
+            </div>
+            <div className="cloud-pipeline-stages">
+              {[
+                [
+                  'Received',
+                  Object.values(pipeline.data?.eventsIngestedByProvider ?? {}).reduce(
+                    (sum, value) => sum + value,
+                    0
+                  ),
+                ],
+                ['Normalized', pipeline.data?.eventsNormalized ?? 0],
+                ['Evaluated', pipeline.data?.detectionEvaluations ?? 0],
+                ['Matched', pipeline.data?.detectionMatches ?? 0],
+                ['Correlated', pipeline.data?.investigationsCreated ?? 0],
+                ['Responded', pipeline.data?.responseActionSuccess ?? 0],
+              ].map(([label, value], index) => (
+                <div key={label}>
+                  <span>{index + 1}</span>
+                  <strong>{Number(value).toLocaleString()}</strong>
+                  <small>{label}</small>
+                </div>
+              ))}
+            </div>
+            <div className="pipeline-diagnostics">
+              <span
+                className={
+                  (pipeline.data?.parserFailures ?? 0) ? 'pipeline-diagnostic--warning' : ''
+                }
+              >
+                {(pipeline.data?.parserFailures ?? 0) ? (
+                  <AlertTriangle size={13} />
+                ) : (
+                  <CheckCircle2 size={13} />
+                )}{' '}
+                {pipeline.data?.parserFailures ?? 0} parser failures
+              </span>
+              <span>
+                <Database size={13} />
+                {pipeline.data?.duplicatesDiscarded ?? 0} duplicates discarded
+              </span>
+              <span>
+                <Server size={13} />
+                {pipeline.data?.deadLetterCount ?? 0} dead letters
+              </span>
+            </div>
+          </Card>
+
+          <Card className="adapter-card">
+            <div className="cloud-section-heading">
+              <span>
+                <CloudIcon size={16} />
+              </span>
+              <div>
+                <h2>Adapter connections</h2>
+                <p>Configured polling integrations and storage readiness.</p>
+              </div>
+            </div>
+            <div className="adapter-list">
+              {ingestion.data?.adapters.map((adapter) => (
+                <div key={adapter.provider}>
+                  <span className={`status-dot ${adapter.healthy ? 'status-dot--healthy' : ''}`} />
+                  <div>
+                    <strong>{adapter.name}</strong>
+                    <small>
+                      {adapter.detail ?? (adapter.configured ? 'Configured' : 'Not configured')}
+                    </small>
+                  </div>
+                  <span className="security-badge">
+                    {adapter.configured ? 'configured' : 'offline'}
+                  </span>
+                </div>
+              )) ?? <div className="operational-loading">Loading adapters…</div>}
+            </div>
+            {ingestion.data && (
+              <footer>
+                <span>
+                  <Database size={13} />
+                  Redis {ingestion.data.storage.redisConnected ? 'connected' : 'unavailable'}
+                </span>
+                <span>
+                  <Database size={13} />
+                  Postgres{' '}
+                  {ingestion.data.storage.postgresConnected ? 'connected' : 'not configured'}
+                </span>
+                <span>{ingestion.data.storage.totalEvents} retained events</span>
+              </footer>
+            )}
+          </Card>
+        </div>
       </div>
     </Layout>
   );

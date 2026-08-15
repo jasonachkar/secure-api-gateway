@@ -3,17 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Security Dashboard - API Gateway</title>
+    <meta name="theme-color" content="#0b1220" />
+    <title>SecureOps Control Plane</title>
     <script>
-      // Set the theme before first paint so there's no flash of the wrong theme - must
-      // match ThemeContext.tsx's getInitialTheme() exactly, which owns this value after
-      // hydration. Dark is the unconditional default for first-time visitors - see that
-      // file for why this deliberately ignores prefers-color-scheme.
       (function () {
         try {
           var stored = localStorage.getItem('dashboard-theme');
-          var theme = stored === 'light' || stored === 'dark' ? stored : 'dark';
-          document.documentElement.setAttribute('data-theme', theme);
+          var mode = stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system';
+          var resolved = mode === 'system'
+            ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+            : mode;
+          document.documentElement.setAttribute('data-theme', resolved);
+          document.documentElement.setAttribute('data-theme-mode', mode);
         } catch (e) {}
       })();
     </script>

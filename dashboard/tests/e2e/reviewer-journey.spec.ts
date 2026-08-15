@@ -16,8 +16,23 @@
 import { test, expect, navigateAuthenticated } from './fixtures';
 import AxeBuilder from '@axe-core/playwright';
 
-const PRIMARY_PAGES = ['/', '/guided-scenarios', '/investigations', '/cloud-coverage', '/about'];
-const MORE_PAGES = ['/compliance', '/threats', '/audit-logs', '/sessions', '/users', '/implementation-status'];
+const PRIMARY_PAGES = [
+  '/',
+  '/traffic',
+  '/detections',
+  '/investigations',
+  '/security-lab',
+  '/cloud',
+  '/architecture',
+];
+const MORE_PAGES = [
+  '/compliance',
+  '/threats',
+  '/audit',
+  '/sessions',
+  '/identities',
+  '/implementation-status',
+];
 const ALL_REVIEWER_PAGES = [...PRIMARY_PAGES, ...MORE_PAGES];
 const BASE_URL = process.env.E2E_BASE_URL || 'http://localhost:5173';
 
@@ -26,7 +41,10 @@ test.describe('Reviewer journey (one-click demo)', () => {
     // Starts logged out, unlike every other test in this file - a genuinely fresh
     // context so this is a real first-visit login, not a refresh-cookie bootstrap of
     // the worker-scoped authenticated session.
-    const context = await browser.newContext({ baseURL: BASE_URL, storageState: { cookies: [], origins: [] } });
+    const context = await browser.newContext({
+      baseURL: BASE_URL,
+      storageState: { cookies: [], origins: [] },
+    });
     const page = await context.newPage();
     await page.goto('/login');
     await page.getByText('Enter read-only demo').click();
@@ -46,20 +64,75 @@ test.describe('Reviewer journey (one-click demo)', () => {
     expect(pageErrors).toEqual([]);
   });
 
-  test('guided scenarios page lists all 3 scenarios and can run the replay-based ones', async ({ reviewerPage: page }) => {
+  test('guided scenarios page lists all 3 scenarios and can run the replay-based ones', async ({
+    reviewerPage: page,
+  }) => {
     await navigateAuthenticated(page, '/guided-scenarios');
 
     await expect(page.getByText('Run scenario')).toHaveCount(3);
   });
 
-  test('reviewer role can read Implementation Status (explicitly reviewer-allowlisted)', async ({ reviewerPage: page }) => {
+  test('reviewer role can read Implementation Status (explicitly reviewer-allowlisted)', async ({
+    reviewerPage: page,
+  }) => {
     await navigateAuthenticated(page, '/implementation-status');
 
     // Implementation Status is explicitly reviewer-readable and should render real data.
     await expect(page.locator('.ui-card').first()).toBeVisible();
   });
 
-  test('Investigations master-detail: filters narrow the list and selecting an item loads detail inline', async ({ reviewerPage: page }) => {
+  test('responsive navigation and command search reach canonical workflow pages', async ({
+    reviewerPage: page,
+  }) => {
+    try {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await navigateAuthenticated(page, '/');
+
+      await page.getByRole('button', { name: 'Open navigation' }).click();
+      await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible();
+      await page.getByRole('link', { name: 'Traffic Explorer' }).click();
+      await expect(page).toHaveURL(/\/traffic(?:\?.*)?$/);
+
+      await page.getByRole('button', { name: /Search control plane/ }).click();
+      await expect(page.getByRole('dialog', { name: 'Search control plane' })).toBeVisible();
+      await page.getByRole('textbox', { name: 'Search pages' }).fill('detection');
+      await page.getByRole('button', { name: /Detections/ }).click();
+      await expect(page).toHaveURL(/\/detections(?:\?.*)?$/);
+    } finally {
+      if (!page.isClosed()) await page.setViewportSize({ width: 1280, height: 800 });
+    }
+  });
+
+  test('Traffic Explorer opens request evidence and persists removable filters in the URL', async ({
+    reviewerPage: page,
+  }) => {
+    await navigateAuthenticated(page, '/traffic');
+    const firstRequest = page.locator('.operational-table tbody tr').first();
+    await expect(firstRequest).toBeVisible();
+    await firstRequest.click();
+
+    await expect(page.getByRole('dialog', { name: 'Request evidence' })).toBeVisible();
+    const sourceIpFilter = page.getByRole('button', { name: /Filter source IP/ });
+    await expect(sourceIpFilter).toBeVisible();
+
+    const evidenceDisclosure = page.getByRole('button', { name: 'Captured request telemetry' });
+    await evidenceDisclosure.click();
+    await expect(page.locator('.json-viewer pre')).toHaveCount(0);
+    await evidenceDisclosure.click();
+    await page.getByRole('button', { name: 'Wrap' }).click();
+    await expect(page.locator('.json-viewer pre')).toHaveClass(/json-viewer__pre--wrapped/);
+
+    await sourceIpFilter.click();
+    await expect(page).toHaveURL(/\/traffic\?q=/);
+    const activeFilters = page.getByLabel('Active traffic filters');
+    await expect(activeFilters).toBeVisible();
+    await activeFilters.getByRole('button').click();
+    await expect(page).toHaveURL(/\/traffic$/);
+  });
+
+  test('Investigations master-detail: filters narrow the list and selecting an item loads detail inline', async ({
+    reviewerPage: page,
+  }) => {
     // Longer than the 30s default: this test's own wait for scenario completion below can
     // take up to 45s alone on a cold CI runner, which wouldn't leave room for the rest of
     // the test.
@@ -75,7 +148,9 @@ test.describe('Reviewer journey (one-click demo)', () => {
     await expect(runButton).toBeVisible({ timeout: 15000 });
     await runButton.scrollIntoViewIfNeeded();
     const runResponsePromise = page.waitForResponse(
-      (response) => response.request().method() === 'POST' && response.url().includes('/admin/scenarios/aws-privileged-activity/run')
+      (response) =>
+        response.request().method() === 'POST' &&
+        response.url().includes('/admin/scenarios/aws-privileged-activity/run')
     );
     await runButton.click();
     // The replay is intentionally idempotent: on a clean database it creates an
@@ -113,7 +188,9 @@ test.describe('Reviewer journey (one-click demo)', () => {
   // This suite does run in CI (.github/workflows/e2e.yml), against a fresh container with
   // none of that accumulated local port pressure - if it becomes flaky there too, that's a
   // real signal to reopen this rather than assume the same local-machine explanation.
-  test('Compliance page discloses assessmentBasis for every framework tab, not just Security Posture', async ({ browser }) => {
+  test('Compliance page discloses assessmentBasis for every framework tab, not just Security Posture', async ({
+    browser,
+  }) => {
     test.setTimeout(60_000);
     // /admin/compliance/metrics is admin-only (requireRole('admin')), not reviewer-readable
     // like most of the "More" nav - the reviewer role gets a real 403 here (rendered as an
@@ -121,7 +198,10 @@ test.describe('Reviewer journey (one-click demo)', () => {
     // "Control Evidence" to every authenticated user regardless of role, so a reviewer can
     // click into a page that then 403s; see docs/KNOWN_LIMITATIONS.md. Use admin here since
     // that's what this feature actually requires.
-    const context = await browser.newContext({ baseURL: BASE_URL, storageState: { cookies: [], origins: [] } });
+    const context = await browser.newContext({
+      baseURL: BASE_URL,
+      storageState: { cookies: [], origins: [] },
+    });
     const page = await context.newPage();
     await page.goto('/login');
     await page.getByLabel('Username').fill('admin');
@@ -129,14 +209,21 @@ test.describe('Reviewer journey (one-click demo)', () => {
     await page.getByRole('button', { name: /^Sign in$/i }).click();
     await expect(page).toHaveURL('/', { timeout: 30_000 });
 
-    await page.goto('/compliance');
-    await page.waitForLoadState('domcontentloaded');
+    // Keep the freshly issued in-memory access token. A hard navigation would discard it
+    // and spend a refresh-token rotation solely to reach this route, making the test depend
+    // on the state of the refresh rate-limit window rather than the compliance surface.
+    await navigateAuthenticated(page, '/compliance');
 
     // The page's own Refresh button retries both underlying fetches - use it to ride out
     // a transient local network hiccup rather than treating one as a hard failure, the
     // same way a real reviewer would just click Refresh.
     for (let attempt = 0; attempt < 3; attempt++) {
-      if (await page.getByText('Failed to fetch security posture data').isVisible().catch(() => false)) {
+      if (
+        await page
+          .getByText('Failed to fetch security posture data')
+          .isVisible()
+          .catch(() => false)
+      ) {
         await page.getByRole('button', { name: 'Refresh' }).click();
         await page.waitForLoadState('domcontentloaded');
       } else {
@@ -149,9 +236,7 @@ test.describe('Reviewer journey (one-click demo)', () => {
       // Every framework tab must show its live-vs-static disclosure banner - this is the
       // property Phase 7 added specifically so a reviewer can't mistake a fixed
       // self-assessment for a continuously measured score.
-      await expect(
-        page.getByText(/Static self-assessment|Partially live-assessed/)
-      ).toBeVisible();
+      await expect(page.getByText(/Static self-assessment|Partially live-assessed/)).toBeVisible();
     }
     await context.close();
   });
@@ -160,21 +245,30 @@ test.describe('Reviewer journey (one-click demo)', () => {
 test.describe('Accessibility (axe)', () => {
   test('login page has no serious or critical accessibility violations', async ({ browser }) => {
     // Logged-out page, unlike the rest of this file - fresh context, no shared storageState.
-    const context = await browser.newContext({ baseURL: BASE_URL, storageState: { cookies: [], origins: [] } });
+    const context = await browser.newContext({
+      baseURL: BASE_URL,
+      storageState: { cookies: [], origins: [] },
+    });
     const page = await context.newPage();
     await page.goto('/login');
     const results = await new AxeBuilder({ page }).analyze();
-    const serious = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
+    const serious = results.violations.filter(
+      (v) => v.impact === 'serious' || v.impact === 'critical'
+    );
     expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);
     await context.close();
   });
 
   for (const path of ALL_REVIEWER_PAGES) {
-    test(`${path} has no serious or critical accessibility violations`, async ({ reviewerPage: page }) => {
+    test(`${path} has no serious or critical accessibility violations`, async ({
+      reviewerPage: page,
+    }) => {
       await navigateAuthenticated(page, path);
 
       const results = await new AxeBuilder({ page }).analyze();
-      const serious = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
+      const serious = results.violations.filter(
+        (v) => v.impact === 'serious' || v.impact === 'critical'
+      );
       expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);
     });
   }

@@ -11,7 +11,9 @@ import { Card } from '../components/Card';
 import { SectionHeader } from '../components/SectionHeader';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
+import { AccessBoundary } from '../components/AccessBoundary';
 import { useToast } from '../contexts/ToastContext';
+import { useAuth } from '../contexts/AuthContext';
 import { adminApi } from '../api/admin';
 import { getErrorMessage } from '../api/errors';
 import type { UserInfo } from '../types';
@@ -20,12 +22,17 @@ export function Users() {
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [pendingUnlock, setPendingUnlock] = useState<{ userId: string; username: string } | null>(null);
+  const [pendingUnlock, setPendingUnlock] = useState<{ userId: string; username: string } | null>(
+    null
+  );
   const { showToast } = useToast();
+  const { identity } = useAuth();
+  const isAdmin = identity?.roles.includes('admin') ?? false;
 
   useEffect(() => {
-    fetchUsers();
-  }, []);
+    if (isAdmin) fetchUsers();
+    else setLoading(false);
+  }, [isAdmin]);
 
   const fetchUsers = async () => {
     try {
@@ -57,16 +64,31 @@ export function Users() {
     <Layout>
       <div className="page-stack">
         <SectionHeader
-          title="User Management"
-          subtitle={`${users.length} user${users.length !== 1 ? 's' : ''}`}
-          actions={<Button onClick={fetchUsers}>Refresh</Button>}
+          title="Identity & Access"
+          subtitle={
+            isAdmin
+              ? `${users.length} user${users.length !== 1 ? 's' : ''}`
+              : 'Users, roles, permissions, and account lockout state'
+          }
+          actions={isAdmin ? <Button onClick={fetchUsers}>Refresh</Button> : undefined}
         />
 
-        {loading && <PageLoadingSkeleton cardCount={2} showMetrics={false} />}
+        {!isAdmin && (
+          <AccessBoundary
+            description="Reviewer access intentionally excludes the user directory, role assignments, failed-login counters, and account-unlock actions. Sign in with an administrator account to operate this surface."
+            resource="GET /admin/users"
+            alternative={{
+              label: 'Review implemented identity controls',
+              to: '/implementation-status',
+            }}
+          />
+        )}
 
-        {error && <div className="alert alert--danger">{error}</div>}
+        {isAdmin && loading && <PageLoadingSkeleton cardCount={2} showMetrics={false} />}
 
-        {!loading && !error && (
+        {isAdmin && error && <div className="alert alert--danger">{error}</div>}
+
+        {isAdmin && !loading && !error && (
           <div className="page-stack">
             {users.map((user) => {
               const cardClass = ['user-card', user.lockout?.isLocked ? 'user-card--locked' : null]
@@ -80,7 +102,11 @@ export function Users() {
                       <div className="section-title">{user.username}</div>
                       {user.lockout?.isLocked && (
                         <Badge className="badge-critical">
-                          <Lock size={12} aria-hidden="true" style={{ marginRight: 4, verticalAlign: 'text-bottom' }} />
+                          <Lock
+                            size={12}
+                            aria-hidden="true"
+                            style={{ marginRight: 4, verticalAlign: 'text-bottom' }}
+                          />
                           LOCKED
                         </Badge>
                       )}
@@ -90,7 +116,9 @@ export function Users() {
                         variant="success"
                         size="sm"
                         className="button-nowrap"
-                        onClick={() => setPendingUnlock({ userId: user.userId, username: user.username })}
+                        onClick={() =>
+                          setPendingUnlock({ userId: user.userId, username: user.username })
+                        }
                       >
                         Unlock Account
                       </Button>
@@ -117,7 +145,9 @@ export function Users() {
                     {user.lockout && (
                       <div>
                         <div className="threat-card__meta-label">Failed Login Attempts</div>
-                        <div className={`threat-card__meta-value ${user.lockout.attempts > 0 ? 'text-danger' : 'text-success'}`}>
+                        <div
+                          className={`threat-card__meta-value ${user.lockout.attempts > 0 ? 'text-danger' : 'text-success'}`}
+                        >
                           {user.lockout.attempts}
                         </div>
                       </div>

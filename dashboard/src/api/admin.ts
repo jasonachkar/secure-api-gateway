@@ -24,6 +24,7 @@ import type {
   PipelineMetricsSnapshot,
   NormalizedSecurityEvent,
   DetectionResult,
+  DetectionRuleHealth,
   SecurityInvestigation,
   ScenarioDefinition,
   ScenarioRunResult,
@@ -123,15 +124,15 @@ export const adminApi = {
   },
 
   getTopThreats: async (limit?: number, includeAbuseIPDB?: boolean): Promise<IPThreatInfo[]> => {
-    const { data } = await apiClient.get('/admin/threats/top', { 
-      params: { limit, includeAbuseIPDB } 
+    const { data } = await apiClient.get('/admin/threats/top', {
+      params: { limit, includeAbuseIPDB },
     });
     return data.threats;
   },
 
   getIPThreat: async (ip: string, includeAbuseIPDB?: boolean): Promise<IPThreatInfo> => {
     const { data } = await apiClient.get(`/admin/threats/ip/${ip}`, {
-      params: { includeAbuseIPDB }
+      params: { includeAbuseIPDB },
     });
     return data.threat;
   },
@@ -200,7 +201,16 @@ export const adminApi = {
     return data;
   },
 
-  getSecurityEvents: async (params?: { provider?: string; limit?: number; offset?: number }): Promise<NormalizedSecurityEvent[]> => {
+  getDetectionRules: async (): Promise<DetectionRuleHealth[]> => {
+    const { data } = await apiClient.get('/admin/security/rules');
+    return data.rules;
+  },
+
+  getSecurityEvents: async (params?: {
+    provider?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<NormalizedSecurityEvent[]> => {
     const { data } = await apiClient.get('/admin/security/events', { params });
     return data.events;
   },
@@ -210,20 +220,30 @@ export const adminApi = {
     return data.event;
   },
 
-  getInvestigations: async (params?: { status?: string; limit?: number; offset?: number }): Promise<SecurityInvestigation[]> => {
+  getInvestigations: async (params?: {
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<SecurityInvestigation[]> => {
     const { data } = await apiClient.get('/admin/security/investigations', { params });
     return data.investigations;
   },
 
   getInvestigation: async (
     id: string
-  ): Promise<{ investigation: SecurityInvestigation; events: NormalizedSecurityEvent[]; detections: DetectionResult[] }> => {
+  ): Promise<{
+    investigation: SecurityInvestigation;
+    events: NormalizedSecurityEvent[];
+    detections: DetectionResult[];
+  }> => {
     const { data } = await apiClient.get(`/admin/security/investigations/${id}`);
     return data;
   },
 
   exportEvidence: async (investigationId: string): Promise<EvidencePackage> => {
-    const { data } = await apiClient.get(`/admin/security/investigations/${investigationId}/evidence-export`);
+    const { data } = await apiClient.get(
+      `/admin/security/investigations/${investigationId}/evidence-export`
+    );
     return data;
   },
 
@@ -234,13 +254,26 @@ export const adminApi = {
 
   replayFixture: async (
     fixtureId: string
-  ): Promise<{ event: NormalizedSecurityEvent; duplicate: boolean; detections: DetectionResult[]; investigations: SecurityInvestigation[] }> => {
+  ): Promise<{
+    event: NormalizedSecurityEvent;
+    duplicate: boolean;
+    detections: DetectionResult[];
+    investigations: SecurityInvestigation[];
+  }> => {
     const { data } = await apiClient.post('/admin/security/replay', { fixtureId });
     return data;
   },
 
-  blockIp: async (ip: string, reason: string, investigationId?: string): Promise<ResponseActionRecord> => {
-    const { data } = await apiClient.post('/admin/security/response/block-ip', { ip, reason, investigationId });
+  blockIp: async (
+    ip: string,
+    reason: string,
+    investigationId?: string
+  ): Promise<ResponseActionRecord> => {
+    const { data } = await apiClient.post('/admin/security/response/block-ip', {
+      ip,
+      reason,
+      investigationId,
+    });
     return data.action;
   },
 
@@ -249,8 +282,16 @@ export const adminApi = {
     return data.action;
   },
 
-  revokeSessions: async (userId: string, reason: string, investigationId?: string): Promise<ResponseActionRecord> => {
-    const { data } = await apiClient.post('/admin/security/response/revoke-sessions', { userId, reason, investigationId });
+  revokeSessions: async (
+    userId: string,
+    reason: string,
+    investigationId?: string
+  ): Promise<ResponseActionRecord> => {
+    const { data } = await apiClient.post('/admin/security/response/revoke-sessions', {
+      userId,
+      reason,
+      investigationId,
+    });
     return data.action;
   },
 

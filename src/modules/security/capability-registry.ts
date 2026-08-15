@@ -32,7 +32,8 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
     category: 'gateway-protection',
     status: 'implemented',
     provenance: 'live',
-    summary: 'Role and permission checks on protected routes (admin/user/service roles). No dedicated reviewer role or restricted-access mode exists yet - see reviewer-demo-mode.',
+    summary:
+      'Role and permission checks on protected routes (admin/user/service roles). No dedicated reviewer role or restricted-access mode exists yet - see reviewer-demo-mode.',
     implementationPaths: ['src/middleware/rbac.ts', 'src/modules/auth/auth.service.ts'],
     testPaths: ['test/rbac.unit.test.ts'],
   },
@@ -70,7 +71,8 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
     category: 'response',
     status: 'implemented',
     provenance: 'live',
-    summary: 'Revokes all of a user\'s active refresh-token sessions (via a Redis user index) so revoked sessions cannot access protected routes.',
+    summary:
+      "Revokes all of a user's active refresh-token sessions (via a Redis user index) so revoked sessions cannot access protected routes.",
     implementationPaths: [
       'src/modules/auth/token.store.ts',
       'src/modules/response/response.service.ts',
@@ -151,9 +153,7 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
       'test/cloudwatch-adapter-pipeline.integration.test.ts',
       'test/detection-rules.unit.test.ts',
     ],
-    infrastructurePaths: [
-      'terraform/modules/aws-logging',
-    ],
+    infrastructurePaths: ['terraform/modules/aws-logging'],
   },
   {
     id: 'gcp-logging-ingestion',
@@ -179,9 +179,7 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
       'test/gcp-logging-adapter-pipeline.integration.test.ts',
       'test/detection-rules.unit.test.ts',
     ],
-    infrastructurePaths: [
-      'terraform/modules/gcp-logging',
-    ],
+    infrastructurePaths: ['terraform/modules/gcp-logging'],
   },
   {
     id: 'azure-activity-ingestion',
@@ -237,9 +235,7 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
       'src/modules/investigations/investigation.service.ts',
       'src/modules/investigations/correlation.ts',
     ],
-    testPaths: [
-      'test/investigations.unit.test.ts',
-    ],
+    testPaths: ['test/investigations.unit.test.ts'],
   },
   {
     id: 'response-block-ip',
@@ -291,9 +287,9 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
     status: 'implemented',
     provenance: 'live',
     summary:
-      'Three scripted 6-step scenarios (Generate/Replay -> Normalize -> Detect -> Correlate -> Respond -> Verify): gateway credential attack (live), AWS privileged activity (replay), GCP credential persistence (replay). No scenario performs a destructive cloud action or touches the caller\'s own account/IP. The gateway scenario drives its login attempts and verification request through app.inject() - the real Fastify request lifecycle (auth rate limiting, request context, audit hooks, AuthController\'s own GW-AUTH-001 wiring), not a direct AuthService call - and verifies enforcement with a genuine follow-up HTTP request (403/IP_BLOCKED/request id) plus a matching audit entry, not a Redis membership check. Idempotent: re-running without a reset in between recognizes the account/IP are still locked/blocked from the prior run (itself proof enforcement is real and persistent) and reports the existing case rather than erroring or duplicating it.',
+      "Three scripted 6-step scenarios (Generate/Replay -> Normalize -> Detect -> Correlate -> Respond -> Verify): gateway credential attack (live), AWS privileged activity (replay), GCP credential persistence (replay). No scenario performs a destructive cloud action or touches the caller's own account/IP. The gateway scenario drives its login attempts and verification request through app.inject() - the real Fastify request lifecycle (auth rate limiting, request context, audit hooks, AuthController's own GW-AUTH-001 wiring), not a direct AuthService call - and verifies enforcement with a genuine follow-up HTTP request (403/IP_BLOCKED/request id) plus a matching audit entry, not a Redis membership check. Idempotent: re-running without a reset in between recognizes the account/IP are still locked/blocked from the prior run (itself proof enforcement is real and persistent) and reports the existing case rather than erroring or duplicating it.",
     limitations: [
-      'No dedicated stepper UI yet - the API returns the full step trace, but the dashboard does not yet render it visually.',
+      'The API returns a completed six-stage trace rather than a live per-stage event stream; the dashboard animates the verified completed trace only after the result arrives.',
       'The gateway scenario shares the real auth rate limiter with actual traffic - back-to-back runs against the same demo IP within the rate-limit window can be throttled (HTTP 429), reported honestly as a failed "Generate" step rather than pretending success.',
     ],
     implementationPaths: [
@@ -313,7 +309,7 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
     summary:
       'POST /auth/demo-login authenticates as a fixed, read-only "reviewer" role account with no write:admin/manage:users permissions. The reviewer role can run the 3 allowlisted guided scenarios and read capabilities/events/investigations/metrics, but is rejected (403) from blocking arbitrary IPs, revoking arbitrary sessions, and all other mutating admin routes.',
     limitations: [
-      'RBAC-enforced allowlist, verified by test - not yet a dedicated "read-only mode" UI banner/indicator in the dashboard.',
+      'RBAC-enforced allowlist, verified by test. Admin-only surfaces render an explicit access boundary in reviewer mode rather than synthetic or incomplete data.',
     ],
     implementationPaths: [
       'src/modules/auth/auth.service.ts',
@@ -363,10 +359,7 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
     provenance: 'live',
     summary:
       'Container Apps use user-assigned managed identity. GitHub deploy uses OIDC federated credentials.',
-    implementationPaths: [
-      'terraform/modules/container-app',
-      '.github/workflows/deploy.yml',
-    ],
+    implementationPaths: ['terraform/modules/container-app', '.github/workflows/deploy.yml'],
     testPaths: [],
     infrastructurePaths: ['terraform/modules/container-app'],
   },
@@ -408,7 +401,9 @@ export function getCapabilities(): CapabilityDefinition[] {
   return CAPABILITY_REGISTRY.map((c) => ({ ...c }));
 }
 
-export function getCapabilitiesByStatus(status: CapabilityDefinition['status']): CapabilityDefinition[] {
+export function getCapabilitiesByStatus(
+  status: CapabilityDefinition['status']
+): CapabilityDefinition[] {
   return CAPABILITY_REGISTRY.filter((c) => c.status === status).map((c) => ({ ...c }));
 }
 

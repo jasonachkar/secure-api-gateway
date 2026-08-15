@@ -1,184 +1,237 @@
-/**
- * Guided Scenarios page - runs the 3 deterministic scenarios (see
- * src/modules/scenarios/scenario.service.ts) and renders the resulting
- * 6-step trace (Generate/Replay -> Normalize -> Detect -> Correlate ->
- * Respond -> Verify evidence) exactly as returned by the API - nothing here
- * is a client-side simulation of the steps.
- */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle2, XCircle, MinusCircle, Play, RotateCcw } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  ArrowRight,
+  CheckCircle2,
+  FlaskConical,
+  Play,
+  RotateCcw,
+  ShieldCheck,
+  Sparkles,
+  Workflow,
+  XCircle,
+} from 'lucide-react';
 import { Layout } from '../components/Layout';
-import { Card } from '../components/Card';
-import { Badge } from '../components/Badge';
-import { Button } from '../components/Button';
 import { SectionHeader } from '../components/SectionHeader';
-import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
+import { Card } from '../components/Card';
+import { Button } from '../components/Button';
+import { ProvenanceBadge } from '../components/SecurityBadges';
+import { JsonViewer } from '../components/JsonViewer';
 import { useToast } from '../contexts/ToastContext';
 import { adminApi } from '../api/admin';
 import { getErrorMessage } from '../api/errors';
-import type { ScenarioDefinition, ScenarioRunResult, ScenarioId } from '../types';
-
-const PROVENANCE_VARIANT: Record<string, 'success' | 'info' | 'neutral'> = {
-  live: 'success',
-  replay: 'info',
-  synthetic: 'neutral',
-  planned: 'neutral',
-};
-
-function StepIcon({ status }: { status: 'completed' | 'skipped' | 'failed' }) {
-  if (status === 'completed') return <CheckCircle2 size={16} color="var(--color-success-600)" aria-hidden="true" />;
-  if (status === 'failed') return <XCircle size={16} color="var(--color-error-600)" aria-hidden="true" />;
-  return <MinusCircle size={16} className="text-muted" aria-hidden="true" />;
-}
+import type { ScenarioDefinition, ScenarioId, ScenarioRunResult } from '../types';
 
 export function GuidedScenarios() {
-  const [scenarios, setScenarios] = useState<ScenarioDefinition[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [running, setRunning] = useState<ScenarioId | null>(null);
+  const scenarios = useQuery({
+    queryKey: ['security-lab-scenarios'],
+    queryFn: adminApi.getScenarios,
+  });
   const [results, setResults] = useState<Record<string, ScenarioRunResult>>({});
+  const [expandedResult, setExpandedResult] = useState<string | null>(null);
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await adminApi.getScenarios();
-        if (!cancelled) setScenarios(data);
-      } catch (err: any) {
-        if (!cancelled) setError(getErrorMessage(err, 'Failed to load scenarios'));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const run = useMutation({
+    mutationFn: (id: ScenarioId) => adminApi.runScenario(id),
+    onSuccess: (result) => {
+      setResults((current) => ({ ...current, [result.scenarioId]: result }));
+      setExpandedResult(result.scenarioId);
+      showToast('Scenario completed through the real security pipeline', 'success');
+      queryClient.invalidateQueries({ queryKey: ['investigations'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-metrics'] });
+    },
+    onError: (error) => showToast(getErrorMessage(error, 'Scenario run failed'), 'error'),
+  });
 
-  const runScenario = async (id: ScenarioId) => {
-    setRunning(id);
-    try {
-      const result = await adminApi.runScenario(id);
-      setResults((prev) => ({ ...prev, [id]: result }));
-      showToast(`Scenario "${id}" completed`, 'success');
-    } catch (err: any) {
-      showToast(getErrorMessage(err, 'Scenario run failed'), 'error');
-    } finally {
-      setRunning(null);
-    }
-  };
-
-  const resetGateway = async () => {
-    try {
-      await adminApi.resetGatewayScenario();
-      showToast('Gateway scenario reset (demo IP unblocked, lockout cleared)', 'success');
-    } catch (err: any) {
-      showToast(getErrorMessage(err, 'Reset failed'), 'error');
-    }
-  };
-
-  if (loading) {
-    return (
-      <Layout>
-        <PageLoadingSkeleton cardCount={3} />
-      </Layout>
-    );
-  }
+  const reset = useMutation({
+    mutationFn: adminApi.resetGatewayScenario,
+    onSuccess: () => showToast('Gateway scenario state reset', 'success'),
+    onError: (error) => showToast(getErrorMessage(error, 'Scenario reset failed'), 'error'),
+  });
 
   return (
     <Layout>
-      <div className="page-stack">
+      <div className="page-stack security-lab">
         <SectionHeader
-          title="Guided scenarios"
-          subtitle="Each scenario drives the real detection pipeline end to end - a live gateway credential attack, or a replay of a sanitized AWS/GCP fixture. None of these touch your own account or perform a destructive cloud action."
+          title="Security Lab"
+          subtitle="A safe reviewer workspace for generating or replaying known security signals through the same normalization, detection, correlation, and evidence code paths used by the control plane."
+          actions={
+            <span className="lab-badge">
+              <FlaskConical size={14} />
+              Isolated test targets
+            </span>
+          }
         />
 
-        {error && (
+        <div className="lab-boundary">
+          <ShieldCheck size={18} />
+          <div>
+            <strong>Safe by construction</strong>
+            <p>
+              Scenarios only target the fixed demo account and documentation-range IPs, or replay
+              sanitized repository fixtures. They never mutate your cloud account.
+            </p>
+          </div>
+          <Link to="/implementation-status">
+            Verify boundaries <ArrowRight size={12} />
+          </Link>
+        </div>
+
+        <div className="lab-pipeline" aria-label="Scenario processing pipeline">
+          <span>
+            <Sparkles size={15} />
+            <strong>Generate / replay</strong>
+          </span>
+          <ArrowRight size={14} />
+          <span>
+            <Workflow size={15} />
+            <strong>Normalize</strong>
+          </span>
+          <ArrowRight size={14} />
+          <span>
+            <ShieldCheck size={15} />
+            <strong>Detect</strong>
+          </span>
+          <ArrowRight size={14} />
+          <span>
+            <Workflow size={15} />
+            <strong>Correlate</strong>
+          </span>
+          <ArrowRight size={14} />
+          <span>
+            <CheckCircle2 size={15} />
+            <strong>Verify evidence</strong>
+          </span>
+        </div>
+
+        {scenarios.isError && (
           <div className="alert alert--danger" role="alert">
-            {error}
+            {getErrorMessage(scenarios.error, 'Security Lab scenarios are unavailable.')}
           </div>
         )}
-
-        {scenarios.map((scenario) => {
-          const result = results[scenario.id];
-          return (
-            <Card key={scenario.id}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <strong>{scenario.name}</strong>
-                    <Badge variant={PROVENANCE_VARIANT[scenario.provenance] ?? 'neutral'}>{scenario.provenance}</Badge>
-                    <Badge variant="neutral">{scenario.provider}</Badge>
-                  </div>
-                  <p className="text-sm text-muted" style={{ marginTop: 6, maxWidth: 680 }}>
-                    {scenario.description}
-                  </p>
-                  <p className="text-sm text-muted" style={{ marginTop: 4 }}>
-                    <strong>Expected outcome:</strong> {scenario.expectedOutcome}
-                  </p>
-                </div>
-                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                  {scenario.id === 'gw-credential-attack' && (
-                    <Button variant="ghost" size="sm" onClick={resetGateway}>
-                      <RotateCcw size={14} aria-hidden="true" style={{ marginRight: 6 }} />
-                      Reset
-                    </Button>
-                  )}
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => runScenario(scenario.id)}
-                    disabled={running !== null}
-                    isLoading={running === scenario.id}
-                  >
-                    <Play size={14} aria-hidden="true" style={{ marginRight: 6 }} />
-                    Run scenario
-                  </Button>
-                </div>
-              </div>
-
-              <ol
-                aria-label={`${scenario.name} steps`}
-                style={{ display: 'flex', gap: 16, marginTop: 16, flexWrap: 'wrap', listStyle: 'none', padding: 0 }}
-              >
-                {scenario.steps.map((step) => {
-                  const stepResult = result?.steps.find((s) => s.id === step.id);
-                  return (
-                    <li key={step.id} style={{ minWidth: 150, flex: '1 1 150px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {stepResult ? <StepIcon status={stepResult.status} /> : <MinusCircle size={16} className="text-muted" aria-hidden="true" />}
-                        <span className="text-sm" style={{ fontWeight: 600 }}>
-                          {step.label}
-                        </span>
-                      </div>
-                      <p className="text-sm text-muted" style={{ marginTop: 4 }}>
-                        {stepResult?.summary ?? step.description}
-                      </p>
-                    </li>
-                  );
-                })}
-              </ol>
-
-              {result && (
-                <div className="text-sm text-muted" style={{ marginTop: 12, borderTop: '1px solid var(--color-border-light)', paddingTop: 12 }}>
-                  Correlation ID: <code className="text-mono">{result.correlationId}</code>
-                  {result.investigationIds.length > 0 && (
-                    <>
-                      {' '}
-                      &middot;{' '}
-                      <Link to={`/investigations?id=${result.investigationIds[0]}`}>
-                        View investigation{result.investigationIds.length > 1 ? 's' : ''}
-                      </Link>
-                    </>
-                  )}
-                </div>
-              )}
-            </Card>
-          );
-        })}
+        {scenarios.isLoading ? (
+          <Card className="operational-loading">Loading safe scenarios…</Card>
+        ) : (
+          <div className="lab-scenario-grid">
+            {scenarios.data?.map((scenario) => (
+              <ScenarioCard
+                key={scenario.id}
+                scenario={scenario}
+                result={results[scenario.id]}
+                running={run.isPending && run.variables === scenario.id}
+                expanded={expandedResult === scenario.id}
+                onRun={() => run.mutate(scenario.id)}
+                onToggle={() =>
+                  setExpandedResult((value) => (value === scenario.id ? null : scenario.id))
+                }
+                onReset={scenario.id === 'gw-credential-attack' ? () => reset.mutate() : undefined}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </Layout>
+  );
+}
+
+function ScenarioCard({
+  scenario,
+  result,
+  running,
+  expanded,
+  onRun,
+  onToggle,
+  onReset,
+}: {
+  scenario: ScenarioDefinition;
+  result?: ScenarioRunResult;
+  running: boolean;
+  expanded: boolean;
+  onRun: () => void;
+  onToggle: () => void;
+  onReset?: () => void;
+}) {
+  return (
+    <Card className={`lab-scenario ${result ? 'lab-scenario--complete' : ''}`}>
+      <div className="lab-scenario__header">
+        <span className={`provider-mark provider-mark--${scenario.provider}`}>
+          {scenario.provider.slice(0, 2).toUpperCase()}
+        </span>
+        <span className="lab-scenario__badges">
+          <ProvenanceBadge value={scenario.provenance} />
+          <span className="security-badge">safe for reviewer</span>
+        </span>
+      </div>
+      <h2>{scenario.name}</h2>
+      <p>{scenario.description}</p>
+      <div className="lab-scenario__outcome">
+        <strong>Expected</strong>
+        <span>{scenario.expectedOutcome}</span>
+      </div>
+      <ol className="scenario-stepper">
+        {scenario.steps.map((step, index) => {
+          const execution = result?.steps.find((item) => item.id === step.id);
+          return (
+            <li key={step.id} className={execution ? `scenario-step--${execution.status}` : ''}>
+              <span>
+                {execution?.status === 'completed' ? (
+                  <CheckCircle2 size={13} />
+                ) : execution?.status === 'failed' ? (
+                  <XCircle size={13} />
+                ) : (
+                  index + 1
+                )}
+              </span>
+              <div>
+                <strong>{step.label}</strong>
+                <small>{execution?.summary ?? step.description}</small>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+      <div className="lab-scenario__actions">
+        {onReset && (
+          <Button variant="ghost" size="sm" onClick={onReset}>
+            <RotateCcw size={13} /> Reset
+          </Button>
+        )}
+        <Button variant="primary" size="sm" onClick={onRun} isLoading={running} disabled={running}>
+          <Play size={13} />
+          Run scenario
+        </Button>
+        {result && (
+          <button className="lab-scenario__details" type="button" onClick={onToggle}>
+            {expanded ? 'Hide artifacts' : 'Inspect artifacts'}
+          </button>
+        )}
+      </div>
+      {result && expanded && (
+        <div className="lab-result">
+          <div className="lab-result__summary">
+            <span>
+              <strong>{result.eventIds.length}</strong> normalized events
+            </span>
+            <span>
+              <strong>{result.detectionIds.length}</strong> detections
+            </span>
+            <span>
+              <strong>{result.investigationIds.length}</strong> investigations
+            </span>
+          </div>
+          <JsonViewer value={result} label="Scenario execution artifact" />
+          {result.investigationIds[0] && (
+            <Link
+              className="lab-result__investigation"
+              to={`/investigations?id=${result.investigationIds[0]}`}
+            >
+              Open correlated investigation <ArrowRight size={13} />
+            </Link>
+          )}
+        </div>
+      )}
+    </Card>
   );
 }

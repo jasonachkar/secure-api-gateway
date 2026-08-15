@@ -1,36 +1,39 @@
-/**
- * Shared light/dark toggle - the single place this logic lives. Used in the authenticated
- * sidebar (Layout), the public landing header, and the login card, so a visitor can switch
- * themes whether or not they're signed in.
- */
-
-import { Moon, Sun } from 'lucide-react';
-import { useTheme } from '../contexts/ThemeContext';
+import { Laptop, Moon, Sun } from 'lucide-react';
+import { useTheme, type ThemeMode } from '../contexts/ThemeContext';
 
 interface ThemeToggleProps {
-  /** 'inverse' is for placement on a surface that's intentionally dark in both themes
-   * (the sidebar) - it keeps a fixed light icon/border instead of following the page theme. */
   variant?: 'default' | 'inverse';
   className?: string;
+  compact?: boolean;
 }
 
-export function ThemeToggle({ variant = 'default', className }: ThemeToggleProps) {
-  const { theme, toggleTheme } = useTheme();
-  const isDark = theme === 'dark';
+const ICONS = { system: Laptop, light: Sun, dark: Moon } as const;
 
-  const classes = ['theme-toggle', variant === 'inverse' ? 'theme-toggle--inverse' : null, className]
+export function ThemeToggle({ variant = 'default', className, compact = false }: ThemeToggleProps) {
+  const { theme, setTheme } = useTheme();
+  const Icon = ICONS[theme];
+  const classes = [
+    'theme-select',
+    variant === 'inverse' ? 'theme-select--inverse' : '',
+    compact ? 'theme-select--compact' : '',
+    className,
+  ]
     .filter(Boolean)
     .join(' ');
 
   return (
-    <button
-      type="button"
-      className={classes}
-      onClick={toggleTheme}
-      aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-      title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-    >
-      {isDark ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
-    </button>
+    <label className={classes} title={`Theme: ${theme}`}>
+      <Icon size={15} aria-hidden="true" />
+      <span className="sr-only">Color theme</span>
+      <select
+        value={theme}
+        onChange={(event) => setTheme(event.target.value as ThemeMode)}
+        aria-label="Color theme"
+      >
+        <option value="system">System</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </label>
   );
 }

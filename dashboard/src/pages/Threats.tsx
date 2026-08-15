@@ -14,7 +14,9 @@ import { SectionHeader } from '../components/SectionHeader';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { WorldMapHeatmap } from '../components/WorldMapHeatmap';
 import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
+import { AccessBoundary } from '../components/AccessBoundary';
 import { useToast } from '../contexts/ToastContext';
+import { useAuth } from '../contexts/AuthContext';
 import { adminApi } from '../api/admin';
 import { getErrorMessage } from '../api/errors';
 import type { IPThreatInfo, ThreatStatistics, AttackPattern, ThreatLevel } from '../types';
@@ -42,10 +44,13 @@ export function Threats() {
   const [blockTarget, setBlockTarget] = useState<IPThreatInfo | null>(null);
   const [unblockTarget, setUnblockTarget] = useState<string | null>(null);
   const { showToast } = useToast();
+  const { identity } = useAuth();
+  const isAdmin = identity?.roles.includes('admin') ?? false;
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (isAdmin) fetchData();
+    else setLoading(false);
+  }, [isAdmin]);
 
   const fetchData = async () => {
     try {
@@ -98,23 +103,33 @@ export function Threats() {
       <div className="page-stack">
         <SectionHeader
           title="Threat Intelligence"
-          subtitle="IP reputation tracking and attack pattern detection"
+          subtitle="IP reputation, enforcement state, and attack-pattern analysis"
           actions={
-            <Button variant="primary" onClick={fetchData} isLoading={loading}>
-              Refresh
-            </Button>
+            isAdmin ? (
+              <Button variant="primary" onClick={fetchData} isLoading={loading}>
+                Refresh
+              </Button>
+            ) : undefined
           }
         />
 
-        {loading && !error && <PageLoadingSkeleton cardCount={4} />}
+        {!isAdmin && (
+          <AccessBoundary
+            description="Threat intelligence includes sensitive source-IP history and IP block/unblock actions. Reviewer mode keeps those records private while leaving documented detection rules and safe replay evidence available."
+            resource="GET /admin/threats/top"
+            alternative={{ label: 'Explore detection rules', to: '/detections' }}
+          />
+        )}
 
-        {error && (
+        {isAdmin && loading && !error && <PageLoadingSkeleton cardCount={4} />}
+
+        {isAdmin && error && (
           <div className="alert alert--danger" role="alert">
             {error}
           </div>
         )}
 
-        {!loading && !error && statistics && (
+        {isAdmin && !loading && !error && statistics && (
           <div className="page-stack">
             <div className="page-grid page-grid--cards">
               <MetricCard title="Total Threats" value={statistics.totalThreats} color="blue" />
@@ -143,7 +158,9 @@ export function Threats() {
                       <Card key={index} className={cardClass}>
                         <div className="threat-card__header">
                           <div className="threat-card__identity">
-                            <div className="section-title">{pattern.type.replace(/_/g, ' ').toUpperCase()}</div>
+                            <div className="section-title">
+                              {pattern.type.replace(/_/g, ' ').toUpperCase()}
+                            </div>
                             <Badge className={threatLevelBadgeClass[pattern.severity]}>
                               {pattern.severity.toUpperCase()}
                             </Badge>
@@ -191,7 +208,11 @@ export function Threats() {
                             <div className="text-mono section-title">{threat.ip}</div>
                             {threat.isBlocked && (
                               <Badge className="badge-critical">
-                                <Ban size={12} aria-hidden="true" style={{ marginRight: 4, verticalAlign: 'text-bottom' }} />
+                                <Ban
+                                  size={12}
+                                  aria-hidden="true"
+                                  style={{ marginRight: 4, verticalAlign: 'text-bottom' }}
+                                />
                                 BLOCKED
                               </Badge>
                             )}
@@ -229,7 +250,9 @@ export function Threats() {
                               {threat.threatScore}/100
                             </div>
                             {threat.abuseScore !== undefined && (
-                              <div className="text-xs text-muted">AbuseIPDB: {threat.abuseScore}%</div>
+                              <div className="text-xs text-muted">
+                                AbuseIPDB: {threat.abuseScore}%
+                              </div>
                             )}
                           </div>
 
@@ -293,7 +316,10 @@ export function Threats() {
 
             {threats.length > 0 && (
               <section className="section-block">
-                <SectionHeader title="Threat Map" subtitle="Geographic distribution of tracked threats" />
+                <SectionHeader
+                  title="Threat Map"
+                  subtitle="Geographic distribution of tracked threats"
+                />
                 <Card>
                   <WorldMapHeatmap threats={threats} />
                 </Card>

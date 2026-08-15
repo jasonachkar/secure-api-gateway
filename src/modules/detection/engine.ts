@@ -8,12 +8,17 @@ import { logger } from '../../lib/logger.js';
 export interface RuleHealth extends RuleHealthCounters {
   id: string;
   name: string;
+  description: string;
   version: string;
   enabled: boolean;
   severity: DetectionRule['severity'];
   providers: DetectionRule['providers'];
+  categories: DetectionRule['categories'];
   supportedProvenance: DetectionRule['supportedProvenance'];
   testPaths: string[];
+  severityRationale: string;
+  falsePositiveNotes: string[];
+  remediation: string[];
 }
 
 export class DetectionEngine {
@@ -37,12 +42,17 @@ export class DetectionEngine {
       return this.rules.map((rule) => ({
         id: rule.id,
         name: rule.name,
+        description: rule.description,
         version: rule.version,
         enabled: rule.enabled,
         severity: rule.severity,
         providers: rule.providers,
+        categories: rule.categories,
         supportedProvenance: rule.supportedProvenance,
         testPaths: rule.testPaths,
+        severityRationale: rule.severityRationale,
+        falsePositiveNotes: rule.falsePositiveNotes,
+        remediation: rule.remediation,
         evaluationCount: 0,
         matchCount: 0,
         errorCount: 0,
@@ -53,12 +63,17 @@ export class DetectionEngine {
     return this.rules.map((rule) => ({
       id: rule.id,
       name: rule.name,
+      description: rule.description,
       version: rule.version,
       enabled: rule.enabled,
       severity: rule.severity,
       providers: rule.providers,
+      categories: rule.categories,
       supportedProvenance: rule.supportedProvenance,
       testPaths: rule.testPaths,
+      severityRationale: rule.severityRationale,
+      falsePositiveNotes: rule.falsePositiveNotes,
+      remediation: rule.remediation,
       ...counters[rule.id],
     }));
   }
@@ -82,8 +97,14 @@ export class DetectionEngine {
         result = await rule.evaluate(event, context);
       } catch (error) {
         await this.metrics?.recordDetectionEvaluation(false);
-        await this.ruleHealth?.recordError(rule.id, error instanceof Error ? error.message : 'Unknown rule error');
-        logger.error({ error, ruleId: rule.id, eventId: event.id }, 'Detection rule threw during evaluation');
+        await this.ruleHealth?.recordError(
+          rule.id,
+          error instanceof Error ? error.message : 'Unknown rule error'
+        );
+        logger.error(
+          { error, ruleId: rule.id, eventId: event.id },
+          'Detection rule threw during evaluation'
+        );
         continue;
       }
 

@@ -27,7 +27,11 @@ export async function navigateAuthenticated(page: Page, path: string) {
     window.history.pushState({}, '', nextPath);
     window.dispatchEvent(new PopStateEvent('popstate'));
   }, path);
-  await expect(page).toHaveURL(new RegExp(`${path === '/' ? '/$' : path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`));
+  await expect(page).toHaveURL(
+    new RegExp(
+      `${path === '/' ? '/(?:\\?.*)?$' : `${path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\?.*)?$`}`
+    )
+  );
   await expect(page.locator('.app-shell')).toBeVisible();
 }
 

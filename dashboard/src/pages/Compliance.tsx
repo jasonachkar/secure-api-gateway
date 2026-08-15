@@ -14,14 +14,23 @@ import { Card } from '../components/Card';
 import { SectionHeader } from '../components/SectionHeader';
 import { adminApi } from '../api/admin';
 import { getErrorMessage } from '../api/errors';
-import { NIST_EVIDENCE, OWASP_EVIDENCE, PCI_EVIDENCE, githubUrl, type EvidenceEntry } from '../data/complianceEvidence';
+import {
+  NIST_EVIDENCE,
+  OWASP_EVIDENCE,
+  PCI_EVIDENCE,
+  githubUrl,
+  type EvidenceEntry,
+} from '../data/complianceEvidence';
 import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
+import { AccessBoundary } from '../components/AccessBoundary';
+import { useAuth } from '../contexts/AuthContext';
 import type { SecurityPosture, ComplianceMetrics, ComplianceAssessmentBasis } from '../types';
 
 function AssessmentBasisNote({ basis, note }: { basis: ComplianceAssessmentBasis; note: string }) {
   return (
     <div className="alert alert--warning" style={{ marginBottom: 4 }}>
-      <strong>{basis === 'static' ? 'Static self-assessment' : 'Partially live-assessed'}:</strong> {note}
+      <strong>{basis === 'static' ? 'Static self-assessment' : 'Partially live-assessed'}:</strong>{' '}
+      {note}
     </div>
   );
 }
@@ -32,7 +41,12 @@ function EvidenceNote({ entry }: { entry?: EvidenceEntry }) {
     <div className="compliance-item__evidence">
       <p className="compliance-item__implementation-note">{entry.note}</p>
       {entry.path && (
-        <a href={githubUrl(entry.path)} target="_blank" rel="noopener noreferrer" className="compliance-item__evidence-link">
+        <a
+          href={githubUrl(entry.path)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="compliance-item__evidence-link"
+        >
           View Implementation <ExternalLink size={12} aria-hidden="true" />
         </a>
       )}
@@ -63,15 +77,20 @@ const complianceBadgeClass: Record<string, string> = {
 };
 
 export function Compliance() {
+  const { identity } = useAuth();
+  const isAdmin = identity?.roles.includes('admin') ?? false;
   const [posture, setPosture] = useState<SecurityPosture | null>(null);
   const [metrics, setMetrics] = useState<ComplianceMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'posture' | 'nist' | 'owasp' | 'pci' | 'gdpr'>('posture');
+  const [activeTab, setActiveTab] = useState<'posture' | 'nist' | 'owasp' | 'pci' | 'gdpr'>(
+    'posture'
+  );
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (isAdmin) fetchData();
+    else setLoading(false);
+  }, [isAdmin]);
 
   const fetchData = async () => {
     try {
@@ -134,16 +153,36 @@ export function Compliance() {
 
       const unavailableNote = 'Unavailable - error building metrics.';
       if (!metricsResponse.nist) {
-        metricsResponse.nist = { score: 0, assessmentBasis: 'static', assessmentNote: unavailableNote, controls: [] };
+        metricsResponse.nist = {
+          score: 0,
+          assessmentBasis: 'static',
+          assessmentNote: unavailableNote,
+          controls: [],
+        };
       }
       if (!metricsResponse.owasp) {
-        metricsResponse.owasp = { score: 0, assessmentBasis: 'static', assessmentNote: unavailableNote, top10: [] };
+        metricsResponse.owasp = {
+          score: 0,
+          assessmentBasis: 'static',
+          assessmentNote: unavailableNote,
+          top10: [],
+        };
       }
       if (!metricsResponse.pci) {
-        metricsResponse.pci = { score: 0, assessmentBasis: 'static', assessmentNote: unavailableNote, requirements: [] };
+        metricsResponse.pci = {
+          score: 0,
+          assessmentBasis: 'static',
+          assessmentNote: unavailableNote,
+          requirements: [],
+        };
       }
       if (!metricsResponse.gdpr) {
-        metricsResponse.gdpr = { score: 0, assessmentBasis: 'static', assessmentNote: unavailableNote, principles: [] };
+        metricsResponse.gdpr = {
+          score: 0,
+          assessmentBasis: 'static',
+          assessmentNote: unavailableNote,
+          principles: [],
+        };
       }
 
       if (!metricsResponse.nist.controls) {
@@ -185,16 +224,25 @@ export function Compliance() {
     <Layout>
       <div className="page-stack">
         <SectionHeader
-          title="Compliance & Security Posture"
-          subtitle="Security posture scoring and compliance metrics for industry standards"
-          actions={<Button onClick={fetchData}>Refresh</Button>}
+          title="Control Evidence"
+          subtitle="Control implementation, assessment basis, test evidence, and explicit limitations"
+          actions={isAdmin ? <Button onClick={fetchData}>Refresh</Button> : undefined}
         />
 
-        {loading && <PageLoadingSkeleton cardCount={3} />}
+        {!isAdmin && (
+          <AccessBoundary
+            title="Runtime posture requires administrator access"
+            description="Framework mappings and source paths are documented in the repository, while runtime posture inputs remain restricted because they include authentication, threat, and incident-response telemetry. Reviewer mode does not convert that 403 boundary into a synthetic score."
+            resource="GET /admin/compliance/metrics"
+            alternative={{ label: 'Review the capability registry', to: '/implementation-status' }}
+          />
+        )}
 
-        {error && <div className="alert alert--danger">{error}</div>}
+        {isAdmin && loading && <PageLoadingSkeleton cardCount={3} />}
 
-        {!loading && !error && posture && metrics && (
+        {isAdmin && error && <div className="alert alert--danger">{error}</div>}
+
+        {isAdmin && !loading && !error && posture && metrics && (
           <div className="page-stack">
             <div className="tab-list">
               {[
@@ -224,7 +272,9 @@ export function Compliance() {
                 <Card className="page-stack">
                   <div className="section-subtitle">Overall Security Posture</div>
                   <div className="compliance-score">
-                    <div className={`posture-grade posture-grade--xl ${gradeClass}`}>{posture.grade}</div>
+                    <div className={`posture-grade posture-grade--xl ${gradeClass}`}>
+                      {posture.grade}
+                    </div>
                     <div>
                       <div className="compliance-score__value">{posture.overallScore}</div>
                       <div className="section-subtitle">out of 100</div>
@@ -255,7 +305,8 @@ export function Compliance() {
                           <div className="factor-card__details">
                             {Object.entries(factor.details).map(([detailKey, value]) => (
                               <div key={detailKey}>
-                                {detailKey.replace(/([A-Z])/g, ' $1').trim()}: <strong>{String(value)}</strong>
+                                {detailKey.replace(/([A-Z])/g, ' $1').trim()}:{' '}
+                                <strong>{String(value)}</strong>
                               </div>
                             ))}
                           </div>
@@ -291,7 +342,10 @@ export function Compliance() {
                   </div>
                 </div>
                 {metrics.nist?.assessmentNote && (
-                  <AssessmentBasisNote basis={metrics.nist.assessmentBasis} note={metrics.nist.assessmentNote} />
+                  <AssessmentBasisNote
+                    basis={metrics.nist.assessmentBasis}
+                    note={metrics.nist.assessmentNote}
+                  />
                 )}
                 <div className="page-stack">
                   {!metrics.nist?.controls || metrics.nist.controls.length === 0 ? (
@@ -336,7 +390,10 @@ export function Compliance() {
                   </div>
                 </div>
                 {metrics.owasp?.assessmentNote && (
-                  <AssessmentBasisNote basis={metrics.owasp.assessmentBasis} note={metrics.owasp.assessmentNote} />
+                  <AssessmentBasisNote
+                    basis={metrics.owasp.assessmentBasis}
+                    note={metrics.owasp.assessmentNote}
+                  />
                 )}
                 <div className="page-stack">
                   {!metrics.owasp?.top10 || metrics.owasp.top10.length === 0 ? (
@@ -370,7 +427,10 @@ export function Compliance() {
                   </div>
                 </div>
                 {metrics.pci?.assessmentNote && (
-                  <AssessmentBasisNote basis={metrics.pci.assessmentBasis} note={metrics.pci.assessmentNote} />
+                  <AssessmentBasisNote
+                    basis={metrics.pci.assessmentBasis}
+                    note={metrics.pci.assessmentNote}
+                  />
                 )}
                 <div className="page-stack">
                   {!metrics.pci?.requirements || metrics.pci.requirements.length === 0 ? (
@@ -405,7 +465,10 @@ export function Compliance() {
                   </div>
                 </div>
                 {metrics.gdpr?.assessmentNote && (
-                  <AssessmentBasisNote basis={metrics.gdpr.assessmentBasis} note={metrics.gdpr.assessmentNote} />
+                  <AssessmentBasisNote
+                    basis={metrics.gdpr.assessmentBasis}
+                    note={metrics.gdpr.assessmentNote}
+                  />
                 )}
                 <div className="page-stack">
                   {!metrics.gdpr?.principles || metrics.gdpr.principles.length === 0 ? (
@@ -420,7 +483,9 @@ export function Compliance() {
                             <div className="compliance-item__title">{principle.principle}</div>
                             <Badge className={badgeClass}>{principle.status.toUpperCase()}</Badge>
                           </div>
-                          <div className="compliance-item__description">{principle.description}</div>
+                          <div className="compliance-item__description">
+                            {principle.description}
+                          </div>
                         </div>
                       );
                     })

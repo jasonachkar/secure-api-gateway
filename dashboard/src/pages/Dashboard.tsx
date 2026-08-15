@@ -1,533 +1,421 @@
-/**
- * Main dashboard page with metrics
- */
-
-import { useState, useEffect } from 'react';
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronDown, ChevronUp, ListTree, Info } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import {
+  Activity,
+  ArrowRight,
+  CheckCircle2,
+  Cloud,
+  FileCheck2,
+  FlaskConical,
+  Radar,
+  ShieldAlert,
+  Workflow,
+  type LucideIcon,
+} from 'lucide-react';
 import { Layout } from '../components/Layout';
-import { MetricCard } from '../components/MetricCard';
-import { RequestRateChart } from '../components/RequestRateChart';
-import { ErrorRateChart } from '../components/ErrorRateChart';
-import { ResponseTimeChart } from '../components/ResponseTimeChart';
-import { LiveEventFeed, type SecurityEvent } from '../components/LiveEventFeed';
-import { LiveStatsBar } from '../components/LiveStatsBar';
-import { AttackSimulator } from '../components/AttackSimulator';
-import { RequestInspector } from '../components/RequestInspector';
-import { Drawer } from '../components/Drawer';
-import { Button } from '../components/Button';
-import { Card } from '../components/Card';
 import { SectionHeader } from '../components/SectionHeader';
-import { useSSE } from '../hooks/useSSE';
+import { Card } from '../components/Card';
+import { Button } from '../components/Button';
+import { EmptyState } from '../components/EmptyState';
+import {
+  HealthBadge,
+  InvestigationStatusBadge,
+  ProvenanceBadge,
+  SeverityBadge,
+} from '../components/SecurityBadges';
 import { adminApi } from '../api/admin';
-import type { IngestionStatus, SecurityPosture } from '../types';
-import { environment } from '../config/environment';
+import { getErrorMessage } from '../api/errors';
+import type { CloudProvider, OperationalHealth, SecurityInvestigation } from '../types';
 
-interface RealtimeMetrics {
-  timestamp: number;
-  requestsPerSecond: number;
-  errorRate: number;
-  errors4xx: number;
-  errors5xx: number;
-  totalRequests: number;
-  authStats: {
-    failedLogins: number;
-    successfulLogins: number;
-    accountLockouts: number;
-    activeSessions: number;
-  };
-  rateLimitStats: {
-    violations: number;
-  };
-  responseTimeStats: {
-    p50: number;
-    p95: number;
-    p99: number;
-  };
-}
-
-const EVENT_GUIDANCE: Record<string, { rule: string; remediation: string }> = {
-  AUTH_FAILURE: {
-    rule: 'High failed-login rate threshold (>5 in a 5-minute window)',
-    remediation:
-      'Threat intelligence scoring flags the source IP if failures continue; account lockout engages after 5 consecutive failures on one account (see the Users page).',
-  },
-  ACCOUNT_LOCKOUT: {
-    rule: 'Account lockout threshold reached',
-    remediation: 'The account is locked for the configured lockout window. An admin can unlock it from the Users page.',
-  },
-  RATE_LIMIT: {
-    rule: 'Rate limit violation threshold',
-    remediation: 'Requests from this source are being throttled. Sustained abuse raises the source IP\'s threat score (see the Threats page).',
-  },
-  HIGH_ERROR_RATE: {
-    rule: 'Elevated 4xx/5xx error rate threshold (>10%)',
-    remediation: 'Check the Error Rate chart and /admin/upstream-health for a failing upstream.',
-  },
+const PROVIDERS: CloudProvider[] = ['gateway', 'aws', 'gcp', 'azure'];
+const HEALTH_RANK: Record<OperationalHealth, number> = {
+  unavailable: 0,
+  degraded: 1,
+  not_configured: 2,
+  replay_only: 3,
+  healthy: 4,
 };
 
-const MAX_HISTORY = 30; // Keep 30 data points (1 minute at 2-second intervals)
-
-/**
- * Compares the average of the newest half of a history window against the average of
- * the oldest half, so metric cards can show a real trend instead of a decorative one.
- * Needs at least 6 points before it bothers (too little data makes the % swing wildly).
- */
-function computeTrend(values: number[]): { direction: 'up' | 'down' | 'flat'; percentage: number } | undefined {
-  if (values.length < 6) return undefined;
-
-  const mid = Math.floor(values.length / 2);
-  const older = values.slice(0, mid);
-  const newer = values.slice(mid);
-  const olderAvg = older.reduce((sum, v) => sum + v, 0) / older.length;
-  const newerAvg = newer.reduce((sum, v) => sum + v, 0) / newer.length;
-
-  if (olderAvg === 0) return undefined;
-
-  const percentage = ((newerAvg - olderAvg) / olderAvg) * 100;
-  if (Math.abs(percentage) < 2) return { direction: 'flat', percentage: 0 };
-  return { direction: percentage > 0 ? 'up' : 'down', percentage };
+function relativeTime(value: string | number) {
+  const elapsed = Date.now() - new Date(value).getTime();
+  const minutes = Math.max(0, Math.floor(elapsed / 60_000));
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 24 ? `${hours}h ago` : `${Math.floor(hours / 24)}d ago`;
 }
 
 export function Dashboard() {
-  const [requestRateHistory, setRequestRateHistory] = useState<Array<{ timestamp: number; requests: number }>>([]);
-  const [errorRateHistory, setErrorRateHistory] = useState<Array<{ timestamp: number; errors4xx: number; errors5xx: number }>>([]);
-  const [responseTimeHistory, setResponseTimeHistory] = useState<Array<{ timestamp: number; p50: number; p95: number; p99: number }>>([]);
-  const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
-  const [currentMetrics, setCurrentMetrics] = useState<RealtimeMetrics | null>(null);
-  const [posture, setPosture] = useState<SecurityPosture | null>(null);
-  const [ingestionStatus, setIngestionStatus] = useState<IngestionStatus | null>(null);
-  const [infoBannerDismissed, setInfoBannerDismissed] = useState(() => {
-    return localStorage.getItem('dashboard-info-banner-dismissed') === 'true';
+  const metrics = useQuery({
+    queryKey: ['metrics-summary'],
+    queryFn: adminApi.getMetricsSummary,
+    refetchInterval: 5_000,
   });
-  const [selectedEvent, setSelectedEvent] = useState<SecurityEvent | null>(null);
-  const [inspectorExpanded, setInspectorExpanded] = useState(false);
-
-  const { data, isConnected, error } = useSSE<any>({
-    url: `${environment.apiBaseUrl}/admin/metrics/realtime`,
-    enabled: true,
+  const pipeline = useQuery({
+    queryKey: ['pipeline-metrics'],
+    queryFn: adminApi.getPipelineMetrics,
+    refetchInterval: 10_000,
+  });
+  const investigations = useQuery({
+    queryKey: ['investigations', 'overview'],
+    queryFn: () => adminApi.getInvestigations({ limit: 50 }),
+    refetchInterval: 10_000,
+  });
+  const capabilities = useQuery({
+    queryKey: ['capability-summary'],
+    queryFn: adminApi.getCapabilitySummary,
+  });
+  const requests = useQuery({
+    queryKey: ['traffic', 'overview'],
+    queryFn: () => adminApi.getRecentRequests(5),
+    refetchInterval: 4_000,
   });
 
-  const formatTimestamp = (value?: number) => {
-    if (!value) return 'No events yet';
-    return new Date(value).toLocaleString();
-  };
-
-  // Load security posture on mount
-  useEffect(() => {
-    adminApi
-      .getSecurityPosture()
-      .then(setPosture)
-      .catch(() => {
-        // Silently fail - posture is optional
-      });
-  }, []);
-
-  useEffect(() => {
-    adminApi.getIngestionStatus().then(setIngestionStatus).catch(() => {
-      // Silently fail - ingestion status is optional
-    });
-  }, []);
-
-  // Update history and events when new data arrives
-  useEffect(() => {
-    if (!data) return;
-
-    if (data.type === 'connected' || !data.requestsPerSecond) {
-      return;
-    }
-
-    const metrics = data as unknown as RealtimeMetrics;
-    setCurrentMetrics(metrics);
-
-    setRequestRateHistory((prev) => {
-      const newHistory = [
-        ...prev,
-        {
-          timestamp: metrics.timestamp || Date.now(),
-          requests: metrics.requestsPerSecond,
-        },
-      ];
-      return newHistory.slice(-MAX_HISTORY);
-    });
-
-    setErrorRateHistory((prev) => {
-      const newHistory = [
-        ...prev,
-        {
-          timestamp: metrics.timestamp || Date.now(),
-          errors4xx: metrics.errors4xx || 0,
-          errors5xx: metrics.errors5xx || 0,
-        },
-      ];
-      return newHistory.slice(-MAX_HISTORY);
-    });
-
-    setResponseTimeHistory((prev) => {
-      const newHistory = [
-        ...prev,
-        {
-          timestamp: metrics.timestamp || Date.now(),
-          p50: metrics.responseTimeStats.p50,
-          p95: metrics.responseTimeStats.p95,
-          p99: metrics.responseTimeStats.p99,
-        },
-      ];
-      return newHistory.slice(-MAX_HISTORY);
-    });
-
-    const events: SecurityEvent[] = [];
-
-    if (metrics.authStats.failedLogins > 5) {
-      events.push({
-        timestamp: metrics.timestamp || Date.now(),
-        type: 'AUTH_FAILURE',
-        severity: 'warning',
-        message: `High failed login attempts detected: ${metrics.authStats.failedLogins}`,
-      });
-    }
-
-    if (metrics.authStats.accountLockouts > 0) {
-      events.push({
-        timestamp: metrics.timestamp || Date.now(),
-        type: 'ACCOUNT_LOCKOUT',
-        severity: 'critical',
-        message: `${metrics.authStats.accountLockouts} account(s) locked due to failed login attempts`,
-      });
-    }
-
-    if (metrics.rateLimitStats.violations > 0) {
-      events.push({
-        timestamp: metrics.timestamp || Date.now(),
-        type: 'RATE_LIMIT',
-        severity: 'warning',
-        message: `${metrics.rateLimitStats.violations} rate limit violations detected`,
-      });
-    }
-
-    if (metrics.errorRate > 10) {
-      events.push({
-        timestamp: metrics.timestamp || Date.now(),
-        type: 'HIGH_ERROR_RATE',
-        severity: 'critical',
-        message: `Error rate elevated: ${metrics.errorRate.toFixed(2)}%`,
-      });
-    }
-
-    if (events.length > 0) {
-      setSecurityEvents((prev) => [...prev, ...events].slice(-50));
-    }
-  }, [data]);
-
-  const statusClass = isConnected ? 'status-pill--success' : 'status-pill--danger';
+  const openInvestigations = useMemo(
+    () =>
+      (investigations.data ?? []).filter((item) => !['resolved', 'closed'].includes(item.status)),
+    [investigations.data]
+  );
+  const prioritized = useMemo(
+    () =>
+      [...openInvestigations]
+        .sort((a, b) => {
+          const rank = { critical: 5, high: 4, medium: 3, low: 2, informational: 1 };
+          return (
+            rank[b.severity] - rank[a.severity] ||
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+          );
+        })
+        .slice(0, 5),
+    [openInvestigations]
+  );
+  const sourceHealth = pipeline.data?.healthByProvider;
+  const healthySources = sourceHealth
+    ? PROVIDERS.filter((provider) => HEALTH_RANK[sourceHealth[provider]] >= HEALTH_RANK.replay_only)
+        .length
+    : 0;
+  const error = metrics.error ?? pipeline.error ?? investigations.error ?? capabilities.error;
 
   return (
     <Layout>
-      <div className="page-stack">
+      <div className="page-stack security-overview">
         <SectionHeader
-          title="Security Monitoring"
-          subtitle="Real-time security metrics and threat detection"
+          title="Security Overview"
+          subtitle="Operational posture across gateway traffic, cloud telemetry, detection, investigation, response, and evidence."
           actions={
-            <div className={`status-pill ${statusClass}`}>
-              <span className="status-pill__dot" />
-              {isConnected ? 'LIVE' : 'DISCONNECTED'}
+            <div className="action-row">
+              <span className="control-plane-live">
+                <span className="status-dot status-dot--healthy" />
+                Live control plane
+              </span>
+              <Link to="/security-lab">
+                <Button variant="secondary" size="sm">
+                  <FlaskConical size={14} /> Security Lab
+                </Button>
+              </Link>
             </div>
           }
         />
 
-        <LiveStatsBar
-          totalRequests={currentMetrics?.totalRequests ?? 0}
-          rateLimitViolations={currentMetrics?.rateLimitStats.violations ?? 0}
-        />
-
         {error && (
           <div className="alert alert--danger" role="alert">
-            <strong>Connection Error:</strong> {error}
+            {getErrorMessage(error, 'One or more overview data sources are unavailable.')}
           </div>
         )}
 
-        {!infoBannerDismissed && (
-          <div className="alert alert--info info-banner">
-            <div className="flex-1">
-              <div className="info-banner__title">
-                <Info size={16} aria-hidden="true" style={{ marginRight: 6, verticalAlign: 'text-bottom' }} />
-                New to this dashboard?
-              </div>
-              <div className="info-banner__text">
-                This is a live demonstration of a multi-cloud API security control plane. Learn more about
-                what's genuinely implemented versus simulated in{' '}
-                <Link to="/implementation-status" className="info-banner__link">
-                  Implementation Status
-                </Link>
-                , or how it's built in{' '}
-                <Link to="/about" className="info-banner__link">
-                  Architecture & Evidence
-                </Link>
-                .
-              </div>
-            </div>
-            <button
-              className="info-banner__close"
-              onClick={() => {
-                setInfoBannerDismissed(true);
-                localStorage.setItem('dashboard-info-banner-dismissed', 'true');
-              }}
-              aria-label="Dismiss banner"
-            >
-              ×
-            </button>
-          </div>
-        )}
+        <div className="metric-strip metric-strip--overview">
+          <OverviewMetric
+            label="Open investigations"
+            value={openInvestigations.length}
+            detail={
+              openInvestigations.some((item) => item.severity === 'critical')
+                ? 'Critical attention required'
+                : 'No critical investigations'
+            }
+            tone={
+              openInvestigations.some((item) => item.severity === 'critical') ? 'danger' : 'neutral'
+            }
+          />
+          <OverviewMetric
+            label="Detection matches"
+            value={pipeline.data?.detectionMatches ?? '—'}
+            detail={`${pipeline.data?.detectionEvaluations ?? 0} evaluations`}
+          />
+          <OverviewMetric
+            label="Requests proxied"
+            value={metrics.data?.totalRequests ?? '—'}
+            detail={`${metrics.data?.requestsPerSecond?.toFixed(2) ?? '0.00'} req/s`}
+          />
+          <OverviewMetric
+            label="Gateway p95"
+            value={metrics.data ? `${metrics.data.responseTimeStats.p95} ms` : '—'}
+            detail={`${metrics.data?.errorRate?.toFixed(2) ?? '0.00'}% error rate`}
+          />
+          <OverviewMetric
+            label="Active sources"
+            value={`${healthySources}/${PROVIDERS.length}`}
+            detail="Live or replay-ready"
+          />
+        </div>
 
-        <AttackSimulator />
-
-        {posture && (
-          <div className="ui-card posture-summary">
-            <div className={`posture-grade posture-grade--${posture.grade}`}>
-              {posture.grade}
-            </div>
-            <div className="posture-summary__content">
-              <div className="posture-summary__label">Security Posture Score</div>
-              <div className="posture-summary__value">{posture.overallScore}/100</div>
-              <div className="posture-summary__meta">
-                {posture.recommendations.length > 0 && `${posture.recommendations.length} recommendation(s)`}
-              </div>
-              <div className="posture-summary__meta text-muted">
-                Partially live-assessed - see Control Evidence for details
-              </div>
-            </div>
-            <Link to="/compliance">
-              <Button variant="primary" rightIcon="→">
-                View Details
-              </Button>
-            </Link>
-          </div>
-        )}
-
-        {ingestionStatus && (
-          <section className="dashboard-ingestion-section">
-            <div className="dashboard-ingestion-section__header">
-              <div>
-                <h2 className="section-title">Ingestion Status</h2>
-                <p className="section-subtitle">
-                  Normalized event pipeline health and adapter readiness
-                </p>
-              </div>
-              <span className={`ui-badge ${ingestionStatus.storage.redisConnected ? 'ui-badge--success' : 'ui-badge--error'}`}>
-                Redis {ingestionStatus.storage.redisConnected ? 'Connected' : 'Disconnected'}
-              </span>
-            </div>
-
-            <div className="page-grid page-grid--cards" style={{ marginBottom: 'var(--space-lg)' }}>
-              <MetricCard
-                title="Normalized Events"
-                value={ingestionStatus.storage.totalEvents}
-                subtitle="Stored in Redis/Postgres"
-                color="blue"
+        <div className="overview-grid overview-grid--primary">
+          <Card className="overview-panel overview-panel--risk">
+            <PanelHeader
+              icon={ShieldAlert}
+              title="Active risk"
+              meta={`${openInvestigations.length} open`}
+              action={{ to: '/investigations', label: 'View investigations' }}
+            />
+            {prioritized.length === 0 ? (
+              <EmptyState
+                icon={CheckCircle2}
+                title="No active investigations"
+                description="The pipeline has not correlated an open incident. Run a safe scenario to inspect the full workflow."
               />
-              <MetricCard
-                title="Last Event"
-                value={formatTimestamp(ingestionStatus.storage.lastEventAt)}
-                color="green"
+            ) : (
+              <div className="risk-list">
+                {prioritized.map((item) => (
+                  <RiskRow key={item.id} investigation={item} />
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card className="overview-panel overview-panel--pipeline">
+            <PanelHeader
+              icon={Workflow}
+              title="Detection pipeline"
+              meta={`${pipeline.data?.eventsNormalized ?? 0} normalized`}
+              action={{ to: '/cloud', label: 'Pipeline health' }}
+            />
+            <div className="pipeline-flow" aria-label="Security data pipeline">
+              <PipelineStep
+                label="Receive"
+                value={Object.values(pipeline.data?.eventsIngestedByProvider ?? {}).reduce(
+                  (sum, value) => sum + value,
+                  0
+                )}
+                tone="blue"
               />
-              <MetricCard
-                title="Postgres Storage"
-                value={ingestionStatus.storage.postgresConnected ? 'Connected' : 'Not Configured'}
-                color={ingestionStatus.storage.postgresConnected ? 'green' : 'yellow'}
+              <PipelineStep
+                label="Normalize"
+                value={pipeline.data?.eventsNormalized ?? 0}
+                tone="cyan"
+              />
+              <PipelineStep
+                label="Detect"
+                value={pipeline.data?.detectionMatches ?? 0}
+                tone="amber"
+              />
+              <PipelineStep
+                label="Correlate"
+                value={pipeline.data?.investigationsCreated ?? 0}
+                tone="violet"
+              />
+              <PipelineStep
+                label="Respond"
+                value={
+                  (pipeline.data?.responseActionSuccess ?? 0) +
+                  (pipeline.data?.responseActionFailure ?? 0)
+                }
+                tone="green"
               />
             </div>
+            <div className="pipeline-footnotes">
+              <span>{pipeline.data?.duplicatesDiscarded ?? 0} duplicates discarded</span>
+              <span>{pipeline.data?.parserFailures ?? 0} parser failures</span>
+              <span>{pipeline.data?.averageIngestionDelayMs ?? 0} ms avg ingest delay</span>
+            </div>
+          </Card>
+        </div>
 
-            <div className="page-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
-              {ingestionStatus.adapters.map(adapter => (
-                <div key={adapter.provider} className="ui-card dashboard-adapter-card">
-                  <div className="dashboard-adapter-card__header">
-                    <div className="dashboard-adapter-card__name">
-                      {adapter.name}
-                    </div>
-                    <span className={`ui-badge ${adapter.healthy ? 'ui-badge--success' : 'ui-badge--warning'}`}>
-                      {adapter.configured ? 'Configured' : 'Needs setup'}
-                    </span>
-                  </div>
-                  <div className="section-subtitle">
-                    {adapter.detail || 'Status unavailable'}
-                  </div>
+        <div className="overview-grid overview-grid--secondary">
+          <Card className="overview-panel">
+            <PanelHeader
+              icon={Cloud}
+              title="Cloud source status"
+              meta={`${healthySources} ready`}
+              action={{ to: '/cloud', label: 'Open cloud' }}
+            />
+            <div className="source-health-list">
+              {PROVIDERS.map((provider) => (
+                <div key={provider} className="source-health-row">
+                  <span className={`provider-mark provider-mark--${provider}`}>
+                    {provider.slice(0, 2).toUpperCase()}
+                  </span>
+                  <span>
+                    <strong>
+                      {provider === 'gateway'
+                        ? 'API Gateway'
+                        : `${provider.toUpperCase()} telemetry`}
+                    </strong>
+                    <small>
+                      {pipeline.data?.eventsIngestedByProvider[provider] ?? 0} events received
+                    </small>
+                  </span>
+                  {sourceHealth ? (
+                    <HealthBadge value={sourceHealth[provider]} />
+                  ) : (
+                    <span className="skeleton skeleton--inline" />
+                  )}
                 </div>
               ))}
             </div>
-          </section>
-        )}
+          </Card>
 
-        {/* Key Metrics Cards */}
-        {currentMetrics && (
-          <div className="page-grid page-grid--cards">
-            <MetricCard
-              title="Requests/sec"
-              value={currentMetrics.requestsPerSecond.toFixed(2)}
-              color="blue"
-              trend={computeTrend(requestRateHistory.map((p) => p.requests))}
+          <Card className="overview-panel">
+            <PanelHeader
+              icon={Radar}
+              title="Control coverage"
+              meta={`${capabilities.data?.total ?? 0} capabilities`}
+              action={{ to: '/implementation-status', label: 'View registry' }}
             />
-            <MetricCard
-              title="Error Rate"
-              value={`${currentMetrics.errorRate.toFixed(2)}%`}
-              color={currentMetrics.errorRate > 5 ? 'red' : 'green'}
-              trend={computeTrend(errorRateHistory.map((p) => p.errors4xx + p.errors5xx))}
-              invertTrend
-            />
-            <MetricCard
-              title="Failed Logins"
-              value={currentMetrics.authStats.failedLogins}
-              subtitle="Last 5 min"
-              color={currentMetrics.authStats.failedLogins > 10 ? 'red' : 'yellow'}
-            />
-            <MetricCard title="Active Sessions" value={currentMetrics.authStats.activeSessions} color="blue" />
-            <MetricCard
-              title="Rate Limit Violations"
-              value={currentMetrics.rateLimitStats.violations}
-              subtitle="Last 5 min"
-              color={currentMetrics.rateLimitStats.violations > 0 ? 'red' : 'green'}
-            />
-            <MetricCard
-              title="P99 Response Time"
-              value={`${currentMetrics.responseTimeStats.p99}ms`}
-              color={currentMetrics.responseTimeStats.p99 > 1000 ? 'red' : 'green'}
-            />
-          </div>
-        )}
+            <div className="coverage-stack">
+              {(['implemented', 'partial', 'simulated', 'planned'] as const).map((status) => {
+                const count = capabilities.data?.counts[status] ?? 0;
+                const percent = capabilities.data?.total
+                  ? Math.round((count / capabilities.data.total) * 100)
+                  : 0;
+                return (
+                  <div key={status} className={`coverage-bar coverage-bar--${status}`}>
+                    <div>
+                      <span>{status}</span>
+                      <strong>{count}</strong>
+                    </div>
+                    <span className="coverage-bar__track">
+                      <span style={{ width: `${percent}%` }} />
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
 
-        <div className="dashboard-grid">
-          <div className="dashboard-grid__charts">
-            <RequestRateChart data={requestRateHistory} title="Request Rate (Real-time)" />
-            <ErrorRateChart data={errorRateHistory} title="Error Rate by Type" />
-            {responseTimeHistory.length > 0 && (
-              <ResponseTimeChart data={responseTimeHistory} title="Response Time Percentiles" />
+          <Card className="overview-panel">
+            <PanelHeader
+              icon={Activity}
+              title="Recent gateway activity"
+              meta={`${requests.data?.length ?? 0} captured`}
+              action={{ to: '/traffic', label: 'Explore traffic' }}
+            />
+            {requests.data?.length ? (
+              <div className="activity-list">
+                {requests.data.map((request) => (
+                  <div key={`${request.timestamp}-${request.path}-${request.method}`}>
+                    <span className={`http-method http-method--${request.method.toLowerCase()}`}>
+                      {request.method}
+                    </span>
+                    <code>{request.path}</code>
+                    <span
+                      className={`http-status http-status--${request.statusCode >= 400 ? 'warning' : 'success'}`}
+                    >
+                      {request.statusCode}
+                    </span>
+                    <small>{request.latencyMs} ms</small>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                icon={Activity}
+                title="Waiting for gateway traffic"
+                description="Requests appear here as they pass through the proxy."
+              />
             )}
-          </div>
-          <LiveEventFeed events={securityEvents} maxEvents={15} onSelectEvent={setSelectedEvent} />
+          </Card>
         </div>
 
-        <div className="simulator-panel">
-          <button
-            className="simulator-panel__toggle"
-            onClick={() => setInspectorExpanded((prev) => !prev)}
-            aria-expanded={inspectorExpanded}
-            aria-controls="request-inspector-body"
-          >
-            <div className="simulator-panel__title">
-              <ListTree size={18} aria-hidden="true" />
-              Request Inspector — Live Log
-            </div>
-            {inspectorExpanded ? <ChevronUp size={18} aria-hidden="true" /> : <ChevronDown size={18} aria-hidden="true" />}
-          </button>
-          {inspectorExpanded && (
-            <div id="request-inspector-body" className="simulator-panel__body">
-              <p className="section-subtitle">
-                The last 20 requests through the gateway, refreshed every 2 seconds — method, path, authenticated
-                user, RBAC decision, remaining rate-limit quota, response code, and latency.
-              </p>
-              <RequestInspector />
-            </div>
-          )}
+        <div className="overview-evidence-note">
+          <FileCheck2 size={15} />
+          <span>
+            Every status above is sourced from a runtime endpoint or the backend capability
+            registry.
+          </span>
+          <Link to="/implementation-status">
+            Inspect evidence <ArrowRight size={12} />
+          </Link>
         </div>
-
-        <Card className="page-stack">
-          <div className="section-title">Export Data</div>
-          <div className="action-row">
-            <Button
-              variant="primary"
-              onClick={() => {
-                if (currentMetrics) {
-                  const dataStr = JSON.stringify(
-                    {
-                      timestamp: new Date().toISOString(),
-                      metrics: currentMetrics,
-                      posture: posture,
-                    },
-                    null,
-                    2
-                  );
-                  const blob = new Blob([dataStr], { type: 'application/json' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `security-dashboard-${new Date().toISOString().split('T')[0]}.json`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }
-              }}
-              disabled={!currentMetrics}
-            >
-              Export Metrics (JSON)
-            </Button>
-            <Button
-              variant="success"
-              onClick={() => {
-                if (securityEvents.length > 0) {
-                  const csv = [
-                    'Timestamp,Type,Severity,Message',
-                    ...securityEvents.map(
-                      (e) => `${new Date(e.timestamp).toISOString()},${e.type},${e.severity},"${e.message}"`
-                    ),
-                  ].join('\n');
-                  const blob = new Blob([csv], { type: 'text/csv' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `security-events-${new Date().toISOString().split('T')[0]}.csv`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }
-              }}
-              disabled={securityEvents.length === 0}
-            >
-              Export Events (CSV)
-            </Button>
-          </div>
-        </Card>
       </div>
-
-      <Drawer
-        isOpen={selectedEvent !== null}
-        title="Event Details"
-        onClose={() => setSelectedEvent(null)}
-      >
-        {selectedEvent && (
-          <>
-            <DetailRow label="Timestamp" value={new Date(selectedEvent.timestamp).toLocaleString()} />
-            <DetailRow label="Event Type" value={selectedEvent.type.replace(/_/g, ' ')} />
-            <DetailRow
-              label="Severity"
-              value={<span className={`ui-badge ui-badge--${selectedEvent.severity === 'critical' ? 'error' : selectedEvent.severity === 'warning' ? 'warning' : 'info'}`}>{selectedEvent.severity.toUpperCase()}</span>}
-            />
-            <DetailRow label="Message" value={selectedEvent.message} />
-            {selectedEvent.username && (
-              <DetailRow label="User" value={`${selectedEvent.username} (${selectedEvent.userId})`} />
-            )}
-            <DetailRow
-              label="Matched Security Rule"
-              value={EVENT_GUIDANCE[selectedEvent.type]?.rule ?? 'General security threshold'}
-            />
-            <DetailRow
-              label="Recommended Remediation"
-              value={EVENT_GUIDANCE[selectedEvent.type]?.remediation ?? 'Review the relevant metric on this dashboard.'}
-            />
-            <div className="helper-text">
-              This event is derived from an aggregate metric snapshot (a threshold crossed within a 2-second polling
-              window), not a single captured request — so it has no per-request IP/user-agent/request-ID the way an
-              audit log entry or Request Inspector row does. For that level of detail on an individual request, see
-              the Request Inspector above or the Audit Logs page.
-            </div>
-          </>
-        )}
-      </Drawer>
     </Layout>
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+function OverviewMetric({
+  label,
+  value,
+  detail,
+  tone = 'neutral',
+}: {
+  label: string;
+  value: string | number;
+  detail: string;
+  tone?: 'neutral' | 'danger';
+}) {
   return (
-    <div>
-      <div className="threat-card__meta-label">{label}</div>
-      <div className="section-subtitle">{value}</div>
+    <div className={`overview-metric overview-metric--${tone}`}>
+      <span>{label}</span>
+      <strong>{typeof value === 'number' ? value.toLocaleString() : value}</strong>
+      <small>{detail}</small>
+    </div>
+  );
+}
+
+function PanelHeader({
+  icon: Icon,
+  title,
+  meta,
+  action,
+}: {
+  icon: LucideIcon;
+  title: string;
+  meta: string;
+  action: { to: string; label: string };
+}) {
+  return (
+    <div className="overview-panel__header">
+      <div>
+        <span className="overview-panel__icon">
+          <Icon size={16} />
+        </span>
+        <h2>{title}</h2>
+        <small>{meta}</small>
+      </div>
+      <Link to={action.to}>
+        {action.label}
+        <ArrowRight size={12} />
+      </Link>
+    </div>
+  );
+}
+
+function RiskRow({ investigation }: { investigation: SecurityInvestigation }) {
+  return (
+    <Link to={`/investigations?id=${investigation.id}`} className="risk-row">
+      <span className={`risk-row__rail risk-row__rail--${investigation.severity}`} />
+      <span className="risk-row__content">
+        <span>
+          <SeverityBadge value={investigation.severity} />
+          <InvestigationStatusBadge value={investigation.status} />
+          <ProvenanceBadge value={investigation.provenance} />
+        </span>
+        <strong>{investigation.title}</strong>
+        <small>
+          {investigation.providerScopes.join(' · ').toUpperCase()} ·{' '}
+          {relativeTime(investigation.updatedAt)}
+        </small>
+      </span>
+      <ArrowRight size={14} />
+    </Link>
+  );
+}
+
+function PipelineStep({ label, value, tone }: { label: string; value: number; tone: string }) {
+  return (
+    <div className={`pipeline-step pipeline-step--${tone}`}>
+      <span className="pipeline-step__dot" />
+      <strong>{value.toLocaleString()}</strong>
+      <small>{label}</small>
     </div>
   );
 }

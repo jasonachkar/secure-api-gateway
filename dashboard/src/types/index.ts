@@ -51,6 +51,8 @@ export interface IngestionStatus {
 
 export interface RequestLogEntry {
   timestamp: number;
+  requestId: string;
+  sourceIp: string;
   method: string;
   path: string;
   user: string;
@@ -330,7 +332,13 @@ export interface NormalizedSecurityEvent {
   accountOrProjectId?: string;
   region?: string;
   principal?: { id?: string; type?: string; displayName?: string; email?: string };
-  resource?: { id?: string; type?: string; name?: string; accountOrProjectId?: string; region?: string };
+  resource?: {
+    id?: string;
+    type?: string;
+    name?: string;
+    accountOrProjectId?: string;
+    region?: string;
+  };
   action: string;
   outcome: 'success' | 'failure' | 'unknown';
   sourceIp?: string;
@@ -362,6 +370,29 @@ export interface DetectionResult {
   severityRationale?: string;
   createdAt: string;
   provenance: DataProvenance;
+}
+
+export interface DetectionRuleHealth {
+  id: string;
+  name: string;
+  description?: string;
+  version: string;
+  enabled: boolean;
+  severity: SecuritySeverity;
+  providers: CloudProvider[];
+  categories?: string[];
+  supportedProvenance: DataProvenance[];
+  testPaths: string[];
+  severityRationale?: string;
+  falsePositiveNotes?: string[];
+  remediation?: string[];
+  evaluationCount: number;
+  matchCount: number;
+  errorCount: number;
+  lastEvaluatedAt?: number;
+  lastMatchedAt?: number;
+  lastErrorAt?: number;
+  lastErrorMessage?: string;
 }
 
 export type InvestigationStatus = 'open' | 'investigating' | 'contained' | 'resolved' | 'closed';
@@ -414,7 +445,12 @@ export interface SecurityInvestigation {
   whyItMatters: string;
 }
 
-export type OperationalHealth = 'healthy' | 'degraded' | 'unavailable' | 'replay_only' | 'not_configured';
+export type OperationalHealth =
+  | 'healthy'
+  | 'degraded'
+  | 'unavailable'
+  | 'replay_only'
+  | 'not_configured';
 
 export interface PipelineMetricsSnapshot {
   eventsIngestedByProvider: Record<string, number>;
@@ -434,8 +470,17 @@ export interface PipelineMetricsSnapshot {
   healthByProvider: Record<CloudProvider, OperationalHealth>;
 }
 
-export type ScenarioId = 'gw-credential-attack' | 'aws-privileged-activity' | 'gcp-credential-persistence';
-export type ScenarioStepId = 'generate' | 'normalize' | 'detect' | 'correlate' | 'respond' | 'verify';
+export type ScenarioId =
+  | 'gw-credential-attack'
+  | 'aws-privileged-activity'
+  | 'gcp-credential-persistence';
+export type ScenarioStepId =
+  | 'generate'
+  | 'normalize'
+  | 'detect'
+  | 'correlate'
+  | 'respond'
+  | 'verify';
 
 export interface ScenarioStep {
   id: ScenarioStepId;

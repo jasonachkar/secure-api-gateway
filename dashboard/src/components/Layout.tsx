@@ -1,30 +1,33 @@
-/**
- * Enhanced Dashboard Layout with Navigation
- * Improved sidebar, navigation, and main content area styling
- */
-
-import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  ExternalLink,
-  ShieldCheck,
-  LayoutGrid,
-  PlayCircle,
-  ShieldAlert,
-  Cloud,
-  BookOpen,
-  MoreHorizontal,
-  ClipboardCheck,
-  ScrollText,
-  KeyRound,
-  Users as UsersIcon,
-  ListChecks,
+  Activity,
   AlertTriangle,
+  BookOpen,
+  CheckCircle2,
+  ChevronLeft,
+  Cloud,
+  Command,
+  ExternalLink,
+  FileCheck2,
+  FlaskConical,
+  Gauge,
+  KeyRound,
+  ListChecks,
+  LogOut,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Radar,
+  ScrollText,
+  Search,
+  ShieldAlert,
+  ShieldCheck,
+  Users,
+  X,
   type LucideIcon,
 } from 'lucide-react';
-import { adminApi } from '../api/admin';
 import { useAuth } from '../contexts/AuthContext';
-import { Button } from './Button';
 import { HealthCheckPill } from './HealthCheckPill';
 import { ThemeToggle } from './ThemeToggle';
 
@@ -32,207 +35,440 @@ interface LayoutProps {
   children: React.ReactNode;
 }
 
-// Swagger UI (${API_URL}/docs) is deliberately disabled in production (see
-// ENABLE_SWAGGER in src/config/env.ts) so the interactive API schema isn't public
-// by default. The MkDocs site (mkdocs.yml, deployed by .github/workflows/docs.yml)
-// is the production-appropriate API reference instead.
+interface NavItem {
+  path: string;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  external?: boolean;
+}
+
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
 const DOCS_URL = 'https://jasonachkar.github.io/secure-api-gateway/';
 
-const primaryNavItems = [
-  { path: '/', label: 'Overview', icon: LayoutGrid },
-  { path: '/guided-scenarios', label: 'Guided Scenarios', icon: PlayCircle },
-  { path: '/investigations', label: 'Investigations', icon: ShieldAlert },
-  { path: '/cloud-coverage', label: 'Cloud Coverage', icon: Cloud },
-  { path: '/about', label: 'Architecture & Evidence', icon: BookOpen },
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: 'Observe',
+    items: [
+      {
+        path: '/',
+        label: 'Overview',
+        description: 'Security posture and active risk',
+        icon: Gauge,
+      },
+      {
+        path: '/traffic',
+        label: 'Traffic Explorer',
+        description: 'Inspect gateway requests and decisions',
+        icon: Activity,
+      },
+    ],
+  },
+  {
+    label: 'Detect',
+    items: [
+      {
+        path: '/detections',
+        label: 'Detections',
+        description: 'Rule coverage and match health',
+        icon: Radar,
+      },
+      {
+        path: '/investigations',
+        label: 'Investigations',
+        description: 'Correlated incidents and evidence',
+        icon: ShieldAlert,
+      },
+      {
+        path: '/threats',
+        label: 'Threat intelligence',
+        description: 'Source reputation and enforcement',
+        icon: AlertTriangle,
+      },
+    ],
+  },
+  {
+    label: 'Respond',
+    items: [
+      {
+        path: '/security-lab',
+        label: 'Security Lab',
+        description: 'Safe, guided detection scenarios',
+        icon: FlaskConical,
+      },
+      {
+        path: '/sessions',
+        label: 'Sessions',
+        description: 'Review and revoke active sessions',
+        icon: KeyRound,
+      },
+    ],
+  },
+  {
+    label: 'Govern',
+    items: [
+      {
+        path: '/cloud',
+        label: 'Cloud',
+        description: 'Provider ingestion and pipeline health',
+        icon: Cloud,
+      },
+      {
+        path: '/compliance',
+        label: 'Control evidence',
+        description: 'Framework mapping and evidence',
+        icon: FileCheck2,
+      },
+      {
+        path: '/audit',
+        label: 'Audit trail',
+        description: 'Tamper-evident operator activity',
+        icon: ScrollText,
+      },
+      {
+        path: '/identities',
+        label: 'Identities',
+        description: 'Users, roles, and lockouts',
+        icon: Users,
+      },
+    ],
+  },
+  {
+    label: 'System',
+    items: [
+      {
+        path: '/architecture',
+        label: 'Architecture',
+        description: 'Trust boundaries and data flow',
+        icon: BookOpen,
+      },
+      {
+        path: '/implementation-status',
+        label: 'Implementation',
+        description: 'Verified capability registry',
+        icon: ListChecks,
+      },
+      {
+        path: DOCS_URL,
+        label: 'API documentation',
+        description: 'Open the technical reference',
+        icon: ExternalLink,
+        external: true,
+      },
+    ],
+  },
 ];
 
-const moreNavItems = [
-  { path: '/compliance', label: 'Control Evidence', icon: ClipboardCheck },
-  { path: '/threats', label: 'Threats', icon: AlertTriangle },
-  { path: '/audit-logs', label: 'Audit Logs', icon: ScrollText },
-  { path: '/sessions', label: 'Sessions', icon: KeyRound },
-  { path: '/users', label: 'Identity & Access', icon: UsersIcon },
-  { path: '/implementation-status', label: 'Implementation Status', icon: ListChecks },
-];
+const ALL_NAV_ITEMS = NAV_GROUPS.flatMap((group) => group.items);
+
+function pageForPath(pathname: string): NavItem | undefined {
+  return ALL_NAV_ITEMS.find((item) => !item.external && item.path === pathname);
+}
 
 export function Layout({ children }: LayoutProps) {
   const location = useLocation();
-  const { logout } = useAuth();
-  const [demoMode, setDemoMode] = React.useState(false);
-  const [demoModeLoaded, setDemoModeLoaded] = React.useState(false);
+  const navigate = useNavigate();
+  const { identity, logout } = useAuth();
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem('control-plane-sidebar') === 'collapsed'
+  );
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const activePage = pageForPath(location.pathname);
 
-  React.useEffect(() => {
-    let isMounted = true;
+  useEffect(() => {
+    localStorage.setItem('control-plane-sidebar', collapsed ? 'collapsed' : 'expanded');
+  }, [collapsed]);
 
-    const loadConfig = async () => {
-      try {
-        const config = await adminApi.getRuntimeConfig();
-        if (isMounted) {
-          setDemoMode(config.demoMode);
-        }
-      } catch (error: any) {
-        // Expected for the read-only reviewer role - /admin/config is admin-only,
-        // and the demo-mode indicator just isn't shown for reviewers. Only log
-        // anything unexpected (non-403) to the console.
-        if (error?.response?.status !== 403) {
-          console.error('Failed to load runtime config:', error);
-        }
-      } finally {
-        if (isMounted) {
-          setDemoModeLoaded(true);
-        }
+  useEffect(() => {
+    setMobileOpen(false);
+    setProfileOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setCommandOpen((value) => !value);
+      }
+      if (event.key === 'Escape') {
+        setCommandOpen(false);
+        setMobileOpen(false);
+        setProfileOpen(false);
       }
     };
-
-    loadConfig();
-
-    return () => {
-      isMounted = false;
-    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  const handleLogout = async () => {
-    try {
-      await logout();
-    } catch (error) {
-      console.error('Logout error:', error);
-    }
+  const navigateTo = (path: string) => {
+    setCommandOpen(false);
+    navigate(path);
   };
 
-  const isActive = (path: string) => location.pathname === path;
-  const isMoreActive = moreNavItems.some((item) => isActive(item.path));
-  const [moreOpen, setMoreOpen] = React.useState(isMoreActive);
-
-  React.useEffect(() => {
-    if (isMoreActive) setMoreOpen(true);
-  }, [isMoreActive]);
-
   return (
-    <div className="app-shell">
-      {/* Enhanced Sidebar */}
-      <aside className="app-shell__sidebar">
-        <div className="app-shell__sidebar-brand">
-          <div className="app-shell__sidebar-brand-row">
-            <div className="app-shell__title">
-              <ShieldCheck size={18} aria-hidden="true" /> Secure API Gateway
-            </div>
-            <ThemeToggle variant="inverse" />
-          </div>
-          <div className="app-shell__subtitle">
-            Multi-cloud API security control plane
-          </div>
-          <div className="app-shell__health">
-            <HealthCheckPill />
-          </div>
+    <div className={`app-shell ${collapsed ? 'app-shell--collapsed' : ''}`}>
+      {mobileOpen && (
+        <button
+          className="app-shell__scrim"
+          onClick={() => setMobileOpen(false)}
+          aria-label="Close navigation"
+        />
+      )}
+      <aside
+        className={`app-shell__sidebar ${mobileOpen ? 'app-shell__sidebar--open' : ''}`}
+        aria-label="Application sidebar"
+      >
+        <div className="app-shell__brand-row">
+          <Link to="/" className="app-shell__brand" aria-label="SecureOps overview">
+            <span className="app-shell__brand-mark">
+              <ShieldCheck size={18} aria-hidden="true" />
+            </span>
+            <span className="app-shell__brand-copy">
+              <strong>SecureOps</strong>
+              <small>Control Plane</small>
+            </span>
+          </Link>
+          <button
+            className="icon-button app-shell__mobile-close"
+            onClick={() => setMobileOpen(false)}
+            aria-label="Close navigation"
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
         </div>
 
-        <nav className="app-shell__nav">
-          {primaryNavItems.map((item) => (
-            <NavLink key={item.path} to={item.path} active={isActive(item.path)} icon={item.icon}>
-              {item.label}
-            </NavLink>
-          ))}
-
-          <button
-            type="button"
-            className={`nav-link ${isMoreActive ? 'nav-link--active' : 'nav-link--inactive'}`}
-            onClick={() => setMoreOpen((v) => !v)}
-            aria-expanded={moreOpen}
-            style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer' }}
-          >
-            <span className="nav-link__icon" aria-hidden="true">
-              <MoreHorizontal size={16} />
-            </span>
-            <span>More</span>
-          </button>
-          {moreOpen && (
-            <div style={{ paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {moreNavItems.map((item) => (
-                <NavLink key={item.path} to={item.path} active={isActive(item.path)} icon={item.icon}>
-                  {item.label}
-                </NavLink>
+        <nav className="app-shell__nav" aria-label="Primary navigation">
+          {NAV_GROUPS.map((group) => (
+            <div className="nav-group" key={group.label}>
+              <div className="nav-group__label">{group.label}</div>
+              {group.items.map((item) => (
+                <NavigationLink
+                  key={item.path}
+                  item={item}
+                  active={location.pathname === item.path}
+                  collapsed={collapsed}
+                />
               ))}
-              <a
-                href={DOCS_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="nav-link nav-link--inactive"
-              >
-                <span className="nav-link__icon" aria-hidden="true">
-                  <BookOpen size={16} />
-                </span>
-                <span>API Documentation</span>
-                <ExternalLink size={12} style={{ marginLeft: 'auto' }} aria-hidden="true" />
-              </a>
             </div>
-          )}
+          ))}
         </nav>
 
-        <div className="app-shell__demo-section">
-          <div className="app-shell__demo-row">
-            <span className="app-shell__demo-label">Demo Mode</span>
-            <label className="app-shell__demo-toggle">
-              <input
-                type="checkbox"
-                checked={demoMode}
-                disabled
-                aria-label="Demo mode enabled"
-              />
-              <span>
-                {demoModeLoaded ? (demoMode ? 'On' : 'Off') : '...'}
-              </span>
-            </label>
-          </div>
-          <Button
-            variant="danger"
-            size="md"
-            onClick={handleLogout}
-            className="button-full"
+        <div className="app-shell__sidebar-footer">
+          <div
+            className="app-shell__environment"
+            title={`${import.meta.env.MODE === 'production' ? 'Production' : 'Local development'} environment`}
           >
-            Logout
-          </Button>
+            <span className="status-dot status-dot--healthy" aria-hidden="true" />
+            <span className="app-shell__environment-copy">
+              {import.meta.env.MODE === 'production' ? 'Production' : 'Development'}
+            </span>
+            <span className="provenance-chip provenance-chip--synthetic">Demo</span>
+          </div>
+          <button
+            type="button"
+            className="nav-link app-shell__collapse"
+            onClick={() => setCollapsed((value) => !value)}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+            <span>Collapse</span>
+          </button>
         </div>
       </aside>
 
-      {/* Enhanced Main Content */}
-      <main className="app-shell__main">
-        <div className="app-shell__main-inner">
-          {demoMode && (
-            <div className="app-shell__demo-badge-row">
-              <span className="ui-badge ui-badge--warning app-shell__demo-badge">Demo Data</span>
+      <div className="app-shell__workspace">
+        <header className="topbar">
+          <div className="topbar__left">
+            <button
+              className="icon-button topbar__menu"
+              onClick={() => setMobileOpen(true)}
+              aria-label="Open navigation"
+            >
+              <Menu size={19} aria-hidden="true" />
+            </button>
+            <div className="breadcrumbs" aria-label="Breadcrumb">
+              <span>SecureOps</span>
+              <ChevronLeft size={13} className="breadcrumbs__separator" aria-hidden="true" />
+              <strong>{activePage?.label ?? 'Control Plane'}</strong>
             </div>
-          )}
-          {children}
-        </div>
-      </main>
+          </div>
+          <div className="topbar__actions">
+            <button
+              className="command-trigger"
+              type="button"
+              onClick={() => setCommandOpen(true)}
+              aria-label="Search control plane"
+            >
+              <Search size={15} aria-hidden="true" />
+              <span>Search control plane</span>
+              <kbd>⌘K</kbd>
+            </button>
+            <HealthCheckPill />
+            <ThemeToggle compact />
+            <div className="profile-menu">
+              <button
+                className="profile-trigger"
+                onClick={() => setProfileOpen((value) => !value)}
+                aria-expanded={profileOpen}
+              >
+                <span className="avatar">
+                  {(identity?.username ?? 'U').slice(0, 2).toUpperCase()}
+                </span>
+                <span className="profile-trigger__copy">
+                  <strong>{identity?.username ?? 'User'}</strong>
+                  <small>{identity?.roles[0] ?? 'authenticated'}</small>
+                </span>
+              </button>
+              {profileOpen && (
+                <div className="profile-popover">
+                  <div className="profile-popover__identity">
+                    <strong>{identity?.username ?? 'Authenticated user'}</strong>
+                    <span>{identity?.id}</span>
+                  </div>
+                  <button onClick={() => logout()}>
+                    <LogOut size={15} /> Sign out
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </header>
+
+        <main className="app-shell__main">
+          <div className="app-shell__main-inner">{children}</div>
+        </main>
+      </div>
+
+      {commandOpen && (
+        <CommandPalette
+          items={ALL_NAV_ITEMS}
+          onClose={() => setCommandOpen(false)}
+          onNavigate={navigateTo}
+        />
+      )}
     </div>
   );
 }
 
-interface NavLinkProps {
-  to: string;
+function NavigationLink({
+  item,
+  active,
+  collapsed,
+}: {
+  item: NavItem;
   active: boolean;
-  icon?: LucideIcon;
-  children: React.ReactNode;
+  collapsed: boolean;
+}) {
+  const Icon = item.icon;
+  const className = `nav-link ${active ? 'nav-link--active' : 'nav-link--inactive'}`;
+  const content = (
+    <>
+      <span className="nav-link__icon">
+        <Icon size={17} aria-hidden="true" />
+      </span>
+      <span className="nav-link__label">{item.label}</span>
+      {item.external && !collapsed && (
+        <ExternalLink size={12} className="nav-link__external" aria-hidden="true" />
+      )}
+    </>
+  );
+  return item.external ? (
+    <a
+      href={item.path}
+      className={className}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={collapsed ? item.label : undefined}
+    >
+      {content}
+    </a>
+  ) : (
+    <Link
+      to={item.path}
+      className={className}
+      title={collapsed ? item.label : undefined}
+      aria-current={active ? 'page' : undefined}
+    >
+      {content}
+    </Link>
+  );
 }
 
-function NavLink({ to, active, icon: Icon, children }: NavLinkProps) {
-  const classes = [
-    'nav-link',
-    active ? 'nav-link--active' : 'nav-link--inactive',
-  ].join(' ');
+function CommandPalette({
+  items,
+  onClose,
+  onNavigate,
+}: {
+  items: NavItem[];
+  onClose: () => void;
+  onNavigate: (path: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => inputRef.current?.focus(), []);
+  const filtered = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    return items.filter(
+      (item) =>
+        !item.external &&
+        (!term || `${item.label} ${item.description}`.toLowerCase().includes(term))
+    );
+  }, [items, query]);
 
   return (
-    <Link
-      to={to}
-      className={classes}
+    <div
+      className="command-overlay"
+      role="presentation"
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
-      {Icon && (
-        <span className="nav-link__icon" aria-hidden="true">
-          <Icon size={16} />
-        </span>
-      )}
-      <span>{children}</span>
-    </Link>
+      <div
+        className="command-palette"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search control plane"
+      >
+        <div className="command-palette__input-row">
+          <Search size={18} aria-hidden="true" />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Jump to traffic, investigations, evidence…"
+            aria-label="Search pages"
+          />
+          <kbd>Esc</kbd>
+        </div>
+        <div className="command-palette__results">
+          {filtered.length === 0 ? (
+            <div className="command-palette__empty">No matching destination</div>
+          ) : (
+            filtered.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button key={item.path} onClick={() => onNavigate(item.path)}>
+                  <span className="command-palette__result-icon">
+                    <Icon size={17} />
+                  </span>
+                  <span>
+                    <strong>{item.label}</strong>
+                    <small>{item.description}</small>
+                  </span>
+                  <CheckCircle2 size={14} className="command-palette__arrow" />
+                </button>
+              );
+            })
+          )}
+        </div>
+        <div className="command-palette__footer">
+          <Command size={13} /> Navigate the security workflow from one place
+        </div>
+      </div>
+    </div>
   );
 }

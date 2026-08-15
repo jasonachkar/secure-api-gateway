@@ -55,9 +55,14 @@ describe('DetectionEngine rule health', () => {
     for (const rule of health) {
       expect(rule.enabled).toBe(true);
       expect(rule.version).toMatch(/^\d+\.\d+\.\d+$/);
+      expect(rule.description.length).toBeGreaterThan(0);
       expect(rule.providers.length).toBeGreaterThan(0);
+      expect(rule.categories.length).toBeGreaterThan(0);
       expect(rule.supportedProvenance.length).toBeGreaterThan(0);
       expect(rule.testPaths.length).toBeGreaterThan(0);
+      expect(rule.severityRationale.length).toBeGreaterThan(0);
+      expect(Array.isArray(rule.falsePositiveNotes)).toBe(true);
+      expect(Array.isArray(rule.remediation)).toBe(true);
     }
   });
 

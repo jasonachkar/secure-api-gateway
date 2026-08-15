@@ -7,9 +7,12 @@
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AuthUser } from '../types/index.js';
+import { getClientIp, getRequestId } from './requestContext.js';
 
 export interface RequestLogEntry {
   timestamp: number;
+  requestId: string;
+  sourceIp: string;
   method: string;
   path: string;
   user: string;
@@ -61,6 +64,10 @@ export function registerRequestTelemetry(app: FastifyInstance): void {
 
     recordRequest({
       timestamp: Date.now(),
+      // requestIdHook has already established the canonical response correlation ID by
+      // onResponse time. Falling back is useful for isolated plugin tests only.
+      requestId: (request as any).requestId ?? getRequestId(request),
+      sourceIp: getClientIp(request),
       method: request.method,
       path: request.routeOptions?.url ?? request.url,
       user: user ? `${user.username} (${user.roles[0] ?? 'user'})` : 'anonymous',

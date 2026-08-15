@@ -14,6 +14,7 @@ import { SectionHeader } from '../components/SectionHeader';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { TokenLifecycleDiagram } from '../components/TokenLifecycleDiagram';
 import { PageLoadingSkeleton } from '../components/PageLoadingSkeleton';
+import { AccessBoundary } from '../components/AccessBoundary';
 import { useCountdown } from '../hooks/useCountdown';
 import { useToast } from '../contexts/ToastContext';
 import { adminApi } from '../api/admin';
@@ -29,12 +30,14 @@ export function Sessions() {
   const [revokeTarget, setRevokeTarget] = useState<SessionInfo | null>(null);
   const [bulkRevokeUser, setBulkRevokeUser] = useState('');
   const [confirmBulkRevoke, setConfirmBulkRevoke] = useState(false);
-  const { logout } = useAuth();
+  const { logout, identity } = useAuth();
+  const isAdmin = identity?.roles.includes('admin') ?? false;
   const { showToast } = useToast();
 
   useEffect(() => {
-    fetchSessions();
-  }, []);
+    if (isAdmin) fetchSessions();
+    else setLoading(false);
+  }, [isAdmin]);
 
   const fetchSessions = async () => {
     try {
@@ -123,8 +126,12 @@ export function Sessions() {
       <div className="page-stack">
         <SectionHeader
           title="Active Sessions"
-          subtitle={`${sessions.length} active session${sessions.length !== 1 ? 's' : ''}`}
-          actions={<Button onClick={fetchSessions}>Refresh</Button>}
+          subtitle={
+            isAdmin
+              ? `${sessions.length} active session${sessions.length !== 1 ? 's' : ''}`
+              : 'Session families, expiration, concurrent access, and revocation controls'
+          }
+          actions={isAdmin ? <Button onClick={fetchSessions}>Refresh</Button> : undefined}
         />
 
         <Card>
@@ -135,28 +142,41 @@ export function Sessions() {
           <TokenLifecycleDiagram />
         </Card>
 
-        {loading && <PageLoadingSkeleton cardCount={2} showMetrics={false} />}
+        {!isAdmin && (
+          <AccessBoundary
+            description="The reviewer session can inspect how tokens are issued and rotated, but active session identifiers and revocation controls remain administrator-only."
+            resource="GET /admin/sessions/active"
+            alternative={{
+              label: 'Inspect authentication capabilities',
+              to: '/implementation-status',
+            }}
+          />
+        )}
 
-        {error && (
+        {isAdmin && loading && <PageLoadingSkeleton cardCount={2} showMetrics={false} />}
+
+        {isAdmin && error && (
           <div className="alert alert--danger" role="alert">
             {error}
           </div>
         )}
 
-        {!loading && !error && concurrentUsers.length > 0 && (
+        {isAdmin && !loading && !error && concurrentUsers.length > 0 && (
           <div className="alert alert--warning" role="alert">
             <strong>Concurrent sessions detected:</strong>{' '}
-            {concurrentUsers.map(([username, list]) => `${username} (${list.length})`).join(', ')}. Multiple active
-            sessions for the same account are highlighted below.
+            {concurrentUsers.map(([username, list]) => `${username} (${list.length})`).join(', ')}.
+            Multiple active sessions for the same account are highlighted below.
           </div>
         )}
 
-        {!loading && !error && usernames.length > 0 && (
+        {isAdmin && !loading && !error && usernames.length > 0 && (
           <Card>
             <div className="card-header">
               <div>
                 <div className="section-title">Bulk Session Management</div>
-                <div className="section-subtitle">Revoke every active session belonging to one user at once.</div>
+                <div className="section-subtitle">
+                  Revoke every active session belonging to one user at once.
+                </div>
               </div>
             </div>
             <div className="action-row">
@@ -186,7 +206,7 @@ export function Sessions() {
           </Card>
         )}
 
-        {!loading && !error && (
+        {isAdmin && !loading && !error && (
           <div className="page-stack">
             {sessions.length === 0 && <Card className="empty-state">No active sessions</Card>}
 
@@ -239,7 +259,9 @@ function SessionCard({
   onRevoke: () => void;
 }) {
   const countdown = useCountdown(session.expiresAt);
-  const cardClass = ['session-card', isConcurrent ? 'session-card--concurrent' : null].filter(Boolean).join(' ');
+  const cardClass = ['session-card', isConcurrent ? 'session-card--concurrent' : null]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <Card className={cardClass}>
@@ -268,7 +290,9 @@ function SessionCard({
 
         <div>
           <div className="threat-card__meta-label">Expires In</div>
-          <div className={`text-sm text-mono ${countdown.expired ? 'text-danger' : ''}`}>{countdown.label}</div>
+          <div className={`text-sm text-mono ${countdown.expired ? 'text-danger' : ''}`}>
+            {countdown.label}
+          </div>
         </div>
 
         <div>

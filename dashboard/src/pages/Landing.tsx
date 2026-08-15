@@ -1,217 +1,315 @@
-/**
- * Public Landing Page
- * Explains the Secure API Gateway project before login
- */
-
 import { Link } from 'react-router-dom';
-import { ShieldCheck, Radar, ClipboardCheck } from 'lucide-react';
+import {
+  ArrowRight,
+  CheckCircle2,
+  Cloud,
+  FileCheck2,
+  GitBranch,
+  Radar,
+  ShieldCheck,
+  Workflow,
+} from 'lucide-react';
 import { Button } from '../components/Button';
-import { Card } from '../components/Card';
-import { ArchitectureDiagram } from '../components/ArchitectureDiagram';
-import { LiveTrafficPreview } from '../components/LiveTrafficPreview';
 import { ThemeToggle } from '../components/ThemeToggle';
 
-const FEATURE_HIGHLIGHTS = [
+const CAPABILITIES = [
   {
     icon: ShieldCheck,
-    title: 'OWASP API Top 10 Coverage',
-    description: 'Every risk on the list has a real, working mitigation - not a checklist.',
+    title: 'Protect the gateway',
+    body: 'JWT rotation, RBAC, Redis-backed rate limits, SSRF controls, and enforced IP blocks in the request path.',
+  },
+  {
+    icon: Workflow,
+    title: 'Normalize every signal',
+    body: 'Gateway, AWS, GCP, and Azure events map into one canonical, redacted security schema.',
   },
   {
     icon: Radar,
-    title: 'Real-time Threat Intelligence',
-    description: 'IP reputation scoring, geo-distribution, and attack-pattern detection, live.',
+    title: 'Explain every detection',
+    body: 'Versioned rules expose matched fields, severity rationale, false-positive guidance, and test evidence.',
   },
   {
-    icon: ClipboardCheck,
-    title: 'Multi-framework Compliance',
-    description: 'NIST, OWASP, PCI DSS, and GDPR scoring, each control linked to the code that implements it.',
+    icon: FileCheck2,
+    title: 'Preserve the evidence',
+    body: 'Correlated investigations retain raw context, normalized events, response history, and hash-chain verification.',
   },
 ];
 
 export function Landing() {
   return (
-    <div className="landing-page">
-      <header className="landing-header">
-        <div className="landing-container landing-nav">
-          <div className="landing-brand">
-            <ShieldCheck size={20} aria-hidden="true" />
-            <span>Secure API Gateway</span>
-          </div>
-          <div className="landing-nav__actions">
-            <ThemeToggle />
-            <Link to="/login">
-              <Button variant="primary" size="md">
-                Sign In / Try Demo
-              </Button>
-            </Link>
-          </div>
+    <div className="product-landing">
+      <header className="product-nav landing-container">
+        <Link to="/" className="product-brand">
+          <span>
+            <ShieldCheck size={18} />
+          </span>
+          <strong>SecureOps</strong>
+          <small>Control Plane</small>
+        </Link>
+        <nav aria-label="Public navigation">
+          <a href="#architecture">Architecture</a>
+          <a href="#capabilities">Capabilities</a>
+          <a href="#evidence">Evidence model</a>
+        </nav>
+        <div className="product-nav__actions">
+          <ThemeToggle compact />
+          <a
+            className="github-link"
+            href="https://github.com/jasonachkar/secure-api-gateway"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <GitBranch size={15} />
+            GitHub
+          </a>
+          <Link to="/login">
+            <Button variant="primary" size="sm">
+              Open live demo <ArrowRight size={13} />
+            </Button>
+          </Link>
         </div>
       </header>
 
-      <section className="landing-hero landing-container landing-hero--split">
-        <div className="landing-hero__copy">
-          <h1 className="landing-hero__title landing-hero__title--left">Production-Grade API Security — Live Demo</h1>
-          <p className="landing-hero__subtitle landing-hero__subtitle--left">
-            A working API gateway with real JWT auth, RBAC, rate limiting, multi-cloud threat detection, and
-            correlated investigations - not screenshots. Sign in and watch it react to real traffic in real time.
-          </p>
-          <div className="landing-actions landing-actions--left">
-            <Link to="/login">
-              <Button variant="primary" size="lg">
-                Try Live Demo →
-              </Button>
-            </Link>
-            <a href="https://github.com/jasonachkar/secure-api-gateway" target="_blank" rel="noopener noreferrer" className="landing-link">
-              <Button variant="ghost" size="lg">
-                View on GitHub
-              </Button>
-            </a>
-          </div>
-        </div>
-        <div className="landing-hero__widget">
-          <LiveTrafficPreview />
-        </div>
-      </section>
-
-      <section id="about" className="landing-section landing-section--alt">
-        <div className="landing-container">
-          <h2 className="landing-section__title">What is This?</h2>
-          <div className="landing-section__text">
-            <p className="paragraph">
-              This is a multi-cloud API security control plane: a gateway that normalizes Azure, AWS, and GCP
-              security telemetry into one canonical schema, evaluates it against documented detection rules,
-              correlates matches into investigations, and executes real (or clearly labeled simulated) response
-              actions - with the raw evidence, normalized event, rule logic, and audit trail all inspectable.
-            </p>
+      <main>
+        <section className="product-hero landing-container">
+          <div className="product-hero__copy">
+            <div className="eyebrow-pill">
+              <span className="status-dot status-dot--healthy" />
+              Live multi-cloud security engineering portfolio
+            </div>
+            <h1>
+              See the security decision.
+              <br />
+              <span>Trace the evidence.</span>
+            </h1>
             <p>
-              Some of it runs on real cloud telemetry today; some of it replays sanitized fixtures. Both are
-              labeled explicitly throughout - see{' '}
-              <Link to="/implementation-status">Implementation Status</Link> after signing in for the honest,
-              capability-by-capability breakdown.
+              A working API gateway and security control plane that turns request telemetry and
+              cloud activity into explainable detections, correlated investigations, enforceable
+              response, and auditable proof.
             </p>
+            <div className="product-hero__actions">
+              <Link to="/login">
+                <Button variant="primary" size="lg">
+                  Explore the control plane <ArrowRight size={15} />
+                </Button>
+              </Link>
+              <a href="#architecture">
+                <Button variant="secondary" size="lg">
+                  How the pipeline works
+                </Button>
+              </a>
+            </div>
+            <div className="product-proof">
+              <span>
+                <CheckCircle2 size={13} />
+                Read-only reviewer access
+              </span>
+              <span>
+                <CheckCircle2 size={13} />
+                No credentials required
+              </span>
+              <span>
+                <CheckCircle2 size={13} />
+                Live and replay data labeled
+              </span>
+            </div>
           </div>
-        </div>
-      </section>
+          <div className="product-hero__visual" aria-label="Security operations pipeline preview">
+            <div className="hero-window">
+              <div className="hero-window__bar">
+                <span />
+                <span />
+                <span />
+                <small>INVESTIGATION · GW-AUTH-001</small>
+              </div>
+              <div className="hero-window__status">
+                <span className="security-badge security-badge--severity-critical">critical</span>
+                <span className="provenance-chip provenance-chip--live">live</span>
+                <strong>Gateway credential attack</strong>
+              </div>
+              <div className="hero-event-flow">
+                <div>
+                  <span className="hero-flow-icon hero-flow-icon--cloud">
+                    <Cloud size={16} />
+                  </span>
+                  <p>
+                    <strong>Receive</strong>
+                    <small>gateway auth telemetry</small>
+                  </p>
+                </div>
+                <span />
+                <div>
+                  <span className="hero-flow-icon hero-flow-icon--normalize">
+                    <Workflow size={16} />
+                  </span>
+                  <p>
+                    <strong>Normalize</strong>
+                    <small>canonical event v1</small>
+                  </p>
+                </div>
+                <span />
+                <div>
+                  <span className="hero-flow-icon hero-flow-icon--detect">
+                    <Radar size={16} />
+                  </span>
+                  <p>
+                    <strong>Detect</strong>
+                    <small>rule + matched fields</small>
+                  </p>
+                </div>
+              </div>
+              <div className="hero-evidence">
+                <div>
+                  <small>Correlation basis</small>
+                  <code>principal + source_ip + 15m</code>
+                </div>
+                <div>
+                  <small>Response mode</small>
+                  <strong>ENFORCED</strong>
+                </div>
+              </div>
+              <div className="hero-timeline">
+                <span />
+                <div>
+                  <strong>Signal received</strong>
+                  <small>Authentication failure from 192.0.2.44</small>
+                </div>
+                <span />
+                <div>
+                  <strong>Rule matched</strong>
+                  <small>5 failures against one principal</small>
+                </div>
+                <span />
+                <div>
+                  <strong>Investigation created</strong>
+                  <small>Evidence package ready</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
 
-      <section id="features" className="landing-section">
-        <div className="landing-container">
-          <h2 className="landing-section__title">Key Features</h2>
-          <div className="landing-split-grid">
-            <Card className="landing-architecture-card">
-              <div className="section-title">Security Architecture</div>
-              <p className="section-subtitle" style={{ marginBottom: 'var(--space-md)' }}>
-                Every request passes through a real middleware chain before it ever reaches an upstream service.
+        <section id="architecture" className="product-section product-section--dark">
+          <div className="landing-container">
+            <div className="product-section__intro">
+              <div>
+                <span className="eyebrow">Security data lifecycle</span>
+                <h2>One traceable path from traffic to proof.</h2>
+              </div>
+              <p>
+                The interface follows the actual system: traffic enters gateway policy, becomes
+                telemetry, is normalized, evaluated, correlated, investigated, responded to, and
+                preserved as evidence.
               </p>
-              <ArchitectureDiagram />
-            </Card>
-            <div className="landing-highlight-stack">
-              {FEATURE_HIGHLIGHTS.map((feature) => (
-                <div key={feature.title} className="landing-highlight">
-                  <feature.icon size={22} className="landing-highlight__icon" aria-hidden="true" />
-                  <div>
-                    <div className="landing-highlight__title">{feature.title}</div>
-                    <p className="landing-highlight__description">{feature.description}</p>
-                  </div>
+            </div>
+            <div className="lifecycle-flow">
+              {[
+                'Traffic',
+                'Gateway policy',
+                'Telemetry',
+                'Normalize',
+                'Detect',
+                'Correlate',
+                'Investigate',
+                'Respond',
+                'Evidence',
+              ].map((step, index) => (
+                <div key={step}>
+                  <span>{String(index + 1).padStart(2, '0')}</span>
+                  <strong>{step}</strong>
+                  {index < 8 && <ArrowRight size={14} />}
                 </div>
               ))}
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="landing-section landing-section--alt">
-        <div className="landing-container">
-          <h2 className="landing-section__title">Technology Stack</h2>
-          <div className="landing-chip-row">
-            {[
-              { name: 'Node.js', slug: 'nodedotjs' },
-              { name: 'TypeScript', slug: 'typescript' },
-              { name: 'Fastify', slug: 'fastify' },
-              { name: 'React', slug: 'react' },
-              { name: 'Redis', slug: 'redis' },
-              { name: 'JWT', slug: 'jsonwebtokens' },
-            ].map((tech) => (
-              <span key={tech.name} className="tech-chip tech-chip--logo">
-                <img
-                  src={`https://cdn.simpleicons.org/${tech.slug}`}
-                  alt=""
-                  width={16}
-                  height={16}
-                  loading="lazy"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).style.display = 'none';
-                  }}
-                />
-                {tech.name}
-              </span>
-            ))}
-            {['Zod', 'Pino', 'OpenAPI'].map((tech) => (
-              <span key={tech} className="tech-chip">
-                {tech}
-              </span>
+        <section id="capabilities" className="product-section landing-container">
+          <div className="product-section__intro">
+            <div>
+              <span className="eyebrow">Operational capability</span>
+              <h2>Built for security review, not dashboard theater.</h2>
+            </div>
+            <p>
+              Every product claim links back to a runtime endpoint, implementation path, test,
+              infrastructure definition, or an explicit limitation.
+            </p>
+          </div>
+          <div className="capability-grid">
+            {CAPABILITIES.map(({ icon: Icon, title, body }) => (
+              <article key={title}>
+                <span>
+                  <Icon size={18} />
+                </span>
+                <h3>{title}</h3>
+                <p>{body}</p>
+              </article>
             ))}
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="landing-section">
-        <div className="landing-container">
-          <h2 className="landing-section__title">What This Project Showcases</h2>
-          <div className="landing-grid landing-grid--compact">
-            {[
-              {
-                title: 'API Gateway Architecture',
-                items: ['Reverse proxy patterns', 'Middleware chains', 'Request/response transformation', 'Circuit breaker patterns'],
-              },
-              {
-                title: 'Security Best Practices',
-                items: ['OWASP Top 10 mitigations', 'Secure authentication flows', 'Input validation', 'Security headers'],
-              },
-              {
-                title: 'Real-time Monitoring',
-                items: ['Live metrics streaming', 'Threat detection', 'Correlated investigations', 'Audit trails'],
-              },
-              {
-                title: 'Compliance & Audit',
-                items: ['Framework compliance', 'Security posture scoring', 'Automated reporting', 'Evidence collection'],
-              },
-            ].map((showcase, idx) => (
-              <Card key={idx} className="landing-feature-card">
-                <div className="section-title text-lg">{showcase.title}</div>
-                <ul className="check-list">
-                  {showcase.items.map((item, itemIdx) => (
-                    <li key={itemIdx} className="check-list__item">
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              </Card>
-            ))}
+        <section id="evidence" className="product-section product-section--subtle">
+          <div className="landing-container evidence-story">
+            <div>
+              <span className="eyebrow">Portfolio case study</span>
+              <h2>A reviewer can verify the claim and the limit.</h2>
+              <p>
+                Start with a safe credential-attack scenario, inspect its normalized event and
+                matched rule, follow the transparent correlation explanation, and export the
+                investigation with its response and audit records.
+              </p>
+              <Link to="/login">
+                <Button variant="primary">
+                  Run the reviewer journey <ArrowRight size={14} />
+                </Button>
+              </Link>
+            </div>
+            <div className="evidence-manifest">
+              <header>
+                <FileCheck2 size={16} />
+                <strong>Evidence package</strong>
+                <span>JSON bundle</span>
+              </header>
+              {[
+                'investigation.json',
+                'normalized-events.json',
+                'detections.json',
+                'response-actions.json',
+                'audit-verification.json',
+                'README.txt',
+              ].map((file) => (
+                <div key={file}>
+                  <CheckCircle2 size={13} />
+                  <code>{file}</code>
+                  <span>verified</span>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </main>
 
-      <section className="landing-cta">
+      <footer className="product-footer">
         <div className="landing-container">
-          <h2 className="landing-section__title">Ready to Explore?</h2>
-          <p className="landing-cta__text">
-            Sign in to access the live security monitoring dashboard and see real-time metrics, threat detection, and
-            compliance monitoring in action.
+          <div className="product-brand">
+            <span>
+              <ShieldCheck size={17} />
+            </span>
+            <strong>SecureOps</strong>
+            <small>Control Plane</small>
+          </div>
+          <p>
+            Transparent security engineering across gateway, cloud, detection, response, and
+            evidence.
           </p>
-          <Link to="/login">
-            <Button variant="primary" size="lg">
-              Access Demo Dashboard →
-            </Button>
-          </Link>
+          <a
+            href="https://github.com/jasonachkar/secure-api-gateway"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Review the source <ArrowRight size={12} />
+          </a>
         </div>
-      </section>
-
-      <footer className="landing-footer">
-        <p className="landing-footer__title">Secure API Gateway - Production-Grade Security Demonstration</p>
-        <p className="landing-footer__subtitle">
-          Built with security in mind. Review, audit, and adapt to your threat model.
-        </p>
       </footer>
     </div>
   );

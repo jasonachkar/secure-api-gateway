@@ -6,7 +6,6 @@ on:
     paths:
       - 'dashboard/**'
       - '.github/workflows/deploy-dashboard.yml'
-      - '.github/workflows/azure-playwright.yml'
   workflow_dispatch:
 
 permissions:
@@ -15,12 +14,9 @@ permissions:
 
 jobs:
   deploy:
-    name: Build and deploy
+    name: Build, deploy, and verify
     runs-on: ubuntu-latest
     environment: production
-    outputs:
-      api_url: ${{ steps.azure-urls.outputs.api_url }}
-      dashboard_url: ${{ steps.azure-urls.outputs.dashboard_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,7 +28,6 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Query and validate current Azure URLs
-        id: azure-urls
         shell: bash
         run: |
           set -euo pipefail
@@ -47,9 +42,9 @@ jobs:
           api_url="https://${fqdn}"
           dashboard_url="https://${dashboard_host}"
           node -e "for (const value of process.argv.slice(1)) { const url = new URL(value); if (url.protocol !== 'https:' || url.origin !== value) process.exit(1) }" "$api_url" "$dashboard_url"
-          echo "api_url=$api_url" >> "$GITHUB_OUTPUT"
-          echo "dashboard_url=$dashboard_url" >> "$GITHUB_OUTPUT"
           echo "VITE_API_URL=$api_url" >> "$GITHUB_ENV"
+          echo "E2E_API_URL=$api_url" >> "$GITHUB_ENV"
+          echo "E2E_BASE_URL=$dashboard_url" >> "$GITHUB_ENV"
 
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@v1
@@ -62,10 +57,20 @@ jobs:
           app_location: /dashboard
           output_location: dist
 
-  smoke:
-    name: Public Azure session journey
-    needs: deploy
-    uses: ./.github/workflows/azure-playwright.yml
-    with:
-      dashboard_url: ${{ needs.deploy.outputs.dashboard_url }}
-      api_url: ${{ needs.deploy.outputs.api_url }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dashboard dependencies
+        run: npm ci
+        working-directory: dashboard
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: dashboard
+
+      - name: Run public Azure session tests
+        run: npx playwright test --config=playwright.azure.config.ts
+        working-directory: dashboard

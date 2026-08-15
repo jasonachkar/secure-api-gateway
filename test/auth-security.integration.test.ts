@@ -55,6 +55,7 @@ describe('authentication security boundaries', () => {
     expect(setCookie).toContain('HttpOnly');
     expect(setCookie).toContain('SameSite=Lax');
     expect(setCookie).not.toContain('Secure');
+    expect(setCookie).not.toContain('Partitioned');
   });
 
   it('does not reveal whether an unknown account exists', async () => {

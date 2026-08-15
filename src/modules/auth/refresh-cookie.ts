@@ -20,6 +20,10 @@ export function getRefreshCookieOptions(
     httpOnly: true,
     secure: isProduction,
     sameSite: isProduction ? 'none' : 'lax',
+    // SWA and Container Apps are different sites. Partition the production cookie by
+    // the top-level dashboard so browsers can retain it without enabling general
+    // third-party cookie access.
+    partitioned: isProduction,
     path: REFRESH_COOKIE_PATH,
     maxAge: parseDurationSeconds(env.auth.jwt.refreshTokenExpiresIn),
   };

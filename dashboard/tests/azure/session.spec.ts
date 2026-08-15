@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
+import { requiredHttpsOrigin } from './environment';
 
-const apiUrl = process.env.E2E_API_URL!;
+const apiUrl = requiredHttpsOrigin('E2E_API_URL');
 
 test('production reviewer session survives refresh, recovers once, and revokes cleanly', async ({ page, request }) => {
   const corsErrors: string[] = [];

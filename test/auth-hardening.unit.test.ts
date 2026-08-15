@@ -8,6 +8,7 @@ describe('authentication hardening policies', () => {
       httpOnly: true,
       secure: true,
       sameSite: 'none',
+      partitioned: true,
       path: REFRESH_COOKIE_PATH,
       maxAge: 7 * 24 * 60 * 60,
     });
@@ -18,6 +19,7 @@ describe('authentication hardening policies', () => {
       httpOnly: true,
       secure: false,
       sameSite: 'lax',
+      partitioned: false,
       path: '/auth',
     });
   });
